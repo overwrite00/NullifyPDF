@@ -1,0 +1,65 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# --- Ambienti Virtuali (venv) ---
+.venv/
+venv/
+ENV/
+env/
+# File di variabili d'ambiente (dati sensibili)
+.env
+.venv
+
+# --- Claude & Claude Code ---
+# Cartella di stato e cronologia delle sessioni di Claude Code
+.claude/
+claude.md
+CLAUDE.md
+# Eventuali file di log o configurazione specifica di Claude
+claude.log
+claude_config.json
+
+# --- Editor e IDE ---
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history/
+
+# IntelliJ / PyCharm
+.idea/
+
+# --- File di sistema ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- NullifyPDF Project Specific ---
+# Ignoriamo i file PDF di test o generati durante l'uso locale
+# per evitare di caricare dati sensibili o file pesanti nella repo
+*.pdf
+# Se vuoi includere un PDF di esempio specifico, usa: !esempio.pdf
+
+# Log del checker forense
+*.log
