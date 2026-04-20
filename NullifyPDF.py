@@ -177,7 +177,7 @@ class NullifyPDF(ctk.CTk):
         ).place(relx=0.5, y=160, anchor="center")
         ctk.CTkLabel(
             about,
-            text="v1.2.5 [Forensic Edition]",
+            text="v1.2.5",
             font=("Roboto", 15),
             text_color=self.accent_color,
         ).place(relx=0.5, y=195, anchor="center")
