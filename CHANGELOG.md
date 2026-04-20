@@ -11,6 +11,10 @@ e questo progetto aderisce a [Semantic Versioning](https://semver.org/spec/v2.0.
 
 - Pianificazione per supporto Drag & Drop dei file.
 
+## [1.2.5] - 2026-04-20
+
+- Fix: Aggiunta la distruzione mirata dei link prima della pulizia del *Garbage Collector*. Vengono rimossi i link (mailto:) relativi agli indirizzi email censurati.
+
 ## [1.2.0] - 2026-04-20
 
 ### Added
