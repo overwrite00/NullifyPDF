@@ -39,7 +39,7 @@ jobs:
     - name: Installazione Dipendenze
       run: |
         python -m pip install --upgrade pip
-        pip install PyMuPDF customtkinter Pillow presidio-analyzer spacy
+        pip install pyinstaller PyMuPDF customtkinter Pillow presidio-analyzer spacy
         python -m spacy download en_core_web_md
         python -m spacy download it_core_news_md
 
