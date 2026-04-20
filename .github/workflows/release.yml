@@ -39,7 +39,9 @@ jobs:
     - name: Installazione Dipendenze
       run: |
         python -m pip install --upgrade pip
-        pip install customtkinter PyMuPDF pillow pyinstaller
+        pip install PyMuPDF customtkinter Pillow presidio-analyzer spacy
+        python -m spacy download en_core_web_md
+        python -m spacy download it_core_news_md
 
     - name: Estrazione Versione
       id: get_version
@@ -55,11 +57,11 @@ jobs:
       shell: bash
       run: |
         if [ "${{ matrix.os }}" == "windows-latest" ]; then
-          # Usiamo l'estensione .ico per Windows!
-          pyinstaller --noconsole --onefile --collect-all customtkinter --add-data "images;images" --icon="images/NullifyPDF_icon.ico" --name "NullifyPDF" NullifyPDF.py
+          # Usiamo l'estensione .ico per Windows e includiamo i modelli AI!
+          pyinstaller --noconsole --onefile --collect-all customtkinter --collect-all presidio_analyzer --collect-all spacy --collect-all en_core_web_md --collect-all it_core_news_md --add-data "images;images" --icon="images/NullifyPDF_icon.ico" --name "NullifyPDF" NullifyPDF.py
         else
-          # Su Linux/macOS continuiamo a usare il .png
-          pyinstaller --noconsole --onefile --collect-all customtkinter --add-data "images:images" --icon="images/NullifyPDF_icon.png" --name "NullifyPDF" NullifyPDF.py
+          # Su Linux/macOS continuiamo a usare il .png e includiamo i modelli AI!
+          pyinstaller --noconsole --onefile --collect-all customtkinter --collect-all presidio_analyzer --collect-all spacy --collect-all en_core_web_md --collect-all it_core_news_md --add-data "images:images" --icon="images/NullifyPDF_icon.png" --name "NullifyPDF" NullifyPDF.py
         fi
 
     # --- PACKAGING SPECIFICO PER LINUX ---
