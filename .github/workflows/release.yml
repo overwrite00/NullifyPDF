@@ -1,4 +1,4 @@
-name: Build and Release NullifyPDF (Versioned Assets)
+name: Build and Release NullifyPDF (Universal Final)
 
 on:
   push:
@@ -13,6 +13,7 @@ jobs:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false  # Se un OS fallisce, gli altri continuano la build
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
         include:
@@ -44,26 +45,26 @@ jobs:
       id: get_version
       shell: bash
       run: |
-        # Estrae v1.x.x dal codice
-        VERSION=$(grep -oP "v[0-9]+\.[0-9]+\.[0-9]+" NullifyPDF.py | head -1)
+        # Metodo universale via Python: estrae 'vX.X.X' dal codice sorgente
+        VERSION=$(python -c "import re; content = open('NullifyPDF.py').read(); match = re.search(r'v\d+\.\d+\.\d+', content); print(match.group(0)) if match else print('v0.0.1')")
         echo "VERSION=$VERSION" >> $GITHUB_ENV
-        # Versione pulita senza 'v' per i pacchetti Linux
+        # Versione pulita senza la 'v' (necessaria per i pacchetti Linux)
         VERSION_CLEAN=$(echo $VERSION | sed 's/v//')
         echo "VERSION_CLEAN=$VERSION_CLEAN" >> $GITHUB_ENV
 
     - name: Build con PyInstaller
+      shell: bash
       run: |
-        # Usiamo il percorso relativo garantito dalla root del progetto
-        # L'icona viene incorporata nell'eseguibile Windows
         ICON_PATH="images/NullifyPDF_icon.png"
         if [ "${{ matrix.os }}" == "windows-latest" ]; then
+          # Su Windows incorporiamo l'icona nell'eseguibile
           pyinstaller --noconsole --onefile --collect-all customtkinter --icon="$ICON_PATH" --name "NullifyPDF" NullifyPDF.py
         else
+          # macOS e Linux usano il binario standard
           pyinstaller --noconsole --onefile --collect-all customtkinter --name "NullifyPDF" NullifyPDF.py
         fi
-      shell: bash
 
-    # --- LOGICA SPECIFICA PER LINUX (.DEB e .RPM) ---
+    # --- PACKAGING SPECIFICO PER LINUX ---
     - name: Creazione pacchetti .deb e .rpm
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -72,9 +73,11 @@ jobs:
         mkdir -p package/usr/share/icons/hicolor/256x256/apps
         mkdir -p package/DEBIAN
         
+        # Installazione file nel filesystem virtuale del pacchetto
         cp dist/NullifyPDF package/usr/bin/nullify-pdf
         cp images/NullifyPDF_icon.png package/usr/share/icons/hicolor/256x256/apps/nullify-pdf.png
         
+        # Generazione file Desktop (Menu Applicazioni)
         cat <<EOF > package/usr/share/applications/nullify-pdf.desktop
         [Desktop Entry]
         Name=NullifyPDF
@@ -86,6 +89,7 @@ jobs:
         Terminal=false
         EOF
         
+        # Configurazione metadati Debian
         cat <<EOF > package/DEBIAN/control
         Package: nullify-pdf
         Version: ${{ env.VERSION_CLEAN }}
@@ -96,15 +100,18 @@ jobs:
         Description: Irreversible PDF Anonymization Tool.
         EOF
         
+        # Compilazione pacchetti
         dpkg-deb --build package NullifyPDF_${{ env.VERSION }}_amd64.deb
         sudo apt-get update && sudo apt-get install -y alien
         sudo alien --to-rpm NullifyPDF_${{ env.VERSION }}_amd64.deb
         
+        # Sposta i pacchetti nella cartella dist per l'upload finale
         mv *.deb *.rpm dist/
 
-    - name: Rinuncia e rinomina Asset binario
+    - name: Rinomina Asset Finale
       shell: bash
       run: |
+        # Rinomina il file base includendo versione e OS (es: NullifyPDF_v1.2.0_Windows.exe)
         mv dist/${{ matrix.artifact_name }} dist/NullifyPDF_${{ env.VERSION }}_${{ matrix.os_suffix }}
 
     - name: Upload Artifact temporaneo
@@ -121,17 +128,17 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Download tutti gli Artifacts
+    - name: Download Artifacts
       uses: actions/download-artifact@v4
       with:
         path: release_assets
         merge-multiple: true
 
-    - name: Estrazione Versione per Tag
+    - name: Get Version for Tag
       id: get_version
       shell: bash
       run: |
-        VERSION=$(grep -oP "v[0-9]+\.[0-9]+\.[0-9]+" NullifyPDF.py | head -1)
+        VERSION=$(python -c "import re; content = open('NullifyPDF.py').read(); match = re.search(r'v\d+\.\d+\.\d+', content); print(match.group(0)) if match else print('v0.0.1')")
         echo "VERSION=$VERSION" >> $GITHUB_ENV
 
     - name: Pubblicazione Release
