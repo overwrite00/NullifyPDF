@@ -228,6 +228,19 @@ class NullifyPDF(ctk.CTk):
         about.transient(self)
         about.grab_set()
 
+        # --- FIX ICONA FINESTRA ABOUT ---
+        try:
+            if sys.platform.startswith("win"):
+                ico_path = resource_path(os.path.join("images", "NullifyPDF_icon.ico"))
+                if os.path.exists(ico_path):
+                    about.after(200, lambda: about.iconbitmap(ico_path))
+            else:
+                if hasattr(self, "icon_photo"):
+                    about.after(200, lambda: about.wm_iconphoto(False, self.icon_photo))
+        except Exception as e:
+            print(f"Errore icona About: {e}")
+        # --------------------------------
+
         ctk.CTkLabel(
             about, text="🛡️", font=("Segoe UI Emoji", 70), text_color=self.accent_color
         ).place(relx=0.5, y=80, anchor="center")
