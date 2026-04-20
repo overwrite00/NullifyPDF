@@ -45,10 +45,9 @@ jobs:
       id: get_version
       shell: bash
       run: |
-        # Metodo universale via Python: estrae 'vX.X.X' dal codice sorgente
-        VERSION=$(python -c "import re; content = open('NullifyPDF.py').read(); match = re.search(r'v\d+\.\d+\.\d+', content); print(match.group(0)) if match else print('v0.0.1')")
+        # Forziamo l'encoding utf-8 per evitare crash con emoji e caratteri speciali su Windows
+        VERSION=$(python -c "import re; content = open('NullifyPDF.py', encoding='utf-8').read(); match = re.search(r'v\d+\.\d+\.\d+', content); print(match.group(0)) if match else print('v0.0.1')")
         echo "VERSION=$VERSION" >> $GITHUB_ENV
-        # Versione pulita senza la 'v' (necessaria per i pacchetti Linux)
         VERSION_CLEAN=$(echo $VERSION | sed 's/v//')
         echo "VERSION_CLEAN=$VERSION_CLEAN" >> $GITHUB_ENV
 
