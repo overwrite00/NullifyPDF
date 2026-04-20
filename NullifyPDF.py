@@ -10,6 +10,8 @@ from PIL import Image, ImageTk
 
 ctk.set_appearance_mode("dark")
 
+__version__ = "1.3.0"
+
 
 def resource_path(relative_path):
     try:
@@ -320,7 +322,7 @@ class NullifyPDF(ctk.CTk):
         ).place(relx=0.5, y=160, anchor="center")
         ctk.CTkLabel(
             about,
-            text="v1.3.0 AI-Pro",
+            text=f"v{__version__} AI-Pro",
             font=("Roboto", 15),
             text_color=self.accent_color,
         ).place(relx=0.5, y=195, anchor="center")
