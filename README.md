@@ -1,5 +1,10 @@
 # 🛡️ NullifyPDF
 
+![Version](https://img.shields.io/badge/version-1.2.0-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Platform](https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-lightgrey)
+![Python](https://img.shields.io/badge/python-3.8+-yellow)
+
 **NullifyPDF** è un tool open-source cross-platform progettato per l'anonimizzazione **irreversibile** di documenti PDF. A differenza dei comuni editor che si limitano a coprire il testo con rettangoli neri, NullifyPDF elimina fisicamente i dati sensibili dal flusso interno del file, rendendo il recupero impossibile anche tramite strumenti forensi.
 
 ![NullifyPDF Promo](/images/NullifyPDF.png)
@@ -67,4 +72,4 @@ Il repository include uno script `PDF_Checker.py` per analizzare i file esportat
 
 Questo tool è fornito "così com'è". Sebbene utilizzi tecniche di anonimizzazione professionale, si consiglia sempre di verificare i documenti sensibili con lo script di ispezione incluso prima della condivisione pubblica.
 
-Sviluppato da © 2026 Graziano Mariella — Distribuito sotto licenza MIT. Consulta il file [LICENSE](LCENSE) per i dettagli.
+Sviluppato da © 2026 Graziano Mariella — Distribuito sotto licenza MIT. Consulta il file [LICENSE](LICENSE) per i dettagli.
