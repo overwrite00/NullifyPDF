@@ -1,6 +1,6 @@
 # 🛡️ NullifyPDF
 
-![Version](https://img.shields.io/badge/version-1.2.0-blue)
+![Version](https://img.shields.io/badge/version-1.2.5-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-lightgrey)
 ![Python](https://img.shields.io/badge/python-3.8+-yellow)
