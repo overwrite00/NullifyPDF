@@ -1,0 +1,146 @@
+name: Build and Release NullifyPDF (Versioned Assets)
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            artifact_name: NullifyPDF.exe
+            os_suffix: Windows.exe
+          - os: macos-latest
+            artifact_name: NullifyPDF
+            os_suffix: macOS
+          - os: ubuntu-latest
+            artifact_name: NullifyPDF
+            os_suffix: Linux
+
+    steps:
+    - name: Checkout del codice
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Installazione Dipendenze
+      run: |
+        python -m pip install --upgrade pip
+        pip install customtkinter PyMuPDF pillow pyinstaller
+
+    - name: Estrazione Versione
+      id: get_version
+      shell: bash
+      run: |
+        # Estrae v1.x.x dal codice
+        VERSION=$(grep -oP "v[0-9]+\.[0-9]+\.[0-9]+" NullifyPDF.py | head -1)
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        # Versione pulita senza 'v' per i pacchetti Linux
+        VERSION_CLEAN=$(echo $VERSION | sed 's/v//')
+        echo "VERSION_CLEAN=$VERSION_CLEAN" >> $GITHUB_ENV
+
+    - name: Build con PyInstaller
+      run: |
+        # Usiamo il percorso relativo garantito dalla root del progetto
+        # L'icona viene incorporata nell'eseguibile Windows
+        ICON_PATH="images/NullifyPDF_icon.png"
+        if [ "${{ matrix.os }}" == "windows-latest" ]; then
+          pyinstaller --noconsole --onefile --collect-all customtkinter --icon="$ICON_PATH" --name "NullifyPDF" NullifyPDF.py
+        else
+          pyinstaller --noconsole --onefile --collect-all customtkinter --name "NullifyPDF" NullifyPDF.py
+        fi
+      shell: bash
+
+    # --- LOGICA SPECIFICA PER LINUX (.DEB e .RPM) ---
+    - name: Creazione pacchetti .deb e .rpm
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        mkdir -p package/usr/bin
+        mkdir -p package/usr/share/applications
+        mkdir -p package/usr/share/icons/hicolor/256x256/apps
+        mkdir -p package/DEBIAN
+        
+        cp dist/NullifyPDF package/usr/bin/nullify-pdf
+        cp images/NullifyPDF_icon.png package/usr/share/icons/hicolor/256x256/apps/nullify-pdf.png
+        
+        cat <<EOF > package/usr/share/applications/nullify-pdf.desktop
+        [Desktop Entry]
+        Name=NullifyPDF
+        Exec=/usr/bin/nullify-pdf
+        Icon=nullify-pdf
+        Type=Application
+        Categories=Utility;Security;
+        Comment=Irreversible PDF Redaction Tool
+        Terminal=false
+        EOF
+        
+        cat <<EOF > package/DEBIAN/control
+        Package: nullify-pdf
+        Version: ${{ env.VERSION_CLEAN }}
+        Section: utils
+        Priority: optional
+        Architecture: amd64
+        Maintainer: Graziano Mariella
+        Description: Irreversible PDF Anonymization Tool.
+        EOF
+        
+        dpkg-deb --build package NullifyPDF_${{ env.VERSION }}_amd64.deb
+        sudo apt-get update && sudo apt-get install -y alien
+        sudo alien --to-rpm NullifyPDF_${{ env.VERSION }}_amd64.deb
+        
+        mv *.deb *.rpm dist/
+
+    - name: Rinuncia e rinomina Asset binario
+      shell: bash
+      run: |
+        mv dist/${{ matrix.artifact_name }} dist/NullifyPDF_${{ env.VERSION }}_${{ matrix.os_suffix }}
+
+    - name: Upload Artifact temporaneo
+      uses: actions/upload-artifact@v4
+      with:
+        name: builds-${{ matrix.os }}
+        path: dist/
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Download tutti gli Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: release_assets
+        merge-multiple: true
+
+    - name: Estrazione Versione per Tag
+      id: get_version
+      shell: bash
+      run: |
+        VERSION=$(grep -oP "v[0-9]+\.[0-9]+\.[0-9]+" NullifyPDF.py | head -1)
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+    - name: Pubblicazione Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ env.VERSION }}
+        name: Release ${{ env.VERSION }}
+        files: release_assets/*
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
