@@ -54,13 +54,12 @@ jobs:
     - name: Build con PyInstaller
       shell: bash
       run: |
-        ICON_PATH="images/NullifyPDF_icon.png"
         if [ "${{ matrix.os }}" == "windows-latest" ]; then
-          # Su Windows incorporiamo l'icona nell'eseguibile
-          pyinstaller --noconsole --onefile --collect-all customtkinter --icon="$ICON_PATH" --name "NullifyPDF" NullifyPDF.py
+          # Usiamo l'estensione .ico per Windows!
+          pyinstaller --noconsole --onefile --collect-all customtkinter --add-data "images;images" --icon="images/NullifyPDF_icon.ico" --name "NullifyPDF" NullifyPDF.py
         else
-          # macOS e Linux usano il binario standard
-          pyinstaller --noconsole --onefile --collect-all customtkinter --name "NullifyPDF" NullifyPDF.py
+          # Su Linux/macOS continuiamo a usare il .png
+          pyinstaller --noconsole --onefile --collect-all customtkinter --add-data "images:images" --icon="images/NullifyPDF_icon.png" --name "NullifyPDF" NullifyPDF.py
         fi
 
     # --- PACKAGING SPECIFICO PER LINUX ---

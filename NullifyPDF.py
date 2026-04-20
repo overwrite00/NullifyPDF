@@ -57,33 +57,22 @@ class NullifyPDF(ctk.CTk):
         self.build_ui()
 
     def set_window_icon(self):
-        """Genera un .ico on-the-fly per piegare Windows e CustomTkinter al nostro volere."""
-        icon_path_png = resource_path(os.path.join("images", "NullifyPDF_icon.png"))
-
-        if os.path.exists(icon_path_png):
-            try:
-                if sys.platform.startswith("win"):
-                    # Su Windows, Tkinter vuole il file .ico. Lo creiamo noi al volo in locale.
-                    ico_path = os.path.join(
-                        tempfile.gettempdir(), "NullifyPDF_icon.ico"
-                    )
-
-                    # Convertiamo e salviamo
-                    img = Image.open(icon_path_png)
-                    img.save(ico_path, format="ICO", sizes=[(256, 256)])
-
-                    # Applichiamo l'icona nativa di Windows (questo sconfigge il quadratino blu)
+        """Usa i formati nativi: .ico per Windows, .png per Unix."""
+        try:
+            if sys.platform.startswith("win"):
+                # Carica direttamente il file .ico che abbiamo appena generato
+                ico_path = resource_path(os.path.join("images", "NullifyPDF_icon.ico"))
+                if os.path.exists(ico_path):
                     self.after(200, lambda: self.iconbitmap(ico_path))
-                else:
-                    # Su Linux/macOS il .png va benissimo
-                    img = Image.open(icon_path_png)
+            else:
+                # Per Mac/Linux usa il .png
+                png_path = resource_path(os.path.join("images", "NullifyPDF_icon.png"))
+                if os.path.exists(png_path):
+                    img = Image.open(png_path)
                     self.icon_photo = ImageTk.PhotoImage(img)
                     self.after(200, lambda: self.wm_iconphoto(True, self.icon_photo))
-
-            except Exception as e:
-                print(f"Errore durante l'impostazione dell'icona: {e}")
-        else:
-            print(f"ERRORE: Non trovo il file icona in {icon_path_png}")
+        except Exception as e:
+            print(f"Errore icona: {e}")
 
     def build_ui(self):
         """Costruisce l'interfaccia principale."""
