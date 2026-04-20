@@ -1,6 +1,8 @@
 import os
+import sys
 import re
 import datetime
+import tempfile
 import fitz
 import customtkinter as ctk
 from tkinter import filedialog, Canvas
@@ -10,12 +12,23 @@ from PIL import Image, ImageTk
 ctk.set_appearance_mode("dark")
 
 
+def resource_path(relative_path):
+    """Ottiene il percorso assoluto in modo infallibile, sia per script che per .exe"""
+    try:
+        # PyInstaller crea una cartella temporanea in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        # Usa il percorso assoluto di QUESTO file Python
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
+
+
 class NullifyPDF(ctk.CTk):
     def __init__(self):
         super().__init__()
 
         # --- CONFIGURAZIONE FINESTRA PRINCIPALE ---
-        self.title("NullifyPDF - Forensic Edition")
+        self.title("NullifyPDF")
         self.geometry("1200x900")
 
         # Palette Colori
@@ -26,6 +39,9 @@ class NullifyPDF(ctk.CTk):
         self.danger_color = "#e74c3c"
 
         self.configure(fg_color=self.bg_color)
+
+        # Caricamento Icona Finestra (Barra del titolo e Taskbar)
+        self.set_window_icon()
 
         # --- STATO DELL'APPLICAZIONE ---
         self.doc = None
@@ -39,6 +55,35 @@ class NullifyPDF(ctk.CTk):
         self.offset_y = 0
 
         self.build_ui()
+
+    def set_window_icon(self):
+        """Genera un .ico on-the-fly per piegare Windows e CustomTkinter al nostro volere."""
+        icon_path_png = resource_path(os.path.join("images", "NullifyPDF_icon.png"))
+
+        if os.path.exists(icon_path_png):
+            try:
+                if sys.platform.startswith("win"):
+                    # Su Windows, Tkinter vuole il file .ico. Lo creiamo noi al volo in locale.
+                    ico_path = os.path.join(
+                        tempfile.gettempdir(), "NullifyPDF_icon.ico"
+                    )
+
+                    # Convertiamo e salviamo
+                    img = Image.open(icon_path_png)
+                    img.save(ico_path, format="ICO", sizes=[(256, 256)])
+
+                    # Applichiamo l'icona nativa di Windows (questo sconfigge il quadratino blu)
+                    self.after(200, lambda: self.iconbitmap(ico_path))
+                else:
+                    # Su Linux/macOS il .png va benissimo
+                    img = Image.open(icon_path_png)
+                    self.icon_photo = ImageTk.PhotoImage(img)
+                    self.after(200, lambda: self.wm_iconphoto(True, self.icon_photo))
+
+            except Exception as e:
+                print(f"Errore durante l'impostazione dell'icona: {e}")
+        else:
+            print(f"ERRORE: Non trovo il file icona in {icon_path_png}")
 
     def build_ui(self):
         """Costruisce l'interfaccia principale."""
@@ -115,19 +160,33 @@ class NullifyPDF(ctk.CTk):
             command=lambda: self.move_page(-1),
         ).pack(side="right", padx=5)
 
-        # Viewport
+        # Viewport con supporto SCROLLBAR
         view_frame = ctk.CTkFrame(self, fg_color=self.panel_color, corner_radius=8)
         view_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
 
+        # Canvas per il rendering del PDF
         self.canvas = Canvas(
             view_frame, bg="#0d0e1b", highlightthickness=0, cursor="crosshair"
         )
-        self.canvas.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+        self.canvas.pack(side="left", fill="both", expand=True, padx=(5, 0), pady=5)
 
-        self.canvas.bind("<Configure>", self.center_image)
+        # Scrollbar verticale
+        self.v_scroll = ctk.CTkScrollbar(
+            view_frame, orientation="vertical", command=self.canvas.yview
+        )
+        self.v_scroll.pack(side="right", fill="y", padx=(0, 5), pady=5)
+        self.canvas.configure(yscrollcommand=self.v_scroll.set)
+
+        # Bindings
+        self.canvas.bind("<Configure>", lambda e: self.center_image())
         self.canvas.bind("<ButtonPress-1>", self.on_mouse_press)
         self.canvas.bind("<B1-Motion>", self.on_mouse_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_mouse_release)
+
+        # Supporto rotella mouse cross-platform
+        self.canvas.bind_all("<MouseWheel>", self.on_mouse_wheel)  # Windows/macOS
+        self.canvas.bind_all("<Button-4>", self.on_mouse_wheel)  # Linux up
+        self.canvas.bind_all("<Button-5>", self.on_mouse_wheel)  # Linux down
 
         # Footer
         footer = ctk.CTkFrame(self, fg_color=self.panel_color, corner_radius=8)
@@ -148,7 +207,18 @@ class NullifyPDF(ctk.CTk):
         )
         self.log.pack(fill="x", padx=15, pady=(5, 15))
 
-    # --- LOGICA CORE ---
+    # --- GESTIONE EVENTI ---
+
+    def on_mouse_wheel(self, event):
+        """Gestisce lo scrolling con la rotella."""
+        if not self.doc:
+            return
+        if event.num == 4:  # Linux Up
+            self.canvas.yview_scroll(-1, "units")
+        elif event.num == 5:  # Linux Down
+            self.canvas.yview_scroll(1, "units")
+        else:  # Windows/macOS
+            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def write_log(self, msg):
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
@@ -156,7 +226,7 @@ class NullifyPDF(ctk.CTk):
         self.log.see("end")
 
     def show_about(self):
-        """Finestra informativa con posizionamento place simmetrico."""
+        """Finestra informativa."""
         about = ctk.CTkToplevel(self)
         about.title("About")
         w, h = 340, 440
@@ -176,10 +246,7 @@ class NullifyPDF(ctk.CTk):
             about, text="NullifyPDF", font=("Roboto", 26, "bold"), text_color="#ffffff"
         ).place(relx=0.5, y=160, anchor="center")
         ctk.CTkLabel(
-            about,
-            text="v1.2.5",
-            font=("Roboto", 15),
-            text_color=self.accent_color,
+            about, text="v1.2.5", font=("Roboto", 15), text_color=self.accent_color
         ).place(relx=0.5, y=195, anchor="center")
 
         desc = "Universal PDF Anonymization Tool.\nIrreversible redaction & forensic scrubbing."
@@ -190,9 +257,11 @@ class NullifyPDF(ctk.CTk):
             text_color="#a1a1aa",
             justify="center",
         ).place(relx=0.5, y=250, anchor="center")
+
         ctk.CTkFrame(about, height=1, fg_color="#333344", width=240).place(
             relx=0.5, y=310, anchor="center"
         )
+
         ctk.CTkLabel(
             about,
             text="© 2026 Graziano Mariella",
@@ -226,31 +295,35 @@ class NullifyPDF(ctk.CTk):
             Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
         )
         self.canvas.delete("all")
-        self.img_id = self.canvas.create_image(0, 0, anchor="center", image=self.img)
+        # Ancora a Nord-Ovest per permettere lo scroll corretto
+        self.img_id = self.canvas.create_image(0, 0, anchor="nw", image=self.img)
+
+        # Imposta l'area di scorrimento in base alle dimensioni dell'immagine
+        self.canvas.configure(scrollregion=(0, 0, self.img.width(), self.img.height()))
         self.center_image()
         self.p_lab.configure(text=f"Page: {self.page_num + 1} / {len(self.doc)}")
 
-    def center_image(self, event=None):
-        if not self.doc or self.img is None:
+    def center_image(self):
+        """Centra l'immagine orizzontalmente se il canvas è più largo."""
+        if not self.img or not self.img_id:
             return
         self.canvas.update_idletasks()
-        cw, ch = self.canvas.winfo_width(), self.canvas.winfo_height()
-        iw, ih = self.img.width(), self.img.height()
-        x, y = (cw // 2 if cw > iw else iw // 2), (ch // 2 if ch > ih else ih // 2)
-        if self.img_id:
-            self.canvas.coords(self.img_id, x, y)
-        self.offset_x, self.offset_y = x - (iw // 2), y - (ih // 2)
+        cw = self.canvas.winfo_width()
+        iw = self.img.width()
+
+        new_x = max(0, (cw - iw) // 2)
+        self.canvas.coords(self.img_id, new_x, 0)
+        self.offset_x, self.offset_y = new_x, 0
 
     def move_page(self, d):
         if self.doc and 0 <= self.page_num + d < len(self.doc):
             self.page_num += d
             self.render()
+            self.canvas.yview_moveto(0)  # Torna in cima alla pagina nuova
 
     def auto_anon(self):
         if not self.doc:
             return
-
-        # Regex robuste e case-insensitive
         email_pattern = r"[a-zA-Z0-9-_.]+@[a-zA-Z0-9-_.]+\.[a-zA-Z]{2,5}"
         cf_pattern = r"[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]"
 
@@ -259,8 +332,6 @@ class NullifyPDF(ctk.CTk):
 
         for i, page in enumerate(self.doc):
             text = page.get_text()
-
-            # Utilizzo corretto di union() per i set
             found_emails = set(re.findall(email_pattern, text, re.IGNORECASE))
             found_cf = set(re.findall(cf_pattern, text, re.IGNORECASE))
             found = found_emails.union(found_cf)
@@ -271,30 +342,28 @@ class NullifyPDF(ctk.CTk):
 
             for match in found:
                 match_lower = match.lower()
-
-                # 1. DISTRUZIONE LINK IPERTESTUALI (La causa del binario fallito)
                 for link in page.get_links():
                     uri = link.get("uri", "").lower()
-                    # Se il link contiene l'email/parola (es: mailto:graziano...), cancellalo
                     if uri and match_lower in uri:
                         page.delete_link(link)
-
-                # 2. CENSURA VISIVA DEL TESTO
                 for rect in page.search_for(match):
                     page.add_redact_annot(rect, fill=(0, 0, 0))
 
-            # Redazione profonda anche su grafica e immagini
             page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE, graphics=True)
             self.prog.set((i + 1) / len(self.doc))
             self.update_idletasks()
 
         self.render()
-        self.write_log("Auto-redaction applied to visual text and interactive links.")
+        self.write_log("Auto-redaction complete.")
+
+    # --- MANIPOLAZIONE MANUALE (COORDINATE SCROLL-AWARE) ---
 
     def on_mouse_press(self, event):
         if not self.doc or self.img is None:
             return
-        x, y = event.x, event.y
+        # canvasx/y trasformano le coordinate del mouse in coordinate "reali" nel documento scorrevole
+        x = self.canvas.canvasx(event.x)
+        y = self.canvas.canvasy(event.y)
         self.start_xy = (x, y)
         if self.rect_id:
             self.canvas.delete(self.rect_id)
@@ -305,14 +374,18 @@ class NullifyPDF(ctk.CTk):
     def on_mouse_drag(self, event):
         if not self.start_xy:
             return
+        cur_x = self.canvas.canvasx(event.x)
+        cur_y = self.canvas.canvasy(event.y)
         self.canvas.coords(
-            self.rect_id, self.start_xy[0], self.start_xy[1], event.x, event.y
+            self.rect_id, self.start_xy[0], self.start_xy[1], cur_x, cur_y
         )
 
     def on_mouse_release(self, event):
         if not self.doc or not self.start_xy:
             return
-        ex, ey = event.x, event.y
+        ex = self.canvas.canvasx(event.x)
+        ey = self.canvas.canvasy(event.y)
+
         x0, x1 = sorted(
             [
                 max(0, min(self.start_xy[0] - self.offset_x, self.img.width())),
@@ -343,7 +416,6 @@ class NullifyPDF(ctk.CTk):
     def save(self):
         if not self.doc:
             return
-
         suggested = (
             f"{os.path.splitext(os.path.basename(self.doc.name))[0]}_secured.pdf"
         )
@@ -354,40 +426,15 @@ class NullifyPDF(ctk.CTk):
         if fp:
             try:
                 self.write_log("Executing structural deep-clean...")
-
-                # 1. SVUOTAMENTO METADATI STANDARD
                 self.doc.set_metadata({})
-
-                # 2. RIMOZIONE XML METADATA (XMP)
                 if hasattr(self.doc, "del_xml_metadata"):
                     self.doc.del_xml_metadata()
-
-                # 3. INTERVENTO CHIRURGICO SUL CATALOGO (XREF)
-                # Eliminiamo manualmente i puntatori a metadati e dati applicativi
-                try:
-                    catalog_xref = self.doc.pdf_catalog()
-                    # Rimuoviamo il riferimento all'oggetto Metadata
-                    self.doc.xref_set_key(catalog_xref, "Metadata", "null")
-                    # Rimuoviamo PieceInfo (spesso usato da Adobe/MS Word per nascondere tracce)
-                    self.doc.xref_set_key(catalog_xref, "PieceInfo", "null")
-                    # Rimuoviamo Proprietà Custom
-                    self.doc.xref_set_key(catalog_xref, "Properties", "null")
-                except Exception as e:
-                    self.write_log(f"Catalog cleanup notice: {e}")
-
-                # 4. SALVATAGGIO CON RIGENERAZIONE TOTALE
-                # Usiamo 'expand_incremental=False' implicito salvando su nuovo file
-                # garbage=4: è fondamentale, distrugge gli oggetti scollegati al punto 3
-                self.doc.save(
-                    fp,
-                    garbage=4,
-                    deflate=True,
-                    clean=True,
-                    pretty=False,  # Evita di rendere il PDF "leggibile" (rimuove spazi bianchi extra)
-                )
-
+                catalog_xref = self.doc.pdf_catalog()
+                self.doc.xref_set_key(catalog_xref, "Metadata", "null")
+                self.doc.xref_set_key(catalog_xref, "PieceInfo", "null")
+                self.doc.xref_set_key(catalog_xref, "Properties", "null")
+                self.doc.save(fp, garbage=4, deflate=True, clean=True, pretty=False)
                 self.write_log(f"SUCCESS: {os.path.basename(fp)} is now binary-clean.")
-
             except Exception as e:
                 self.write_log(f"Export Error: {str(e)}")
 
