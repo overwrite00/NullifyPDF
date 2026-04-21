@@ -1,5 +1,5 @@
 # --- Python ---
-build_local.py
+*.spec
 __pycache__/
 *.py[cod]
 *$py.class
