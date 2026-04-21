@@ -1,8 +1,8 @@
 # NullifyPDF - AI Forensic Edition
 
-![GitHub Release](https://img.shields.io/github/v/release/TUO_USERNAME/NOME_REPO?style=flat-square&color=1fb2e0)
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/TUO_USERNAME/NOME_REPO/release.yml?style=flat-square&label=build)
-![GitHub License](https://img.shields.io/github/license/TUO_USERNAME/NOME_REPO?style=flat-square&color=blue)
+![GitHub Release](https://img.shields.io/github/v/release/overwrite00/NullifyPDF?style=flat-square&color=1fb2e0)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/overwrite00/NullifyPDF/release.yml?style=flat-square&label=build)
+![GitHub License](https://img.shields.io/github/license/overwrite00/NullifyPDF?style=flat-square&color=blue)
 ![Python Version](https://img.shields.io/badge/python-3.10%2B-blue?style=flat-square&logo=python)
 
 <p align="center">
