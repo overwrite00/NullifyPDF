@@ -65,32 +65,18 @@ jobs:
         env:
           VERSION: ${{ env.VERSION }}
         run: |
-          # Installazione pulita di alien e dipendenze rpm
           sudo apt-get update && sudo apt-get install -y alien rpm devscripts
-          
-          # Fix conflitto build-id
           echo '%_build_id_links none' > ~/.rpmmacros
           
-          # Creazione struttura cartelle
           mkdir -p package/DEBIAN package/usr/bin package/usr/share/applications package/usr/share/pixmaps
           
-          # Verifica e copia eseguibile
-          if [ -f dist/NullifyPDF ]; then
-            cp dist/NullifyPDF package/usr/bin/nullify-pdf
-            chmod +x package/usr/bin/nullify-pdf
-          else
-            echo "ERRORE: Eseguibile non trovato in dist/" && exit 1
-          fi
+          cp dist/NullifyPDF package/usr/bin/nullify-pdf
+          chmod +x package/usr/bin/nullify-pdf
           
-          # Verifica e copia icona (se manca non blocca la build ma avvisa)
           if [ -f images/NullifyPDF_icon.png ]; then
             cp images/NullifyPDF_icon.png package/usr/share/pixmaps/nullify-pdf.png
-          else
-            echo "WARNING: Icona non trovata, uso un placeholder vuoto"
-            touch package/usr/share/pixmaps/nullify-pdf.png
           fi
           
-          # Launcher desktop
           cat <<EOF > package/usr/share/applications/nullify-pdf.desktop
           [Desktop Entry]
           Name=NullifyPDF
@@ -102,7 +88,6 @@ jobs:
           Categories=Utility;Security;
           EOF
           
-          # File control per Debian
           cat <<EOF > package/DEBIAN/control
           Package: nullify-pdf
           Version: ${VERSION}
@@ -116,16 +101,10 @@ jobs:
           # Build DEB
           dpkg-deb --build package nullify-pdf_${VERSION}_amd64.deb
           
-          # Build RPM via Alien (forziamo i permessi)
-          sudo alien --to-rpm --scripts --rpm-set-permissions nullify-pdf_${VERSION}_amd64.deb
+          sudo alien --to-rpm --scripts --fixperms nullify-pdf_${VERSION}_amd64.deb
           
-          # Ridenominazione sicura
           ACTUAL_RPM=$(ls *.rpm | head -n 1)
-          if [ -n "$ACTUAL_RPM" ]; then
-            mv "$ACTUAL_RPM" "nullify-pdf-${VERSION}.x86_64.rpm"
-          else
-            echo "ERRORE: RPM non generato" && exit 1
-          fi
+          mv "$ACTUAL_RPM" "nullify-pdf-${VERSION}.x86_64.rpm"
 
       - name: Rinomina Asset Finali
         shell: bash
