@@ -1,151 +1,112 @@
-name: Build and Release NullifyPDF (Universal Final)
+name: Build and Release NullifyPDF
 
 on:
   push:
     branches:
       - main
-
-permissions:
-  contents: write
+  workflow_dispatch:
 
 jobs:
   build:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false  # Se un OS fallisce, gli altri continuano la build
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
-        include:
-          - os: windows-latest
-            artifact_name: NullifyPDF.exe
-            os_suffix: Windows.exe
-          - os: macos-latest
-            artifact_name: NullifyPDF
-            os_suffix: macOS
-          - os: ubuntu-latest
-            artifact_name: NullifyPDF
-            os_suffix: Linux
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
-    - name: Checkout del codice
-      uses: actions/checkout@v4
+      - name: Checkout del codice
+        uses: actions/checkout@v4
 
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-    - name: Installazione Dipendenze
-      run: |
-        python -m pip install --upgrade pip
-        pip install pyinstaller PyMuPDF customtkinter Pillow presidio-analyzer spacy
-        python -m spacy download en_core_web_md
-        python -m spacy download it_core_news_md
+      - name: Installa dipendenze
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller PyMuPDF customtkinter Pillow presidio-analyzer spacy
+          python -m spacy download en_core_web_md
+          python -m spacy download it_core_news_md
 
-    - name: Estrazione Versione
-      shell: bash
-      run: |
-        # Usiamo l'encoding utf-8 esplicito per non far arrabbiare Windows con le emoji
-        VERSION=$(python -c "import re; print(re.search(r'__version__\s*=\s*[\'\"]([^\'\"]+)[\'\"]', open('NullifyPDF.py', encoding='utf-8').read()).group(1))")
-        echo "Versione trovata: $VERSION"
-        echo "VERSION=$VERSION" >> $GITHUB_ENV
+      - name: Estrazione Versione
+        shell: bash
+        run: |
+          # Estrazione sicura con supporto UTF-8 per le emoji nel codice
+          VERSION=$(python -c "import re; print(re.search(r'__version__\s*=\s*[\'\"]([^\'\"]+)[\'\"]', open('NullifyPDF.py', encoding='utf-8').read()).group(1))")
+          echo "Versione trovata: $VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-    - name: Build con PyInstaller
-      shell: bash
-      run: |
-        if [ "${{ matrix.os }}" == "windows-latest" ]; then
-          # Usiamo l'estensione .ico per Windows e includiamo i modelli AI!
-          pyinstaller --noconsole --onefile --collect-all customtkinter --collect-all presidio_analyzer --collect-all spacy --collect-all en_core_web_md --collect-all it_core_news_md --add-data "images;images" --icon="images/NullifyPDF_icon.ico" --name "NullifyPDF" NullifyPDF.py
-        else
-          # Su Linux/macOS continuiamo a usare il .png e includiamo i modelli AI!
-          pyinstaller --noconsole --onefile --collect-all customtkinter --collect-all presidio_analyzer --collect-all spacy --collect-all en_core_web_md --collect-all it_core_news_md --add-data "images:images" --icon="images/NullifyPDF_icon.png" --name "NullifyPDF" NullifyPDF.py
-        fi
+      - name: Build con PyInstaller
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+            pyinstaller --noconsole --onefile \
+              --collect-all customtkinter \
+              --collect-all presidio_analyzer \
+              --collect-all spacy \
+              --collect-all en_core_web_md \
+              --collect-all it_core_news_md \
+              --add-data "images;images" \
+              --icon="images/NullifyPDF_icon.ico" \
+              --name "NullifyPDF" NullifyPDF.py
+          else
+            pyinstaller --noconsole --onefile \
+              --collect-all customtkinter \
+              --collect-all presidio_analyzer \
+              --collect-all spacy \
+              --collect-all en_core_web_md \
+              --collect-all it_core_news_md \
+              --add-data "images:images" \
+              --icon="images/NullifyPDF_icon.png" \
+              --name "NullifyPDF" NullifyPDF.py
+          fi
 
-    # --- PACKAGING SPECIFICO PER LINUX ---
-    - name: Creazione pacchetti .deb e .rpm
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        mkdir -p package/usr/bin
-        mkdir -p package/usr/share/applications
-        mkdir -p package/usr/share/icons/hicolor/256x256/apps
-        mkdir -p package/DEBIAN
-        
-        # Installazione file nel filesystem virtuale del pacchetto
-        cp dist/NullifyPDF package/usr/bin/nullify-pdf
-        cp images/NullifyPDF_icon.png package/usr/share/icons/hicolor/256x256/apps/nullify-pdf.png
-        
-        # Generazione file Desktop (Menu Applicazioni)
-        cat <<EOF > package/usr/share/applications/nullify-pdf.desktop
-        [Desktop Entry]
-        Name=NullifyPDF
-        Exec=/usr/bin/nullify-pdf
-        Icon=nullify-pdf
-        Type=Application
-        Categories=Utility;Security;
-        Comment=Irreversible PDF Redaction Tool
-        Terminal=false
-        EOF
-        
-        # Configurazione metadati Debian
-        cat <<EOF > package/DEBIAN/control
-        Package: nullify-pdf
-        Version: ${{ env.VERSION_CLEAN }}
-        Section: utils
-        Priority: optional
-        Architecture: amd64
-        Maintainer: Graziano Mariella
-        Description: Irreversible PDF Anonymization Tool.
-        EOF
-        
-        # Compilazione pacchetti
-        dpkg-deb --build package NullifyPDF_${{ env.VERSION }}_amd64.deb
-        sudo apt-get update && sudo apt-get install -y alien
-        sudo alien --to-rpm NullifyPDF_${{ env.VERSION }}_amd64.deb
-        
-        # Sposta i pacchetti nella cartella dist per l'upload finale
-        mv *.deb *.rpm dist/
+      - name: Creazione pacchetti .deb e .rpm
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          VERSION: ${{ env.VERSION }}
+        run: |
+          mkdir -p package/DEBIAN
+          mkdir -p package/usr/bin
+          
+          cat <<EOF > package/DEBIAN/control
+          Package: nullify-pdf
+          Version: ${VERSION}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Graziano Mariella
+          Description: AI-Powered PDF Anonymization Tool
+          EOF
+          
+          cp dist/NullifyPDF package/usr/bin/nullify-pdf
+          chmod +x package/usr/bin/nullify-pdf
+          dpkg-deb --build package nullify-pdf_${VERSION}_amd64.deb
 
-    - name: Rinomina Asset Finale
-      shell: bash
-      run: |
-        # Rinomina il file base includendo versione e OS (es: NullifyPDF_v1.2.0_Windows.exe)
-        mv dist/${{ matrix.artifact_name }} dist/NullifyPDF_${{ env.VERSION }}_${{ matrix.os_suffix }}
+      - name: Rinomina Asset Finale
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+            mv dist/NullifyPDF.exe NullifyPDF_v${{ env.VERSION }}_Windows.exe
+          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+            mv dist/NullifyPDF NullifyPDF_v${{ env.VERSION }}_macOS
+          else
+            mv nullify-pdf_${{ env.VERSION }}_amd64.deb NullifyPDF_v${{ env.VERSION }}_Ubuntu.deb
+          fi
 
-    - name: Upload Artifact temporaneo
-      uses: actions/upload-artifact@v4
-      with:
-        name: builds-${{ matrix.os }}
-        path: dist/
-
-  release:
-    name: Create GitHub Release
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Download Artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: release_assets
-        merge-multiple: true
-
-    - name: Get Version for Tag
-      id: get_version
-      shell: bash
-      run: |
-        VERSION=$(python -c "import re; content = open('NullifyPDF.py').read(); match = re.search(r'v\d+\.\d+\.\d+', content); print(match.group(0)) if match else print('v0.0.1')")
-        echo "VERSION=$VERSION" >> $GITHUB_ENV
-
-    - name: Pubblicazione Release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: ${{ env.VERSION }}
-        name: Release ${{ env.VERSION }}
-        files: release_assets/*
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Creazione Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/heads/main')
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: NullifyPDF v${{ env.VERSION }}
+          draft: false
+          prerelease: false
+          files: |
+            NullifyPDF_v${{ env.VERSION }}_Windows.exe
+            NullifyPDF_v${{ env.VERSION }}_macOS
+            NullifyPDF_v${{ env.VERSION }}_Ubuntu.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
