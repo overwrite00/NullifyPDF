@@ -17,6 +17,7 @@ jobs:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false # <--- EVITA CHE WINDOWS VENGA CANCELLATO SE LINUX FALLISCE
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
@@ -64,16 +65,30 @@ jobs:
         env:
           VERSION: ${{ env.VERSION }}
         run: |
-          sudo apt-get update && sudo apt-get install -y alien rpm
+          # Installazione pulita di alien e dipendenze rpm
+          sudo apt-get update && sudo apt-get install -y alien rpm devscripts
+          
+          # Fix conflitto build-id
           echo '%_build_id_links none' > ~/.rpmmacros
           
-          # Struttura del pacchetto
+          # Creazione struttura cartelle
           mkdir -p package/DEBIAN package/usr/bin package/usr/share/applications package/usr/share/pixmaps
           
-          # Eseguibile e Icona di sistema
-          cp dist/NullifyPDF package/usr/bin/nullify-pdf
-          chmod +x package/usr/bin/nullify-pdf
-          cp images/NullifyPDF_icon.png package/usr/share/pixmaps/nullify-pdf.png
+          # Verifica e copia eseguibile
+          if [ -f dist/NullifyPDF ]; then
+            cp dist/NullifyPDF package/usr/bin/nullify-pdf
+            chmod +x package/usr/bin/nullify-pdf
+          else
+            echo "ERRORE: Eseguibile non trovato in dist/" && exit 1
+          fi
+          
+          # Verifica e copia icona (se manca non blocca la build ma avvisa)
+          if [ -f images/NullifyPDF_icon.png ]; then
+            cp images/NullifyPDF_icon.png package/usr/share/pixmaps/nullify-pdf.png
+          else
+            echo "WARNING: Icona non trovata, uso un placeholder vuoto"
+            touch package/usr/share/pixmaps/nullify-pdf.png
+          fi
           
           # Launcher desktop
           cat <<EOF > package/usr/share/applications/nullify-pdf.desktop
@@ -101,12 +116,16 @@ jobs:
           # Build DEB
           dpkg-deb --build package nullify-pdf_${VERSION}_amd64.deb
           
-          # Build RPM via Alien
+          # Build RPM via Alien (forziamo i permessi)
           sudo alien --to-rpm --scripts --rpm-set-permissions nullify-pdf_${VERSION}_amd64.deb
           
-          # Cattura dinamica del nome RPM (alien può variare il suffisso)
+          # Ridenominazione sicura
           ACTUAL_RPM=$(ls *.rpm | head -n 1)
-          mv "$ACTUAL_RPM" "nullify-pdf-${VERSION}.x86_64.rpm"
+          if [ -n "$ACTUAL_RPM" ]; then
+            mv "$ACTUAL_RPM" "nullify-pdf-${VERSION}.x86_64.rpm"
+          else
+            echo "ERRORE: RPM non generato" && exit 1
+          fi
 
       - name: Rinomina Asset Finali
         shell: bash
