@@ -29,6 +29,12 @@ class NullifyPDF(ctk.CTk):
         self.title("NullifyPDF - AI Forensic Edition")
         self.geometry("1300x900")
 
+        # --- FIX PER LA BARRA DI GNOME / WAYLAND ---
+        try:
+            self.wm_class("NullifyPDF", "NullifyPDF")
+        except Exception:
+            pass
+
         self.bg_color = "#141526"
         self.panel_color = "#1e1f31"
         self.accent_color = "#1fb2e0"
@@ -93,8 +99,8 @@ class NullifyPDF(ctk.CTk):
             print(f"Errore icona figlia: {e}")
 
     def build_ui(self):
-        # Toolbar Principale
-        toolbar = ctk.CTkButton(self, fg_color=self.panel_color, corner_radius=8)
+        # Toolbar Principale - FIX: CTkFrame invece di CTkButton
+        toolbar = ctk.CTkFrame(self, fg_color=self.panel_color, corner_radius=8)
         toolbar.pack(fill="x", padx=15, pady=15)
 
         ctk.CTkButton(
@@ -108,7 +114,8 @@ class NullifyPDF(ctk.CTk):
 
         # Selettore AI
         self.lang_selection = ctk.StringVar(value="EN")
-        lang_frame = ctk.CTkButton(toolbar, fg_color="transparent")
+        # FIX: CTkFrame invece di CTkButton
+        lang_frame = ctk.CTkFrame(toolbar, fg_color="transparent")
         lang_frame.pack(side="left", padx=5)
         ctk.CTkLabel(lang_frame, text="AI Engine:", font=("Roboto", 11, "bold")).pack(
             side="top"
@@ -182,8 +189,8 @@ class NullifyPDF(ctk.CTk):
             command=self.save,
         ).pack(side="left", padx=10)
 
-        # Navigazione
-        nav = ctk.CTkButton(toolbar, fg_color="transparent")
+        # Navigazione - FIX: CTkFrame invece di CTkButton
+        nav = ctk.CTkFrame(toolbar, fg_color="transparent")
         nav.pack(side="right", padx=15)
         ctk.CTkButton(
             nav,
@@ -211,8 +218,8 @@ class NullifyPDF(ctk.CTk):
             command=lambda: self.move_page(-1),
         ).pack(side="right", padx=5)
 
-        # Viewport
-        view_frame = ctk.CTkButton(self, fg_color=self.panel_color, corner_radius=8)
+        # Viewport - FIX: CTkFrame invece di CTkButton
+        view_frame = ctk.CTkFrame(self, fg_color=self.panel_color, corner_radius=8)
         view_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
         self.canvas = Canvas(
             view_frame, bg="#0d0e1b", highlightthickness=0, cursor="crosshair"
@@ -230,8 +237,8 @@ class NullifyPDF(ctk.CTk):
         self.canvas.bind("<ButtonRelease-1>", self.on_mouse_release)
         self.canvas.bind_all("<MouseWheel>", self.on_mouse_wheel)
 
-        # Footer
-        footer = ctk.CTkButton(self, fg_color=self.panel_color, corner_radius=8)
+        # Footer - FIX: CTkFrame invece di CTkButton
+        footer = ctk.CTkFrame(self, fg_color=self.panel_color, corner_radius=8)
         footer.pack(fill="x", padx=15, pady=(0, 15))
         self.prog = ctk.CTkProgressBar(
             footer, fg_color=self.bg_color, progress_color=self.accent_color, height=8
@@ -256,7 +263,6 @@ class NullifyPDF(ctk.CTk):
         dic_win.transient(self)
         dic_win.grab_set()
 
-        # Applica l'icona!
         self.apply_child_icon(dic_win)
 
         ctk.CTkLabel(
@@ -311,7 +317,6 @@ class NullifyPDF(ctk.CTk):
         about.transient(self)
         about.grab_set()
 
-        # Applica l'icona!
         self.apply_child_icon(about)
 
         ctk.CTkLabel(
