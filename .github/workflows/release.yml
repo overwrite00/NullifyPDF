@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+    # --- PROTEZIONE DOCUMENTAZIONE ---
+    paths-ignore:
+      - 'README.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - 'docs/**'
+      - 'CHANGELOG.md'
   workflow_dispatch:
 
 jobs:
