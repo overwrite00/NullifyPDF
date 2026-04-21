@@ -38,9 +38,9 @@ def setup_environment():
     print("[*] Aggiornamento di pip...")
     subprocess.run([venv_python, "-m", "pip", "install", "--upgrade", "pip", "-q"])
 
-    # 5. Installa dipendenze base e AI
+    # 5. Installa dipendenze base, AI e tools di build
     print(
-        "[*] Installazione librerie (customtkinter, PyMuPDF, pillow, presidio-analyzer, spacy)..."
+        "[*] Installazione librerie (customtkinter, PyMuPDF, pillow, presidio-analyzer, spacy, pyinstaller)..."
     )
     subprocess.run(
         [
@@ -53,6 +53,7 @@ def setup_environment():
             "pillow",
             "presidio-analyzer",
             "spacy",
+            "pyinstaller",
         ]
     )
 
