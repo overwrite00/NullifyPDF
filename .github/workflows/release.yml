@@ -6,7 +6,6 @@ on:
       - main
     paths-ignore:
       - '*.md'
-      - '**/*.md'
       - 'LICENSE'
       - '.gitignore'
       - 'docs/**'
@@ -46,40 +45,49 @@ jobs:
       - name: Build con PyInstaller
         shell: bash
         run: |
-          # Utilizzo di shell bash garantisce compatibilità dei path anche su Windows
           if [ "${{ matrix.os }}" == "windows-latest" ]; then
             pyinstaller --noconsole --onefile \
-              --collect-all customtkinter \
-              --collect-all presidio_analyzer \
-              --collect-all spacy \
-              --collect-all en_core_web_md \
-              --collect-all it_core_news_md \
-              --add-data "images;images" \
-              --icon="images/NullifyPDF_icon.ico" \
+              --collect-all customtkinter --collect-all presidio_analyzer --collect-all spacy \
+              --collect-all en_core_web_md --collect-all it_core_news_md \
+              --add-data "images;images" --icon="images/NullifyPDF_icon.ico" \
               --name "NullifyPDF" NullifyPDF.py
           else
             pyinstaller --noconsole --onefile \
-              --collect-all customtkinter \
-              --collect-all presidio_analyzer \
-              --collect-all spacy \
-              --collect-all en_core_web_md \
-              --collect-all it_core_news_md \
-              --add-data "images:images" \
-              --icon="images/NullifyPDF_icon.png" \
+              --collect-all customtkinter --collect-all presidio_analyzer --collect-all spacy \
+              --collect-all en_core_web_md --collect-all it_core_news_md \
+              --add-data "images:images" --icon="images/NullifyPDF_icon.png" \
               --name "NullifyPDF" NullifyPDF.py
           fi
 
-      - name: Creazione pacchetti .deb e .rpm
+      - name: Creazione pacchetti Linux (.deb & .rpm)
         if: matrix.os == 'ubuntu-latest'
         env:
           VERSION: ${{ env.VERSION }}
         run: |
-          # Installazione alien E rpm (necessario per la conversione)
           sudo apt-get update && sudo apt-get install -y alien rpm
+          echo '%_build_id_links none' > ~/.rpmmacros
           
-          mkdir -p package/DEBIAN
-          mkdir -p package/usr/bin
+          # Struttura del pacchetto
+          mkdir -p package/DEBIAN package/usr/bin package/usr/share/applications package/usr/share/pixmaps
           
+          # Eseguibile e Icona di sistema
+          cp dist/NullifyPDF package/usr/bin/nullify-pdf
+          chmod +x package/usr/bin/nullify-pdf
+          cp images/NullifyPDF_icon.png package/usr/share/pixmaps/nullify-pdf.png
+          
+          # Launcher desktop
+          cat <<EOF > package/usr/share/applications/nullify-pdf.desktop
+          [Desktop Entry]
+          Name=NullifyPDF
+          Comment=AI-Powered PDF Anonymization Tool
+          Exec=/usr/bin/nullify-pdf
+          Icon=nullify-pdf
+          Terminal=false
+          Type=Application
+          Categories=Utility;Security;
+          EOF
+          
+          # File control per Debian
           cat <<EOF > package/DEBIAN/control
           Package: nullify-pdf
           Version: ${VERSION}
@@ -90,17 +98,17 @@ jobs:
           Description: AI-Powered PDF Anonymization Tool
           EOF
           
-          cp dist/NullifyPDF package/usr/bin/nullify-pdf
-          chmod +x package/usr/bin/nullify-pdf
-          
+          # Build DEB
           dpkg-deb --build package nullify-pdf_${VERSION}_amd64.deb
           
-          # Generazione RPM e pulizia nome
-          sudo alien --to-rpm --scripts nullify-pdf_${VERSION}_amd64.deb
-          RPM_NAME=$(ls *.rpm)
-          mv "$RPM_NAME" "nullify-pdf-${VERSION}.x86_64.rpm"
+          # Build RPM via Alien
+          sudo alien --to-rpm --scripts --rpm-set-permissions nullify-pdf_${VERSION}_amd64.deb
+          
+          # Cattura dinamica del nome RPM (alien può variare il suffisso)
+          ACTUAL_RPM=$(ls *.rpm | head -n 1)
+          mv "$ACTUAL_RPM" "nullify-pdf-${VERSION}.x86_64.rpm"
 
-      - name: Rinomina Asset Finale
+      - name: Rinomina Asset Finali
         shell: bash
         run: |
           if [ "${{ matrix.os }}" == "windows-latest" ]; then
@@ -112,15 +120,12 @@ jobs:
             mv nullify-pdf-${{ env.VERSION }}.x86_64.rpm NullifyPDF_v${{ env.VERSION }}_Fedora.rpm
           fi
 
-      - name: Creazione Release
+      - name: Creazione Release su GitHub
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/main')
         with:
           tag_name: v${{ env.VERSION }}
           name: NullifyPDF v${{ env.VERSION }}
-          draft: false
-          prerelease: false
-          # IMPORTANTE: fail_on_unmatched_files evita il crash della matrix
           fail_on_unmatched_files: false
           files: |
             NullifyPDF_v${{ env.VERSION }}_*
