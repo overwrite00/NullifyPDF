@@ -5,10 +5,10 @@ on:
     branches:
       - main
     paths-ignore:
+      - '**/*.md'
       - '*.md'
       - 'LICENSE'
       - '.gitignore'
-      - 'docs/**'
       - 'CHANGELOG.md'
   workflow_dispatch:
 
@@ -17,7 +17,7 @@ jobs:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false # <--- EVITA CHE WINDOWS VENGA CANCELLATO SE LINUX FALLISCE
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
@@ -48,12 +48,14 @@ jobs:
         run: |
           if [ "${{ matrix.os }}" == "windows-latest" ]; then
             pyinstaller --noconsole --onefile \
+              --hidden-import PIL._tkinter_finder \
               --collect-all customtkinter --collect-all presidio_analyzer --collect-all spacy \
               --collect-all en_core_web_md --collect-all it_core_news_md \
               --add-data "images;images" --icon="images/NullifyPDF_icon.ico" \
               --name "NullifyPDF" NullifyPDF.py
           else
             pyinstaller --noconsole --onefile \
+              --hidden-import PIL._tkinter_finder \
               --collect-all customtkinter --collect-all presidio_analyzer --collect-all spacy \
               --collect-all en_core_web_md --collect-all it_core_news_md \
               --add-data "images:images" --icon="images/NullifyPDF_icon.png" \
@@ -98,9 +100,9 @@ jobs:
           Description: AI-Powered PDF Anonymization Tool
           EOF
           
-          # Build DEB
           dpkg-deb --build package nullify-pdf_${VERSION}_amd64.deb
           
+          # FIX: Usiamo --fixperms invece di --rpm-set-permissions
           sudo alien --to-rpm --scripts --fixperms nullify-pdf_${VERSION}_amd64.deb
           
           ACTUAL_RPM=$(ls *.rpm | head -n 1)
