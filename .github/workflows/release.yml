@@ -4,11 +4,9 @@ on:
   push:
     branches:
       - main
-    # --- PROTEZIONE DOCUMENTAZIONE ---
     paths-ignore:
       - '*.md'
       - '**/*.md'
-      - 'README.md'
       - 'LICENSE'
       - '.gitignore'
       - 'docs/**'
@@ -42,14 +40,13 @@ jobs:
       - name: Estrazione Versione
         shell: bash
         run: |
-          # Estrazione sicura con supporto UTF-8 per le emoji nel codice
           VERSION=$(python -c "import re; print(re.search(r'__version__\s*=\s*[\'\"]([^\'\"]+)[\'\"]', open('NullifyPDF.py', encoding='utf-8').read()).group(1))")
-          echo "Versione trovata: $VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Build con PyInstaller
         shell: bash
         run: |
+          # Utilizzo di shell bash garantisce compatibilità dei path anche su Windows
           if [ "${{ matrix.os }}" == "windows-latest" ]; then
             pyinstaller --noconsole --onefile \
               --collect-all customtkinter \
@@ -77,6 +74,9 @@ jobs:
         env:
           VERSION: ${{ env.VERSION }}
         run: |
+          # Installazione alien E rpm (necessario per la conversione)
+          sudo apt-get update && sudo apt-get install -y alien rpm
+          
           mkdir -p package/DEBIAN
           mkdir -p package/usr/bin
           
@@ -92,7 +92,13 @@ jobs:
           
           cp dist/NullifyPDF package/usr/bin/nullify-pdf
           chmod +x package/usr/bin/nullify-pdf
+          
           dpkg-deb --build package nullify-pdf_${VERSION}_amd64.deb
+          
+          # Generazione RPM e pulizia nome
+          sudo alien --to-rpm --scripts nullify-pdf_${VERSION}_amd64.deb
+          RPM_NAME=$(ls *.rpm)
+          mv "$RPM_NAME" "nullify-pdf-${VERSION}.x86_64.rpm"
 
       - name: Rinomina Asset Finale
         shell: bash
@@ -103,6 +109,7 @@ jobs:
             mv dist/NullifyPDF NullifyPDF_v${{ env.VERSION }}_macOS
           else
             mv nullify-pdf_${{ env.VERSION }}_amd64.deb NullifyPDF_v${{ env.VERSION }}_Ubuntu.deb
+            mv nullify-pdf-${{ env.VERSION }}.x86_64.rpm NullifyPDF_v${{ env.VERSION }}_Fedora.rpm
           fi
 
       - name: Creazione Release
@@ -113,9 +120,9 @@ jobs:
           name: NullifyPDF v${{ env.VERSION }}
           draft: false
           prerelease: false
+          # IMPORTANTE: fail_on_unmatched_files evita il crash della matrix
+          fail_on_unmatched_files: false
           files: |
-            NullifyPDF_v${{ env.VERSION }}_Windows.exe
-            NullifyPDF_v${{ env.VERSION }}_macOS
-            NullifyPDF_v${{ env.VERSION }}_Ubuntu.deb
+            NullifyPDF_v${{ env.VERSION }}_*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
