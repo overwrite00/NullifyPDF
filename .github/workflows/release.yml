@@ -5,8 +5,8 @@ on:
     branches:
       - main
     paths-ignore:
-      - '**/*.md'
       - '*.md'
+      - '**/*.md'
       - 'LICENSE'
       - '.gitignore'
       - 'CHANGELOG.md'
@@ -74,10 +74,7 @@ jobs:
           
           cp dist/NullifyPDF package/usr/bin/nullify-pdf
           chmod +x package/usr/bin/nullify-pdf
-          
-          if [ -f images/NullifyPDF_icon.png ]; then
-            cp images/NullifyPDF_icon.png package/usr/share/pixmaps/nullify-pdf.png
-          fi
+          cp images/NullifyPDF_icon.png package/usr/share/pixmaps/nullify-pdf.png
           
           cat <<EOF > package/usr/share/applications/nullify-pdf.desktop
           [Desktop Entry]
@@ -101,8 +98,6 @@ jobs:
           EOF
           
           dpkg-deb --build package nullify-pdf_${VERSION}_amd64.deb
-          
-          # FIX: Usiamo --fixperms invece di --rpm-set-permissions
           sudo alien --to-rpm --scripts --fixperms nullify-pdf_${VERSION}_amd64.deb
           
           ACTUAL_RPM=$(ls *.rpm | head -n 1)
