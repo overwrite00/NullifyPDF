@@ -29,7 +29,7 @@
 
 ## 📝 Description
 
-NullifyPDF va oltre la semplice copertura visiva del testo. Utilizza motori di Natural Language Processing (NLP) per comprendere il contesto e individuare entità come nomi, indirizzi, IBAN e numeri di carte di credito. A differenza dei comuni editor PDF, questo tool esegue uno "scrubbing" forense, eliminando metadati, hyperlink e livelli vettoriali nascosti per garantire che la censura sia irreversibile.
+NullifyPDF va oltre la semplice copertura visiva del testo. Utilizza motori di *Natural Language Processing* (**NLP**) per comprendere il contesto e individuare entità come *nomi*, *indirizzi*, *indirizzi email*, *IBAN* e *numeri di carte di credito*. A differenza dei comuni editor PDF, questo tool esegue uno "scrubbing" forense, eliminando metadati, hyperlink e livelli vettoriali nascosti per garantire che la censura sia irreversibile.
 
 #### 🛠️ Technologies
 
@@ -64,8 +64,8 @@ Se sei uno sviluppatore e vuoi eseguire il codice sorgente:
 
 1. 📥 **Clona il repository**:
    ```bash
-   git clone [https://github.com/TUO_USERNAME/NOME_REPO.git](https://github.com/TUO_USERNAME/NOME_REPO.git)
-   cd NOME_REPO
+   git clone [https://github.com/overwrite00/NullifyPDF.git](https://github.com/overwrite00/NullifyPDF.git)
+   cd NullifyPDF
 
 2. 📦 **Installa le dipendenze**:
    ```bash
