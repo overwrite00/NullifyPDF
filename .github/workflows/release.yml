@@ -6,6 +6,8 @@ on:
       - main
     # --- PROTEZIONE DOCUMENTAZIONE ---
     paths-ignore:
+      - '*.md'
+      - '**/*.md'
       - 'README.md'
       - 'LICENSE'
       - '.gitignore'
