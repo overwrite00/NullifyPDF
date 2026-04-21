@@ -13,26 +13,27 @@
 
 ---
 
-### 📍 Table of Contents
+## 📍 Contenuti
+
 - [NullifyPDF - AI Forensic Edition](#nullifypdf---ai-forensic-edition)
-    - [📍 Table of Contents](#-table-of-contents)
-  - [📝 Description](#-description)
-      - [🛠️ Technologies](#️-technologies)
-  - [✨ Key Features](#-key-features)
-  - [🛠️ How To Use](#️-how-to-use)
-      - [⚙️ Installation](#️-installation)
-        - [🐧 Note per lo sviluppo su Linux (Fedora / Ubuntu)](#-note-per-lo-sviluppo-su-linux-fedora--ubuntu)
-      - [💾 **Download release**](#-download-release)
-  - [⚖️ License](#️-license)
-  - [👤 Author info](#-author-info)
+  - [📍 Contenuti](#-contenuti)
+  - [📝 Descrizione del Progetto](#-descrizione-del-progetto)
+    - [🛠️ Tecnologie utilizzate](#️-tecnologie-utilizzate)
+  - [✨ Caratteristiche principali](#-caratteristiche-principali)
+  - [🛠️ Come utilizzarlo](#️-come-utilizzarlo)
+    - [⚙️ Installazione](#️-installazione)
+    - [🤖 Script di automazione (Sviluppo e compilazione in locale)](#-script-di-automazione-sviluppo-e-compilazione-in-locale)
+  - [💾 Download release](#-download-release)
+  - [⚖️ Licenza](#️-licenza)
+  - [👤 Info Autore](#-info-autore)
 
 ---
 
-## 📝 Description
+## 📝 Descrizione del Progetto
 
 NullifyPDF va oltre la semplice copertura visiva del testo. Utilizza motori di *Natural Language Processing* (**NLP**) per comprendere il contesto e individuare entità come *nomi*, *indirizzi*, *indirizzi email*, *IBAN* e *numeri di carte di credito*. A differenza dei comuni editor PDF, questo tool esegue uno "scrubbing" forense, eliminando metadati, hyperlink e livelli vettoriali nascosti per garantire che la censura sia irreversibile.
 
-#### 🛠️ Technologies
+### 🛠️ Tecnologie utilizzate
 
 - **Python 3.10+**
 - **CustomTkinter**: Interfaccia grafica moderna in Dark Mode.
@@ -44,7 +45,7 @@ NullifyPDF va oltre la semplice copertura visiva del testo. Utilizza motori di *
 
 ---
 
-## ✨ Key Features
+## ✨ Caratteristiche principali
 
 - 🧠 **AI-Powered Redaction**: Supporto bilingue (Italiano e Inglese) per il rilevamento automatico di dati sensibili.
 - 🛡️ **Forensic Scrubbing**: Rimozione automatica di metadati, link e oggetti nascosti sotto le aree censurate.
@@ -57,54 +58,81 @@ NullifyPDF va oltre la semplice copertura visiva del testo. Utilizza motori di *
 
 ---
 
-## 🛠️ How To Use
+## 🛠️ Come utilizzarlo
 
-#### ⚙️ Installation
+### ⚙️ Installazione
 
 Se sei uno sviluppatore e vuoi eseguire il codice sorgente:
 
-##### 🐧 Note per lo sviluppo su Linux (Fedora / Ubuntu)
-
-Se intendi clonare la repository per sviluppare o compilare il progetto in locale su Linux, assicurati che la libreria grafica standard di Python (`tkinter`) sia installata a livello di sistema. Senza di essa, PyInstaller genererà un errore fatale durante la compilazione di `customtkinter`.
-
-A seconda della tua distribuzione, apri il terminale ed esegui:
-
-**Su Fedora / RHEL:**
-```bash
-sudo dnf install python3-tkinter
-```
-
-**Su Debian / Ubuntu:**
-```bash
-sudo apt-get install python3-tk
-```
-
 1. 📥 **Clona il repository**:
+
    ```bash
    git clone [https://github.com/overwrite00/NullifyPDF.git](https://github.com/overwrite00/NullifyPDF.git)
    cd NullifyPDF
 
 2. 📦 **Installa le dipendenze**:
+
    ```bash
    pip install pyinstaller PyMuPDF customtkinter Pillow presidio-analyzer spacy
 
 3. 🧠 **Scarica i modelli linguistici AI**:
+
    ```bash
    python -m spacy download en_core_web_md
    python -m spacy download it_core_news_md
 
 4. 🚀 **Avvia l'applicazione**:
+
    ```bash
    python NullifyPDF.py
 
- #### 💾 **Download release**
+### 🐧 Note per lo sviluppo e compilazione in locale su Linux (Fedora / Ubuntu)
+
+Solitamente sui sistemi Windows la libreria grafica standard di Python `tkinter` è già inclusa ma, se intendi clonare la repository per sviluppare o compilare il progetto in locale su Linux, assicurati sia installata a livello di sistema. Senza di essa, PyInstaller genererà un errore fatale durante la compilazione di `customtkinter`.
+
+A seconda della tua distribuzione, apri il terminale ed esegui:
+
+**Su Fedora / RHEL:**
+
+```bash
+sudo dnf install python3-tkinter
+```
+
+**Su Debian / Ubuntu:**
+
+```bash
+sudo apt-get install python3-tk
+```
+
+### 🤖 Script di automazione (Sviluppo e compilazione in locale)
+
+Per facilitare al massimo la vita agli sviluppatori e ai contributor, la repository include due script Python multipiattaforma che automatizzano l'intero ciclo di vita dello sviluppo:
+
+1. **Setup dell'Ambiente (`setup_env.py`)**
+
+   Crea un ambiente virtuale isolato (`.venv`), aggiorna i tool di base, installa tutte le dipendenze (`requirements`) e scarica in automatico i modelli NLP di spaCy (EN/IT).
+
+   ```bash
+   python setup_env.py
+   ```
+
+    *(Ricordati di attivare l'ambiente dopo il setup:* `source .venv/bin/activate` *su Linux/Mac, o* `.\.venv\Scripts\Activate.ps1` *su Windows)*.
+
+2. **Compilazione Automatica (`build_local.py`)**
+  
+    Uno script intelligente che pulisce le directory temporanee, rileva il tuo Sistema Operativo, legge dinamicamente il numero di versione dal codice e compila l'eseguibile standalone tramite PyInstaller rinominandolo in modo standardizzato (es. `NullifyPDF_v1.3.0_Windows.exe`).
+
+    > **💡 Bonus Linux:** Se lanciato su Ubuntu o Fedora, lo script utilizzerà i tool nativi (`dpkg-deb` o `rpmbuild`) per generare automaticamente anche i pacchetti di installazione `.deb` e `.rpm` direttamente nella tua cartella `dist/`
+
+## 💾 Download release
+
   Se vuoi semplicemente usare il programma, scarica l'eseguibile pre-compilato dalla sezione [Release](https://github.com/overwrite00/NullifyPDF/releases)
 
 [Back To The Top](#nullifypdf---ai-forensic-edition)
 
 ---
 
-## ⚖️ License
+## ⚖️ Licenza
 
 MIT License
 
@@ -132,7 +160,7 @@ SOFTWARE.
 
 ---
 
-## 👤 Author info
+## 👤 Info Autore
 
 - 👨‍💻 **Graziano Mariella**
 - 📂 **GitHub:** @overwrite00
