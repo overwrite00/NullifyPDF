@@ -42,7 +42,6 @@ class NullifyPDF(ctk.CTk):
         self.danger_color = "#e74c3c"
         self.configure(fg_color=self.bg_color)
 
-        # Inizializza l'icona della finestra principale
         self.set_window_icon()
 
         # --- STATO DELL'APPLICAZIONE ---
@@ -56,7 +55,6 @@ class NullifyPDF(ctk.CTk):
         self.offset_y = 0
         self.analyzer = None
 
-        # Dizionari utente
         self.blocklist = ""
         self.allowlist = ""
 
@@ -64,12 +62,10 @@ class NullifyPDF(ctk.CTk):
 
     # --- GESTIONE ICONE ---
     def set_window_icon(self):
-        """Imposta l'icona principale e la prepara per le finestre figlie."""
         icon_path_png = resource_path(os.path.join("images", "NullifyPDF_icon.png"))
         if os.path.exists(icon_path_png):
             try:
                 if sys.platform.startswith("win"):
-                    # Crea il file .ico temporaneo una sola volta
                     ico_path = os.path.join(
                         tempfile.gettempdir(), "NullifyPDF_icon.ico"
                     )
@@ -84,7 +80,6 @@ class NullifyPDF(ctk.CTk):
                 print(f"Errore icona principale: {e}")
 
     def apply_child_icon(self, child_window):
-        """Applica magicamente l'icona a qualsiasi finestra secondaria."""
         try:
             if sys.platform.startswith("win"):
                 ico_path = os.path.join(tempfile.gettempdir(), "NullifyPDF_icon.ico")
@@ -99,7 +94,6 @@ class NullifyPDF(ctk.CTk):
             print(f"Errore icona figlia: {e}")
 
     def build_ui(self):
-        # Toolbar Principale - FIX: CTkFrame invece di CTkButton
         toolbar = ctk.CTkFrame(self, fg_color=self.panel_color, corner_radius=8)
         toolbar.pack(fill="x", padx=15, pady=15)
 
@@ -112,9 +106,7 @@ class NullifyPDF(ctk.CTk):
             command=self.load,
         ).pack(side="left", padx=15, pady=15)
 
-        # Selettore AI
         self.lang_selection = ctk.StringVar(value="EN")
-        # FIX: CTkFrame invece di CTkButton
         lang_frame = ctk.CTkFrame(toolbar, fg_color="transparent")
         lang_frame.pack(side="left", padx=5)
         ctk.CTkLabel(lang_frame, text="AI Engine:", font=("Roboto", 11, "bold")).pack(
@@ -146,7 +138,6 @@ class NullifyPDF(ctk.CTk):
             font=("Roboto", 12),
         ).pack(side="left")
 
-        # Bottoni Azione
         ctk.CTkButton(
             toolbar,
             text="Dictionary 📖",
@@ -189,7 +180,6 @@ class NullifyPDF(ctk.CTk):
             command=self.save,
         ).pack(side="left", padx=10)
 
-        # Navigazione - FIX: CTkFrame invece di CTkButton
         nav = ctk.CTkFrame(toolbar, fg_color="transparent")
         nav.pack(side="right", padx=15)
         ctk.CTkButton(
@@ -218,7 +208,6 @@ class NullifyPDF(ctk.CTk):
             command=lambda: self.move_page(-1),
         ).pack(side="right", padx=5)
 
-        # Viewport - FIX: CTkFrame invece di CTkButton
         view_frame = ctk.CTkFrame(self, fg_color=self.panel_color, corner_radius=8)
         view_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
         self.canvas = Canvas(
@@ -235,9 +224,15 @@ class NullifyPDF(ctk.CTk):
         self.canvas.bind("<ButtonPress-1>", self.on_mouse_press)
         self.canvas.bind("<B1-Motion>", self.on_mouse_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_mouse_release)
-        self.canvas.bind_all("<MouseWheel>", self.on_mouse_wheel)
 
-        # Footer - FIX: CTkFrame invece di CTkButton
+        # FIX SCROLL: Bind multipiattaforma + focus
+        self.canvas.bind(
+            "<Enter>", lambda e: self.canvas.focus_set()
+        )  # Necessario su Windows per lo scroll
+        self.canvas.bind("<MouseWheel>", self.on_mouse_wheel)  # Windows/macOS
+        self.canvas.bind("<Button-4>", self.on_mouse_wheel)  # Linux (Scroll Up)
+        self.canvas.bind("<Button-5>", self.on_mouse_wheel)  # Linux (Scroll Down)
+
         footer = ctk.CTkFrame(self, fg_color=self.panel_color, corner_radius=8)
         footer.pack(fill="x", padx=15, pady=(0, 15))
         self.prog = ctk.CTkProgressBar(
@@ -260,11 +255,9 @@ class NullifyPDF(ctk.CTk):
         dic_win.title("Filter Dictionary")
         dic_win.geometry("500x450")
         dic_win.configure(fg_color=self.panel_color)
-        dic_win.transient(self)
-        dic_win.grab_set()
-
         self.apply_child_icon(dic_win)
 
+        # FIX DICTIONARY VUOTO: Disegno i widget PRIMA del grab_set()
         ctk.CTkLabel(
             dic_win, text="🔴 BLOCKLIST (Censura Sempre)", font=("Roboto", 13, "bold")
         ).pack(pady=(15, 0))
@@ -303,6 +296,10 @@ class NullifyPDF(ctk.CTk):
             dic_win, text="Save & Close", fg_color=self.accent_color, command=save_dicts
         ).pack(pady=15)
 
+        # Il blocco della finestra genitore va alla fine
+        dic_win.transient(self)
+        dic_win.grab_set()
+
     def show_about(self):
         about = ctk.CTkToplevel(self)
         about.title("About")
@@ -314,14 +311,22 @@ class NullifyPDF(ctk.CTk):
         about.geometry(f"{w}x{h}+{x}+{y}")
         about.configure(fg_color=self.panel_color)
         about.resizable(False, False)
-        about.transient(self)
-        about.grab_set()
 
         self.apply_child_icon(about)
 
-        ctk.CTkLabel(
-            about, text="🛡️", font=("Segoe UI Emoji", 70), text_color=self.accent_color
-        ).place(relx=0.5, y=80, anchor="center")
+        # FIX ABOUT: Immagine reale invece dell'emoji
+        icon_path = resource_path(os.path.join("images", "NullifyPDF_icon.png"))
+        if os.path.exists(icon_path):
+            try:
+                img_file = Image.open(icon_path)
+                img_res = img_file.resize((100, 100), Image.Resampling.LANCZOS)
+                self.about_logo = ImageTk.PhotoImage(img_res)
+                ctk.CTkLabel(about, image=self.about_logo, text="").place(
+                    relx=0.5, y=80, anchor="center"
+                )
+            except:
+                pass
+
         ctk.CTkLabel(
             about, text="NullifyPDF", font=("Roboto", 26, "bold"), text_color="#ffffff"
         ).place(relx=0.5, y=160, anchor="center")
@@ -331,13 +336,21 @@ class NullifyPDF(ctk.CTk):
             font=("Roboto", 15),
             text_color=self.accent_color,
         ).place(relx=0.5, y=195, anchor="center")
+
+        # FIX ABOUT: Solo Nome sviluppatore e Licenza
+        info_text = (
+            "AI-Powered Forensic Anonymization.\nWith Smart Review System.\n\n"
+            "Developed by: Graziano Mariella\n"
+            "MIT License"
+        )
         ctk.CTkLabel(
             about,
-            text="AI-Powered Forensic Anonymization.\nWith Smart Review System.",
+            text=info_text,
             font=("Roboto", 13),
             text_color="#a1a1aa",
             justify="center",
-        ).place(relx=0.5, y=250, anchor="center")
+        ).place(relx=0.5, y=270, anchor="center")
+
         ctk.CTkButton(
             about,
             text="Close",
@@ -345,6 +358,9 @@ class NullifyPDF(ctk.CTk):
             fg_color=self.bg_color,
             command=about.destroy,
         ).place(relx=0.5, y=395, anchor="center")
+
+        about.transient(self)
+        about.grab_set()
 
     # --- LOGICA CORE AI ---
     def init_ai(self, choice):
@@ -400,7 +416,6 @@ class NullifyPDF(ctk.CTk):
             "CREDIT_CARD",
             "CRYPTO",
         ]
-
         allow_set = {w.strip().lower() for w in self.allowlist.split("\n") if w.strip()}
         block_set = {w.strip() for w in self.blocklist.split("\n") if w.strip()}
 
@@ -471,9 +486,10 @@ class NullifyPDF(ctk.CTk):
     def on_mouse_wheel(self, event):
         if not self.doc:
             return
-        if event.num == 4 or event.delta > 0:
+        # FIX SCROLL: Gestione sicura per X11, Wayland, Windows e Mac
+        if event.num == 4 or getattr(event, "delta", 0) > 0:
             self.canvas.yview_scroll(-1, "units")
-        else:
+        elif event.num == 5 or getattr(event, "delta", 0) < 0:
             self.canvas.yview_scroll(1, "units")
 
     def on_mouse_press(self, event):
