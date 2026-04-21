@@ -120,4 +120,4 @@ SOFTWARE.
 - 👨‍💻 **Graziano Mariella**
 - 📂 **GitHub:** @overwrite00
 - 🌍 **Location**: Italy 🇮🇹
-- <a href="https://linkedin.com/in/TUO_PROFILO" target="blank"><img align="center" src="https://raw.githubusercontent.com/rahuldkjain/github-profile-readme-generator/master/src/images/icons/Social/linked-in-alt.svg" alt="LinkedIn" height="20" width="20" /></a> [Graziano Mariella](https://www.linkedin.com/in/graziano-mariella/)
+- <a href="https://linkedin.com/in/TUO_PROFILO" target="blank"><img align="center" src="https://raw.githubusercontent.com/rahuldkjain/github-profile-readme-generator/master/src/images/icons/Social/linked-in-alt.svg" alt="LinkedIn" height="20" width="20" /></a> **Linkedin:** [Graziano Mariella](https://www.linkedin.com/in/graziano-mariella/)
