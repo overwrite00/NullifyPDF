@@ -67,7 +67,7 @@ Se sei uno sviluppatore e vuoi eseguire il codice sorgente:
 1. 📥 **Clona il repository**:
 
    ```bash
-   git clone [https://github.com/overwrite00/NullifyPDF.git](https://github.com/overwrite00/NullifyPDF.git)
+   git clone https://github.com/overwrite00/NullifyPDF.git
    cd NullifyPDF
 
 2. 📦 **Installa le dipendenze**:
