@@ -21,6 +21,7 @@
   - [✨ Key Features](#-key-features)
   - [🛠️ How To Use](#️-how-to-use)
       - [⚙️ Installation](#️-installation)
+        - [🐧 Note per lo sviluppo su Linux (Fedora / Ubuntu)](#-note-per-lo-sviluppo-su-linux-fedora--ubuntu)
       - [💾 **Download release**](#-download-release)
   - [⚖️ License](#️-license)
   - [👤 Author info](#-author-info)
@@ -61,6 +62,22 @@ NullifyPDF va oltre la semplice copertura visiva del testo. Utilizza motori di *
 #### ⚙️ Installation
 
 Se sei uno sviluppatore e vuoi eseguire il codice sorgente:
+
+##### 🐧 Note per lo sviluppo su Linux (Fedora / Ubuntu)
+
+Se intendi clonare la repository per sviluppare o compilare il progetto in locale su Linux, assicurati che la libreria grafica standard di Python (`tkinter`) sia installata a livello di sistema. Senza di essa, PyInstaller genererà un errore fatale durante la compilazione di `customtkinter`.
+
+A seconda della tua distribuzione, apri il terminale ed esegui:
+
+**Su Fedora / RHEL:**
+```bash
+sudo dnf install python3-tkinter
+```
+
+**Su Debian / Ubuntu:**
+```bash
+sudo apt-get install python3-tk
+```
 
 1. 📥 **Clona il repository**:
    ```bash
