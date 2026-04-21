@@ -46,11 +46,9 @@ jobs:
     - name: Estrazione Versione
       shell: bash
       run: |
-        # Legge il valore di __version__ direttamente dal file Python
-        VERSION=$(python -c "import re; print(re.search(r'__version__\s*=\s*[\'\"]([^\'\"]+)[\'\"]', open('NullifyPDF.py').read()).group(1))")
+        # Usiamo l'encoding utf-8 esplicito per non far arrabbiare Windows con le emoji
+        VERSION=$(python -c "import re; print(re.search(r'__version__\s*=\s*[\'\"]([^\'\"]+)[\'\"]', open('NullifyPDF.py', encoding='utf-8').read()).group(1))")
         echo "Versione trovata: $VERSION"
-        
-        # Lo salva nelle variabili di ambiente di GitHub (assicurati che il nome della variabile corrisponda a quello che usi dopo, di solito è VERSION)
         echo "VERSION=$VERSION" >> $GITHUB_ENV
 
     - name: Build con PyInstaller
