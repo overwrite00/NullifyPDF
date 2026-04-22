@@ -3,6 +3,8 @@ import sys
 import re
 import datetime
 import tempfile
+import pathlib
+import string
 import fitz
 import customtkinter as ctk
 from tkinter import filedialog, Canvas
@@ -10,10 +12,11 @@ from PIL import Image, ImageTk
 
 ctk.set_appearance_mode("dark")
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 
 def resource_path(relative_path):
+    """Gestisce i percorsi delle risorse per PyInstaller"""
     try:
         base_path = sys._MEIPASS
     except Exception:
@@ -28,8 +31,8 @@ class NullifyPDF(ctk.CTk):
         # --- CONFIGURAZIONE FINESTRA ---
         self.title("NullifyPDF - AI Forensic Edition")
         self.geometry("1300x900")
+        self.minsize(900, 600)
 
-        # --- FIX PER LA BARRA DI GNOME / WAYLAND ---
         try:
             self.wm_class("NullifyPDF", "NullifyPDF")
         except Exception:
@@ -44,7 +47,7 @@ class NullifyPDF(ctk.CTk):
 
         self.set_window_icon()
 
-        # --- STATO DELL'APPLICAZIONE ---
+        # --- STATO APPLICAZIONE ---
         self.doc = None
         self.page_num = 0
         self.scale = 1.5
@@ -53,14 +56,48 @@ class NullifyPDF(ctk.CTk):
         self.rect_id = None
         self.offset_x = 0
         self.offset_y = 0
+        self.start_xy = None
         self.analyzer = None
+        self.active_langs = []
 
-        self.blocklist = ""
-        self.allowlist = ""
+        # --- PERSISTENZA DIZIONARI ---
+        self.config_dir = pathlib.Path.home() / ".nullifypdf"
+        try:
+            self.config_dir.mkdir(exist_ok=True)
+        except Exception as e:
+            print(f"Errore creazione cartella config: {e}")
+
+        self.blocklist_file = self.config_dir / "blocklist.txt"
+        self.allowlist_file = self.config_dir / "allowlist.txt"
+        self.blocklist = self.load_list(self.blocklist_file)
+        self.allowlist = self.load_list(self.allowlist_file)
 
         self.build_ui()
 
-    # --- GESTIONE ICONE ---
+        # OS-Level Drag & Drop (Apertura tramite trascinamento sull'eseguibile)
+        self.after(200, self.check_sys_args)
+
+    def check_sys_args(self):
+        """Verifica se l'app è stata aperta trascinando un file sull'eseguibile"""
+        if len(sys.argv) > 1:
+            file_path = sys.argv[1]
+            if os.path.exists(file_path) and file_path.lower().endswith(".pdf"):
+                self.load_path(file_path)
+
+    def load_list(self, filepath):
+        if filepath.exists():
+            with open(filepath, "r", encoding="utf-8") as f:
+                return {line.strip().lower() for line in f if line.strip()}
+        return set()
+
+    def save_list(self, filepath, data_set):
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                for item in sorted(data_set):
+                    f.write(f"{item}\n")
+        except Exception as e:
+            self.write_log(f"Errore salvataggio dizionario: {e}")
+
     def set_window_icon(self):
         icon_path_png = resource_path(os.path.join("images", "NullifyPDF_icon.png"))
         if os.path.exists(icon_path_png):
@@ -77,7 +114,7 @@ class NullifyPDF(ctk.CTk):
                     self.icon_photo = ImageTk.PhotoImage(img)
                     self.after(200, lambda: self.wm_iconphoto(True, self.icon_photo))
             except Exception as e:
-                print(f"Errore icona principale: {e}")
+                pass
 
     def apply_child_icon(self, child_window):
         try:
@@ -90,44 +127,61 @@ class NullifyPDF(ctk.CTk):
                     child_window.after(
                         200, lambda: child_window.wm_iconphoto(False, self.icon_photo)
                     )
-        except Exception as e:
-            print(f"Errore icona figlia: {e}")
+        except Exception:
+            pass
 
     def build_ui(self):
-        toolbar = ctk.CTkFrame(self, fg_color=self.panel_color, corner_radius=8)
-        toolbar.pack(fill="x", padx=15, pady=15)
+        # ==========================================
+        # 1. SIDEBAR (Sinistra)
+        # ==========================================
+        self.sidebar = ctk.CTkFrame(
+            self, width=240, corner_radius=0, fg_color=self.panel_color
+        )
+        self.sidebar.pack(side="left", fill="y")
+        self.sidebar.pack_propagate(False)
 
+        # Logo / Titolo
+        ctk.CTkLabel(
+            self.sidebar,
+            text="NullifyPDF",
+            font=("Roboto", 22, "bold"),
+            text_color=self.accent_color,
+        ).pack(pady=(25, 5))
+        ctk.CTkLabel(
+            self.sidebar,
+            text="AI Forensic Edition",
+            font=("Roboto", 12),
+            text_color="#aaa",
+        ).pack(pady=(0, 25))
+
+        # Core Actions
         ctk.CTkButton(
-            toolbar,
+            self.sidebar,
             text="Open PDF",
             font=("Roboto", 14, "bold"),
+            height=40,
             fg_color=self.accent_color,
             hover_color=self.hover_color,
             command=self.load,
-        ).pack(side="left", padx=15, pady=15)
+        ).pack(fill="x", padx=20, pady=10)
 
-        self.lang_selection = ctk.StringVar(value="EN")
-        lang_frame = ctk.CTkFrame(toolbar, fg_color="transparent")
-        lang_frame.pack(side="left", padx=5)
-        ctk.CTkLabel(lang_frame, text="AI Engine:", font=("Roboto", 11, "bold")).pack(
-            side="top"
+        # Separator
+        ctk.CTkFrame(self.sidebar, height=2, fg_color="#333344").pack(
+            fill="x", padx=20, pady=15
         )
 
+        # AI Engine Settings
+        ctk.CTkLabel(
+            self.sidebar, text="AI Language Model:", font=("Roboto", 12, "bold")
+        ).pack(anchor="w", padx=25)
+        self.lang_selection = ctk.StringVar(value="EN")
+        lang_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        lang_frame.pack(fill="x", padx=20, pady=5)
         ctk.CTkRadioButton(
-            lang_frame,
-            text="EN",
-            variable=self.lang_selection,
-            value="EN",
-            width=50,
-            font=("Roboto", 12),
+            lang_frame, text="EN", variable=self.lang_selection, value="EN", width=50
         ).pack(side="left")
         ctk.CTkRadioButton(
-            lang_frame,
-            text="IT",
-            variable=self.lang_selection,
-            value="IT",
-            width=50,
-            font=("Roboto", 12),
+            lang_frame, text="IT", variable=self.lang_selection, value="IT", width=50
         ).pack(side="left")
         ctk.CTkRadioButton(
             lang_frame,
@@ -135,42 +189,38 @@ class NullifyPDF(ctk.CTk):
             variable=self.lang_selection,
             value="BOTH",
             width=60,
-            font=("Roboto", 12),
         ).pack(side="left")
 
+        # Tool Buttons
         ctk.CTkButton(
-            toolbar,
+            self.sidebar,
             text="Dictionary 📖",
-            font=("Roboto", 12),
-            width=100,
             fg_color="#333344",
             command=self.open_dictionary,
-        ).pack(side="left", padx=10)
-
+        ).pack(fill="x", padx=20, pady=10)
         ctk.CTkButton(
-            toolbar,
+            self.sidebar,
             text="Auto Redact (AI)",
             font=("Roboto", 13, "bold"),
             fg_color=self.danger_color,
             hover_color="#c0392b",
             command=self.auto_anon,
-        ).pack(side="left", padx=5)
-
+        ).pack(fill="x", padx=20, pady=10)
         ctk.CTkButton(
-            toolbar,
-            text="Clear All 🗑️",
-            font=("Roboto", 12, "bold"),
+            self.sidebar,
+            text="Clear Page 🗑️",
             fg_color="transparent",
             border_width=1,
             border_color="#555",
             text_color="#aaa",
             hover_color="#333",
             command=self.clear_all,
-        ).pack(side="left", padx=5)
+        ).pack(fill="x", padx=20, pady=10)
 
+        # Export
         ctk.CTkButton(
-            toolbar,
-            text="Export PDF",
+            self.sidebar,
+            text="Export Secured PDF",
             font=("Roboto", 13, "bold"),
             fg_color="transparent",
             border_width=2,
@@ -178,42 +228,99 @@ class NullifyPDF(ctk.CTk):
             text_color=self.accent_color,
             hover_color=self.bg_color,
             command=self.save,
-        ).pack(side="left", padx=10)
+        ).pack(fill="x", padx=20, pady=(20, 10))
 
-        nav = ctk.CTkFrame(toolbar, fg_color="transparent")
-        nav.pack(side="right", padx=15)
+        # Bottom Area of Sidebar (Nav & Exit)
+        bottom_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        bottom_frame.pack(side="bottom", fill="x", pady=20)
+
+        # Info Button
         ctk.CTkButton(
-            nav,
-            text="ⓘ",
-            width=35,
+            bottom_frame,
+            text="ⓘ About",
             fg_color="transparent",
             text_color=self.accent_color,
-            font=("Roboto", 18),
+            font=("Roboto", 14),
             command=self.show_about,
-        ).pack(side="right", padx=(10, 0))
+        ).pack(pady=10)
+
+        # Exit Button
         ctk.CTkButton(
-            nav,
-            text=">",
-            width=35,
-            fg_color=self.bg_color,
-            command=lambda: self.move_page(1),
-        ).pack(side="right", padx=5)
-        self.p_lab = ctk.CTkLabel(nav, text="Page: 0 / 0", font=("Roboto", 14, "bold"))
-        self.p_lab.pack(side="right", padx=10)
+            bottom_frame,
+            text="Exit Application",
+            fg_color="transparent",
+            text_color="#888",
+            hover_color="#333",
+            command=self.destroy,
+        ).pack()
+
+        # ==========================================
+        # 2. MAIN AREA (Destra)
+        # ==========================================
+        self.main_area = ctk.CTkFrame(self, fg_color="transparent")
+        self.main_area.pack(side="right", fill="both", expand=True, padx=15, pady=15)
+
+        # -- Top Bar Navigation --
+        nav_bar = ctk.CTkFrame(
+            self.main_area, fg_color=self.panel_color, corner_radius=8, height=50
+        )
+        nav_bar.pack(fill="x", pady=(0, 10))
+        nav_bar.pack_propagate(False)
+
+        ctk.CTkLabel(
+            nav_bar,
+            text="Document Viewer",
+            font=("Roboto", 14, "bold"),
+            text_color="#fff",
+        ).pack(side="left", padx=15)
+
+        # Jump to Page Feature
+        nav_ctrls = ctk.CTkFrame(nav_bar, fg_color="transparent")
+        nav_ctrls.pack(side="right", padx=10)
+
         ctk.CTkButton(
-            nav,
+            nav_ctrls,
             text="<",
-            width=35,
+            width=30,
             fg_color=self.bg_color,
             command=lambda: self.move_page(-1),
-        ).pack(side="right", padx=5)
+        ).pack(side="left", padx=5)
 
-        view_frame = ctk.CTkFrame(self, fg_color=self.panel_color, corner_radius=8)
-        view_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+        self.page_entry_var = ctk.StringVar(value="0")
+        self.page_entry = ctk.CTkEntry(
+            nav_ctrls,
+            textvariable=self.page_entry_var,
+            width=40,
+            justify="center",
+            font=("Roboto", 12, "bold"),
+        )
+        self.page_entry.pack(side="left", padx=2)
+        self.page_entry.bind(
+            "<Return>", self.jump_to_page
+        )  # Salto rapido premendo Invio
+
+        self.tot_pages_lab = ctk.CTkLabel(nav_ctrls, text="/ 0", font=("Roboto", 12))
+        self.tot_pages_lab.pack(side="left", padx=(2, 10))
+
+        ctk.CTkButton(
+            nav_ctrls,
+            text=">",
+            width=30,
+            fg_color=self.bg_color,
+            command=lambda: self.move_page(1),
+        ).pack(side="left", padx=5)
+
+        # -- Viewport Canvas --
+        view_frame = ctk.CTkFrame(
+            self.main_area, fg_color=self.panel_color, corner_radius=8
+        )
+        view_frame.pack(fill="both", expand=True, pady=(0, 10))
+
         self.canvas = Canvas(
             view_frame, bg="#0d0e1b", highlightthickness=0, cursor="crosshair"
         )
         self.canvas.pack(side="left", fill="both", expand=True, padx=(5, 0), pady=5)
+
         self.v_scroll = ctk.CTkScrollbar(
             view_frame, orientation="vertical", command=self.canvas.yview
         )
@@ -224,32 +331,49 @@ class NullifyPDF(ctk.CTk):
         self.canvas.bind("<ButtonPress-1>", self.on_mouse_press)
         self.canvas.bind("<B1-Motion>", self.on_mouse_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_mouse_release)
+        self.canvas.bind("<Enter>", lambda e: self.canvas.focus_set())
+        self.canvas.bind("<MouseWheel>", self.on_mouse_wheel)
+        self.canvas.bind("<Button-4>", self.on_mouse_wheel)
+        self.canvas.bind("<Button-5>", self.on_mouse_wheel)
 
-        # FIX SCROLL: Bind multipiattaforma + focus
-        self.canvas.bind(
-            "<Enter>", lambda e: self.canvas.focus_set()
-        )  # Necessario su Windows per lo scroll
-        self.canvas.bind("<MouseWheel>", self.on_mouse_wheel)  # Windows/macOS
-        self.canvas.bind("<Button-4>", self.on_mouse_wheel)  # Linux (Scroll Up)
-        self.canvas.bind("<Button-5>", self.on_mouse_wheel)  # Linux (Scroll Down)
+        # -- Footer (Log e Progresso) --
+        footer = ctk.CTkFrame(
+            self.main_area, fg_color=self.panel_color, corner_radius=8
+        )
+        footer.pack(fill="x")
 
-        footer = ctk.CTkFrame(self, fg_color=self.panel_color, corner_radius=8)
-        footer.pack(fill="x", padx=15, pady=(0, 15))
         self.prog = ctk.CTkProgressBar(
             footer, fg_color=self.bg_color, progress_color=self.accent_color, height=8
         )
         self.prog.pack(fill="x", padx=15, pady=(15, 5))
         self.prog.set(0)
+
         self.log = ctk.CTkTextbox(
             footer,
-            height=90,
+            height=80,
             fg_color=self.bg_color,
             text_color="#a1a1aa",
             font=("Consolas", 12),
         )
         self.log.pack(fill="x", padx=15, pady=(5, 15))
 
-    # --- FINESTRE SECONDARIE ---
+    # --- FUNZIONALITA' COMPONENTI ---
+
+    def jump_to_page(self, event=None):
+        if not self.doc:
+            return
+        try:
+            target = int(self.page_entry_var.get()) - 1
+            if 0 <= target < len(self.doc):
+                self.page_num = target
+                self.render()
+                self.canvas.yview_moveto(0)
+            else:
+                self.page_entry_var.set(str(self.page_num + 1))
+        except ValueError:
+            self.page_entry_var.set(str(self.page_num + 1))
+            self.canvas.focus_set()
+
     def open_dictionary(self):
         dic_win = ctk.CTkToplevel(self)
         dic_win.title("Filter Dictionary")
@@ -257,46 +381,39 @@ class NullifyPDF(ctk.CTk):
         dic_win.configure(fg_color=self.panel_color)
         self.apply_child_icon(dic_win)
 
-        # FIX DICTIONARY VUOTO: Disegno i widget PRIMA del grab_set()
         ctk.CTkLabel(
-            dic_win, text="🔴 BLOCKLIST (Censura Sempre)", font=("Roboto", 13, "bold")
+            dic_win, text="🔴 BLOCKLIST GLOBALE", font=("Roboto", 13, "bold")
         ).pack(pady=(15, 0))
-        ctk.CTkLabel(
-            dic_win,
-            text="Una parola o frase per riga.",
-            font=("Roboto", 11),
-            text_color="#aaa",
-        ).pack()
         block_box = ctk.CTkTextbox(dic_win, height=100, fg_color=self.bg_color)
         block_box.pack(fill="x", padx=20, pady=5)
-        block_box.insert("1.0", self.blocklist)
+        block_box.insert("1.0", "\n".join(sorted(self.blocklist)))
 
         ctk.CTkLabel(
-            dic_win,
-            text="🟢 ALLOWLIST (Non censurare mai)",
-            font=("Roboto", 13, "bold"),
+            dic_win, text="🟢 ALLOWLIST GLOBALE", font=("Roboto", 13, "bold")
         ).pack(pady=(15, 0))
-        ctk.CTkLabel(
-            dic_win,
-            text="Ignora l'AI se trova queste parole. Una per riga.",
-            font=("Roboto", 11),
-            text_color="#aaa",
-        ).pack()
         allow_box = ctk.CTkTextbox(dic_win, height=100, fg_color=self.bg_color)
         allow_box.pack(fill="x", padx=20, pady=5)
-        allow_box.insert("1.0", self.allowlist)
+        allow_box.insert("1.0", "\n".join(sorted(self.allowlist)))
 
         def save_dicts():
-            self.blocklist = block_box.get("1.0", "end").strip()
-            self.allowlist = allow_box.get("1.0", "end").strip()
-            self.write_log("Dizionari filtri aggiornati.")
+            self.blocklist = {
+                w.strip().lower()
+                for w in block_box.get("1.0", "end").split("\n")
+                if len(w.strip()) > 2
+            }
+            self.allowlist = {
+                w.strip().lower()
+                for w in allow_box.get("1.0", "end").split("\n")
+                if len(w.strip()) > 2
+            }
+            self.save_list(self.blocklist_file, self.blocklist)
+            self.save_list(self.allowlist_file, self.allowlist)
+            self.write_log("Dizionari sincronizzati su disco.")
             dic_win.destroy()
 
         ctk.CTkButton(
             dic_win, text="Save & Close", fg_color=self.accent_color, command=save_dicts
         ).pack(pady=15)
-
-        # Il blocco della finestra genitore va alla fine
         dic_win.transient(self)
         dic_win.grab_set()
 
@@ -305,26 +422,24 @@ class NullifyPDF(ctk.CTk):
         about.title("About")
         w, h = 340, 440
         self.update_idletasks()
-        x, y = self.winfo_x() + (self.winfo_width() // 2) - (w // 2), self.winfo_y() + (
-            self.winfo_height() // 2
-        ) - (h // 2)
+        x = self.winfo_x() + (self.winfo_width() // 2) - (w // 2)
+        y = self.winfo_y() + (self.winfo_height() // 2) - (h // 2)
         about.geometry(f"{w}x{h}+{x}+{y}")
         about.configure(fg_color=self.panel_color)
         about.resizable(False, False)
-
         self.apply_child_icon(about)
 
-        # FIX ABOUT: Immagine reale invece dell'emoji
         icon_path = resource_path(os.path.join("images", "NullifyPDF_icon.png"))
         if os.path.exists(icon_path):
             try:
                 img_file = Image.open(icon_path)
-                img_res = img_file.resize((100, 100), Image.Resampling.LANCZOS)
-                self.about_logo = ImageTk.PhotoImage(img_res)
+                self.about_logo = ctk.CTkImage(
+                    light_image=img_file, dark_image=img_file, size=(100, 100)
+                )
                 ctk.CTkLabel(about, image=self.about_logo, text="").place(
                     relx=0.5, y=80, anchor="center"
                 )
-            except:
+            except Exception:
                 pass
 
         ctk.CTkLabel(
@@ -337,12 +452,7 @@ class NullifyPDF(ctk.CTk):
             text_color=self.accent_color,
         ).place(relx=0.5, y=195, anchor="center")
 
-        # FIX ABOUT: Solo Nome sviluppatore e Licenza
-        info_text = (
-            "AI-Powered Forensic Anonymization.\nWith Smart Review System.\n\n"
-            "Developed by: Graziano Mariella\n"
-            "MIT License"
-        )
+        info_text = "AI-Powered Forensic Anonymization.\nWith Smart Review System.\n\nDeveloped by: Graziano Mariella\nMIT License"
         ctk.CTkLabel(
             about,
             text=info_text,
@@ -350,7 +460,6 @@ class NullifyPDF(ctk.CTk):
             text_color="#a1a1aa",
             justify="center",
         ).place(relx=0.5, y=270, anchor="center")
-
         ctk.CTkButton(
             about,
             text="Close",
@@ -358,11 +467,9 @@ class NullifyPDF(ctk.CTk):
             fg_color=self.bg_color,
             command=about.destroy,
         ).place(relx=0.5, y=395, anchor="center")
-
         about.transient(self)
         about.grab_set()
 
-    # --- LOGICA CORE AI ---
     def init_ai(self, choice):
         try:
             from presidio_analyzer import AnalyzerEngine
@@ -376,27 +483,23 @@ class NullifyPDF(ctk.CTk):
                 models.append({"lang_code": "it", "model_name": "it_core_news_md"})
                 langs.append("it")
 
-            self.write_log(f"Caricamento modelli AI ({choice})... attendere.")
+            self.write_log(f"Inizializzazione AI ({choice})...")
             self.update_idletasks()
-
             configuration = {"nlp_engine_name": "spacy", "models": models}
             provider = NlpEngineProvider(nlp_configuration=configuration)
-            nlp_engine = provider.create_engine()
-
             self.analyzer = AnalyzerEngine(
-                nlp_engine=nlp_engine, supported_languages=langs
+                nlp_engine=provider.create_engine(), supported_languages=langs
             )
             self.active_langs = langs
-            self.write_log("Motore AI configurato e pronto.")
+            self.write_log("Motore AI pronto.")
             return True
         except Exception as e:
-            self.write_log(f"Errore caricamento AI: {e}")
+            self.write_log(f"Errore AI: {e}")
             return False
 
     def auto_anon(self):
         if not self.doc:
             return
-
         choice = self.lang_selection.get()
         if not self.analyzer or sorted(self.active_langs) != sorted(
             ["en", "it"] if choice == "BOTH" else [choice.lower()]
@@ -404,9 +507,8 @@ class NullifyPDF(ctk.CTk):
             if not self.init_ai(choice):
                 return
 
-        self.write_log(f"Avvio scansione intelligente ({choice})...")
+        self.write_log("Scansione intelligente in corso...")
         self.prog.set(0)
-
         target_entities = [
             "PERSON",
             "LOCATION",
@@ -416,13 +518,31 @@ class NullifyPDF(ctk.CTk):
             "CREDIT_CARD",
             "CRYPTO",
         ]
-        allow_set = {w.strip().lower() for w in self.allowlist.split("\n") if w.strip()}
-        block_set = {w.strip() for w in self.blocklist.split("\n") if w.strip()}
 
         for i, page in enumerate(self.doc):
             text = page.get_text()
-            found_words = set()
 
+            existing_redacts = [
+                a.rect for a in page.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT
+            ]
+
+            # 1. Blocklist
+            for block_word in self.blocklist:
+                for rect in page.search_for(block_word):
+                    center = fitz.Point(
+                        (rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2
+                    )
+                    if not any(e_r.contains(center) for e_r in existing_redacts):
+                        page.add_redact_annot(rect, fill=(0, 0, 0))
+                        existing_redacts.append(rect)
+
+            # 2. Whitelist geometrica
+            protected_rects = []
+            for allow_word in self.allowlist:
+                protected_rects.extend(page.search_for(allow_word))
+
+            # 3. AI
+            found_ai_words = set()
             for lang in self.active_langs:
                 results = self.analyzer.analyze(
                     text=text, entities=target_entities, language=lang
@@ -430,36 +550,54 @@ class NullifyPDF(ctk.CTk):
                 for res in results:
                     word = text[res.start : res.end].strip()
                     if len(word) > 2:
-                        found_words.add(word)
+                        found_ai_words.add(word)
 
-            final_words = {w for w in found_words if w.lower() not in allow_set}
-            final_words.update(block_set)
+            # 4. Filtro incrociato
+            for match in found_ai_words:
+                clean_match = " ".join(match.strip(string.punctuation).lower().split())
+                is_protected = False
 
-            for match in final_words:
-                for rect in page.search_for(match):
-                    page.add_redact_annot(rect, fill=(0, 0, 0))
+                for allowed in self.allowlist:
+                    if re.search(
+                        r"\b" + re.escape(clean_match) + r"\b", allowed
+                    ) or re.search(r"\b" + re.escape(allowed) + r"\b", clean_match):
+                        is_protected = True
+                        break
+
+                if is_protected:
+                    continue
+
+                for ai_rect in page.search_for(match):
+                    if any(ai_rect.intersects(p_rect) for p_rect in protected_rects):
+                        continue
+
+                    center = fitz.Point(
+                        (ai_rect.x0 + ai_rect.x1) / 2, (ai_rect.y0 + ai_rect.y1) / 2
+                    )
+                    if any(e_r.contains(center) for e_r in existing_redacts):
+                        continue
+
+                    page.add_redact_annot(ai_rect, fill=(0, 0, 0))
+                    existing_redacts.append(ai_rect)
 
             self.prog.set((i + 1) / len(self.doc))
             self.update_idletasks()
 
         self.render()
-        self.write_log(
-            "Scansione completata. Censure evidenziate (clicca per rimuovere)."
-        )
+        self.write_log("Anonimizzazione completata senza sovrapposizioni.")
 
     def clear_all(self):
         if not self.doc:
             return
         count = 0
-        for page in self.doc:
-            for annot in page.annots():
-                if annot.type[0] == fitz.PDF_ANNOT_REDACT:
-                    page.delete_annot(annot)
-                    count += 1
+        page = self.doc[self.page_num]  # Clear current page only come da label UI
+        for annot in page.annots():
+            if annot.type[0] == fitz.PDF_ANNOT_REDACT:
+                page.delete_annot(annot)
+                count += 1
         self.render()
-        self.write_log(f"Cancellate {count} censure pianificate dal documento.")
+        self.write_log(f"Cancellate {count} censure pianificate dalla pagina corrente.")
 
-    # --- FUNZIONI GUI E INTERAZIONE ---
     def render(self):
         if not self.doc:
             return
@@ -472,7 +610,10 @@ class NullifyPDF(ctk.CTk):
         self.img_id = self.canvas.create_image(0, 0, anchor="nw", image=self.img)
         self.canvas.configure(scrollregion=(0, 0, self.img.width(), self.img.height()))
         self.center_image()
-        self.p_lab.configure(text=f"Page: {self.page_num + 1} / {len(self.doc)}")
+
+        # Aggiorna label navigatore
+        self.page_entry_var.set(str(self.page_num + 1))
+        self.tot_pages_lab.configure(text=f"/ {len(self.doc)}")
 
     def center_image(self):
         if not self.img or not self.img_id:
@@ -481,12 +622,11 @@ class NullifyPDF(ctk.CTk):
         cw = self.canvas.winfo_width()
         new_x = max(0, (cw - self.img.width()) // 2)
         self.canvas.coords(self.img_id, new_x, 0)
-        self.offset_x, self.offset_y = new_x, 0
+        self.offset_x = new_x
 
     def on_mouse_wheel(self, event):
         if not self.doc:
             return
-        # FIX SCROLL: Gestione sicura per X11, Wayland, Windows e Mac
         if event.num == 4 or getattr(event, "delta", 0) > 0:
             self.canvas.yview_scroll(-1, "units")
         elif event.num == 5 or getattr(event, "delta", 0) < 0:
@@ -501,13 +641,32 @@ class NullifyPDF(ctk.CTk):
         )
 
         page = self.doc[self.page_num]
-        for annot in page.annots():
-            if annot.type[0] == fitz.PDF_ANNOT_REDACT and annot.rect.contains(pt):
+        annots_to_delete = [
+            annot
+            for annot in page.annots()
+            if annot.type[0] == fitz.PDF_ANNOT_REDACT and annot.rect.contains(pt)
+        ]
+
+        if annots_to_delete:
+            extracted_text = page.get_text("text", clip=annots_to_delete[0].rect)
+            for annot in annots_to_delete:
                 page.delete_annot(annot)
+
+            cleaned = " ".join(extracted_text.split()).lower()
+            if len(cleaned) > 2:
+                self.blocklist.discard(cleaned)
+                self.allowlist.add(cleaned)
+                self.save_list(self.blocklist_file, self.blocklist)
+                self.save_list(self.allowlist_file, self.allowlist)
+                self.write_log(
+                    f"Consentito: '{cleaned}' (Spostato in Allowlist e pulito)"
+                )
+            else:
                 self.write_log("Censura rimossa manualmente.")
-                self.start_xy = None
-                self.render()
-                return
+
+            self.start_xy = None
+            self.render()
+            return
 
         self.start_xy = (cx, cy)
         if self.rect_id:
@@ -548,14 +707,24 @@ class NullifyPDF(ctk.CTk):
             rect = fitz.Rect(
                 x0 / self.scale, y0 / self.scale, x1 / self.scale, y1 / self.scale
             )
+            extracted = self.doc[self.page_num].get_text("text", clip=rect)
             self.doc[self.page_num].add_redact_annot(rect, fill=(0, 0, 0))
+
+            cleaned = " ".join(extracted.split()).lower()
+            if len(cleaned) > 2:
+                self.allowlist.discard(cleaned)
+                self.blocklist.add(cleaned)
+                self.save_list(self.blocklist_file, self.blocklist)
+                self.save_list(self.allowlist_file, self.allowlist)
+                self.write_log(f"Censurato: '{cleaned}' (Spostato in Blocklist)")
+            else:
+                self.write_log("Area oscurata manualmente.")
             self.render()
 
         if self.rect_id:
             self.canvas.delete(self.rect_id)
         self.start_xy = None
 
-    # --- ESPORTAZIONE ---
     def save(self):
         if not self.doc:
             return
@@ -565,48 +734,42 @@ class NullifyPDF(ctk.CTk):
         )
         if fp:
             try:
-                self.write_log("Applicazione distruttiva delle censure in corso...")
-
                 for page in self.doc:
                     redact_rects = [
-                        annot.rect
-                        for annot in page.annots()
-                        if annot.type[0] == fitz.PDF_ANNOT_REDACT
+                        a.rect
+                        for a in page.annots()
+                        if a.type[0] == fitz.PDF_ANNOT_REDACT
                     ]
                     for link in page.get_links():
-                        link_rect = fitz.Rect(link["from"])
-                        for r_rect in redact_rects:
-                            if link_rect.intersects(r_rect):
-                                page.delete_link(link)
-                                break
-
+                        if any(
+                            fitz.Rect(link["from"]).intersects(r) for r in redact_rects
+                        ):
+                            page.delete_link(link)
                     page.apply_redactions(
                         images=fitz.PDF_REDACT_IMAGE_REMOVE, graphics=True
                     )
 
                 self.doc.set_metadata({})
-                catalog_xref = self.doc.pdf_catalog()
-                for key in ["Metadata", "PieceInfo", "Properties"]:
-                    self.doc.xref_set_key(catalog_xref, key, "null")
-
                 self.doc.save(fp, garbage=4, deflate=True, clean=True)
-                self.write_log(
-                    f"Esportazione forense completata: {os.path.basename(fp)}"
-                )
-
+                self.write_log(f"Salvato: {os.path.basename(fp)}")
                 self.doc = fitz.open(fp)
                 self.render()
-
             except Exception as e:
-                self.write_log(f"Errore Esportazione: {e}")
+                self.write_log(f"Errore export: {e}")
 
     def load(self):
         path = filedialog.askopenfilename(filetypes=[("PDF Documents", "*.pdf")])
         if path:
+            self.load_path(path)
+
+    def load_path(self, path):
+        try:
             self.doc = fitz.open(path)
             self.page_num = 0
             self.render()
             self.write_log(f"Documento caricato: {os.path.basename(path)}")
+        except Exception as e:
+            self.write_log(f"Errore caricamento PDF: {e}")
 
     def move_page(self, d):
         if self.doc and 0 <= self.page_num + d < len(self.doc):
