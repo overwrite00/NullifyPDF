@@ -47,12 +47,12 @@ NullifyPDF va oltre la semplice copertura visiva del testo. Utilizza motori di *
 
 ## ✨ Caratteristiche principali
 
-- 🧠 **AI-Powered Redaction**: Supporto bilingue (Italiano e Inglese) per il rilevamento automatico di dati sensibili.
-- 🛡️ **Forensic Scrubbing**: Rimozione automatica di metadati, link e oggetti nascosti sotto le aree censurate.
-- 📖 **Smart Dictionaries**: Gestione di **Blocklist** (termini da censurare sempre) e **Allowlist** (termini da ignorare).
-- 🖱️ **Interactive Review**: Sistema di revisione che permette di annullare le censure con un semplice click prima dell'esportazione.
-- 💻 **Cross-Platform**: Disponibile per Windows (.exe), macOS e Ubuntu (.deb).
-- 🔒 **Privacy First**: Funzionamento 100% offline. Nessun dato lascia mai il tuo computer.
+- 🧠 **AI-Powered Redaction**: Supporto bilingue (IT/EN) per il rilevamento automatico di dati sensibili.
+- 🗄️ **Professional Sidebar UI**: Nuovo layout ottimizzato per monitor widescreen con controlli rapidi sulla sinistra.
+- 📖 **Persistent Smart Dictionaries**: Blocklist e Allowlist globali salvate su disco per un uso coerente su più sessioni.
+- 🔄 **Mutual Exclusivity Logic**: Gestione intelligente dei conflitti tra AI e selezioni manuali.
+- 📍 **Quick Navigation**: Salto rapido alle pagine e anteprima fluida ad alta risoluzione.
+- 🛡️ **Forensic Scrubbing**: Rimozione irreversibile di metadati, link e oggetti nascosti.
 
 [Back To The Top](#nullifypdf---ai-forensic-edition)
 
