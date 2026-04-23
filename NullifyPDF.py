@@ -12,7 +12,7 @@ from PIL import Image, ImageTk
 
 ctk.set_appearance_mode("dark")
 
-__version__ = "1.5.4"
+__version__ = "1.5.5"
 
 
 def resource_path(relative_path):
@@ -59,6 +59,9 @@ class NullifyPDF(ctk.CTk):
         self.start_xy = None
         self.analyzer = None
         self.active_langs = []
+
+        # MUTEX LOCK (Previene accavallamenti e crash silenziosi)
+        self.is_processing = False
 
         # PERSISTENZA DIZIONARI
         self.config_dir = pathlib.Path.home() / ".nullifypdf"
@@ -370,112 +373,157 @@ class NullifyPDF(ctk.CTk):
             fontsize=8,
         )
 
+    def init_ai(self, choice):
+        try:
+            self.write_log(f"Caricamento AI ({choice}) in corso... Attendere prego.")
+            self.update()  # FORZA IL RENDERING DELLA UI PRIMA DEL BLOCCO CPU
+
+            from presidio_analyzer import AnalyzerEngine
+            from presidio_analyzer.nlp_engine import NlpEngineProvider
+
+            models = []
+            if choice in ["EN", "BOTH"]:
+                models.append({"lang_code": "en", "model_name": "en_core_web_md"})
+            if choice in ["IT", "BOTH"]:
+                models.append({"lang_code": "it", "model_name": "it_core_news_md"})
+            configuration = {"nlp_engine_name": "spacy", "models": models}
+            provider = NlpEngineProvider(nlp_configuration=configuration)
+            self.analyzer = AnalyzerEngine(
+                nlp_engine=provider.create_engine(),
+                supported_languages=[m["lang_code"] for m in models],
+            )
+            self.active_langs = [m["lang_code"] for m in models]
+
+            self.write_log("Motore AI inizializzato con successo.")
+            self.update()
+            return True
+        except Exception as e:
+            self.write_log(f"ERRORE Inizializzazione AI: {str(e)}")
+            return False
+
     def auto_anon(self):
         if not self.doc:
             return
-        choice = self.lang_selection.get()
-        if not self.analyzer or sorted(self.active_langs) != sorted(
-            ["en", "it"] if choice == "BOTH" else [choice.lower()]
-        ):
-            if not self.init_ai(choice):
-                return
 
-        self.write_log("Scansione forense intelligente (in corso)...")
-        self.prog.set(0)
-        target_entities = [
-            "PERSON",
-            "LOCATION",
-            "EMAIL_ADDRESS",
-            "PHONE_NUMBER",
-            "IBAN_CODE",
-            "CREDIT_CARD",
-            "CRYPTO",
-        ]
+        # MUTEX LOCK: Previene l'accavallamento dei thread se l'utente clicca più volte
+        if getattr(self, "is_processing", False):
+            return
 
-        # OTTIMIZZAZIONE PRESTAZIONI: Pre-compilazione delle Regex
-        compiled_allowlist = []
-        for allowed in self.allowlist:
-            escaped_allowed = re.escape(allowed)
-            compiled_allowlist.append(
-                (
-                    allowed,
-                    re.compile(r"\b" + escaped_allowed + r"\b"),
-                    re.compile(
-                        r"\b" + r"({clean_match})" + r"\b"
-                    ),  # Template per reverse match
-                )
-            )
+        self.is_processing = True
 
-        for i, page in enumerate(self.doc):
-            text = page.get_text()
-            existing_redacts = [
-                a.rect for a in page.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT
+        try:
+            choice = self.lang_selection.get()
+            if not self.analyzer or sorted(self.active_langs) != sorted(
+                ["en", "it"] if choice == "BOTH" else [choice.lower()]
+            ):
+                if not self.init_ai(choice):
+                    self.is_processing = False
+                    return
+
+            self.write_log("Scansione forense intelligente (in corso)...")
+            self.prog.set(0)
+            self.update()  # AGGIORNA LA UI PER MOSTRARE IL MESSAGGIO
+
+            target_entities = [
+                "PERSON",
+                "LOCATION",
+                "EMAIL_ADDRESS",
+                "PHONE_NUMBER",
+                "IBAN_CODE",
+                "CREDIT_CARD",
+                "CRYPTO",
             ]
 
-            # 1. CENSURA IMMAGINI
-            if self.redact_images_var.get():
-                for img_info in page.get_image_info(hashes=False):
-                    img_rect = fitz.Rect(img_info["bbox"])
-                    self.add_professional_redaction(page, img_rect)
-                    existing_redacts.append(img_rect)
+            compiled_allowlist = []
+            for allowed in self.allowlist:
+                compiled_allowlist.append(
+                    (allowed, re.compile(r"\b" + re.escape(allowed) + r"\b"))
+                )
 
-            # 2. BLOCKLIST
-            for block_word in self.blocklist:
-                for rect in page.search_for(block_word):
-                    center = fitz.Point(
-                        (rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2
+            for i, page in enumerate(self.doc):
+                text = page.get_text()
+                existing_redacts = [
+                    a.rect for a in page.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT
+                ]
+
+                if self.redact_images_var.get():
+                    for img_info in page.get_image_info(hashes=False):
+                        img_rect = fitz.Rect(img_info["bbox"])
+                        self.add_professional_redaction(page, img_rect)
+                        existing_redacts.append(img_rect)
+
+                for block_word in self.blocklist:
+                    for rect in page.search_for(block_word):
+                        center = fitz.Point(
+                            (rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2
+                        )
+                        if not any(e_r.contains(center) for e_r in existing_redacts):
+                            page.add_redact_annot(rect, fill=(0, 0, 0))
+                            existing_redacts.append(rect)
+
+                protected_rects = [
+                    r
+                    for allow_word in self.allowlist
+                    for r in page.search_for(allow_word)
+                ]
+
+                found_ai_words = set()
+                for lang in self.active_langs:
+                    try:
+                        # Scudo di protezione interno contro errori di Parsing di Presidio/Spacy
+                        results = self.analyzer.analyze(
+                            text=text, entities=target_entities, language=lang
+                        )
+                        for res in results:
+                            word = text[res.start : res.end].strip()
+                            if len(word) > 2:
+                                found_ai_words.add(word)
+                    except Exception as ai_err:
+                        self.write_log(f"Avviso AI su Pagina {i+1}: {ai_err}")
+
+                for match in found_ai_words:
+                    clean_match = " ".join(
+                        match.strip(string.punctuation).lower().split()
                     )
-                    if not any(e_r.contains(center) for e_r in existing_redacts):
-                        page.add_redact_annot(rect, fill=(0, 0, 0))
-                        existing_redacts.append(rect)
+                    is_protected = False
 
-            # 3. ALLOWLIST (Estrazione coordinate protette)
-            protected_rects = [
-                r for allow_word in self.allowlist for r in page.search_for(allow_word)
-            ]
+                    # Ottimizzazione Estrema: Niente doppia Regex. Usiamo l'operatore 'in' nativo.
+                    for allowed_str, forward_regex in compiled_allowlist:
+                        if (
+                            forward_regex.search(clean_match)
+                            or clean_match in allowed_str
+                        ):
+                            is_protected = True
+                            break
 
-            # 4. INTELLIGENZA ARTIFICIALE
-            found_ai_words = set()
-            for lang in self.active_langs:
-                results = self.analyzer.analyze(
-                    text=text, entities=target_entities, language=lang
-                )
-                for res in results:
-                    word = text[res.start : res.end].strip()
-                    if len(word) > 2:
-                        found_ai_words.add(word)
-
-            # 5. FILTRAGGIO E APPLICAZIONE
-            for match in found_ai_words:
-                clean_match = " ".join(match.strip(string.punctuation).lower().split())
-                is_protected = False
-
-                for allowed_str, forward_regex, _ in compiled_allowlist:
-                    if forward_regex.search(clean_match) or re.search(
-                        r"\b" + re.escape(clean_match) + r"\b", allowed_str
-                    ):
-                        is_protected = True
-                        break
-
-                if is_protected:
-                    continue
-
-                for ai_rect in page.search_for(match):
-                    if any(ai_rect.intersects(p_rect) for p_rect in protected_rects):
+                    if is_protected:
                         continue
 
-                    center = fitz.Point(
-                        (ai_rect.x0 + ai_rect.x1) / 2, (ai_rect.y0 + ai_rect.y1) / 2
-                    )
-                    if not any(e_r.contains(center) for e_r in existing_redacts):
-                        page.add_redact_annot(ai_rect, fill=(0, 0, 0))
-                        existing_redacts.append(ai_rect)
+                    for ai_rect in page.search_for(match):
+                        if any(
+                            ai_rect.intersects(p_rect) for p_rect in protected_rects
+                        ):
+                            continue
 
-            self.prog.set((i + 1) / len(self.doc))
-            self.update_idletasks()
+                        center = fitz.Point(
+                            (ai_rect.x0 + ai_rect.x1) / 2, (ai_rect.y0 + ai_rect.y1) / 2
+                        )
+                        if not any(e_r.contains(center) for e_r in existing_redacts):
+                            page.add_redact_annot(ai_rect, fill=(0, 0, 0))
+                            existing_redacts.append(ai_rect)
 
-        self.render()
-        self.write_log("Anonimizzazione completata in tempo record.")
+                self.prog.set((i + 1) / len(self.doc))
+                self.update()  # Mantiene la GUI fluida e responsiva pagina per pagina
+
+            self.render()
+            self.write_log("Anonimizzazione completata in tempo record.")
+
+        except Exception as e:
+            # INTERCETTAZIONE CRITICA: Niente più crash silenziosi
+            self.write_log(f"ERRORE CRITICO DURANTE LA SCANSIONE: {str(e)}")
+        finally:
+            # SBLOCCO DEL MUTEX
+            self.is_processing = False
 
     def save(self):
         if not self.doc:
@@ -487,6 +535,8 @@ class NullifyPDF(ctk.CTk):
         if fp:
             try:
                 self.write_log("Sanificazione forense (Scrubbing) in corso...")
+                self.update()
+
                 pdf_bytes = self.doc.write()
                 export_doc = fitz.open("pdf", pdf_bytes)
 
@@ -526,31 +576,9 @@ class NullifyPDF(ctk.CTk):
                 export_doc.close()
                 self.write_log(f"ESPORTAZIONE COMPLETATA: {os.path.basename(fp)}")
             except Exception as e:
-                self.write_log(f"Errore: {e}")
+                self.write_log(f"Errore Esportazione: {e}")
 
     # --- METODI GUI E UTILITY ---
-
-    def init_ai(self, choice):
-        try:
-            from presidio_analyzer import AnalyzerEngine
-            from presidio_analyzer.nlp_engine import NlpEngineProvider
-
-            models = []
-            if choice in ["EN", "BOTH"]:
-                models.append({"lang_code": "en", "model_name": "en_core_web_md"})
-            if choice in ["IT", "BOTH"]:
-                models.append({"lang_code": "it", "model_name": "it_core_news_md"})
-            configuration = {"nlp_engine_name": "spacy", "models": models}
-            provider = NlpEngineProvider(nlp_configuration=configuration)
-            self.analyzer = AnalyzerEngine(
-                nlp_engine=provider.create_engine(),
-                supported_languages=[m["lang_code"] for m in models],
-            )
-            self.active_langs = [m["lang_code"] for m in models]
-            self.write_log("AI Caricata.")
-            return True
-        except:
-            return False
 
     def load_path(self, path):
         try:
