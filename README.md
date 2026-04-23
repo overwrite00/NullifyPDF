@@ -11,16 +11,22 @@
 
 > **NullifyPDF** è uno strumento professionale per l'anonimizzazione forense dei PDF. Progettato per la privacy assoluta, opera interamente in locale utilizzando l'intelligenza artificiale per identificare e distruggere permanentemente dati sensibili senza mai caricare file nel cloud.
 
+## 📖 Documentazione Rapida
+
+Se è la prima volta che usi NullifyPDF, consulta la nostra [**Guida Utente Passo dopo Passo**](./GUIDA_UTENTE.md)
+
 ---
 
 ## 📍 Contenuti
 
 - [NullifyPDF - AI Forensic Edition](#nullifypdf---ai-forensic-edition)
+  - [📖 Documentazione Rapida](#-documentazione-rapida)
   - [📍 Contenuti](#-contenuti)
   - [📝 Descrizione del Progetto](#-descrizione-del-progetto)
     - [🛠️ Tecnologie utilizzate](#️-tecnologie-utilizzate)
   - [✨ Caratteristiche principali](#-caratteristiche-principali)
   - [⚠️ Limiti dello Strumento (Cosa NON fa)](#️-limiti-dello-strumento-cosa-non-fa)
+  - [🚀 Guida all'uso](#-guida-alluso)
   - [🛠️ Come utilizzarlo](#️-come-utilizzarlo)
     - [⚙️ Installazione](#️-installazione)
     - [🤖 Script di automazione (Sviluppo e compilazione in locale)](#-script-di-automazione-sviluppo-e-compilazione-in-locale)
@@ -72,6 +78,14 @@ Per garantire che NullifyPDF rimanga un software leggero, 100% offline e sicuro,
     NullifyPDF non è uno strumento di cracking. Se un documento richiede una password per l'apertura o ha restrizioni di estrazione DRM, il file verrà bloccato in fase di caricamento. È necessario decriptare il file prima di importarlo.
 4. **Invalidazione delle Firme Digitali:**
     Poiché il processo di "Forensic Scrubbing" distrugge fisicamente oggetti nel codice binario del PDF per garantire la privacy, qualsiasi firma crittografica digitale (es. PAdES, firme notarili) presente sul documento originale risulterà logicamente e matematicamente invalidata nel file esportato.
+
+[Back To The Top](#nullifypdf---ai-forensic-edition)
+
+---
+
+## 🚀 Guida all'uso
+
+L'utilizzo è estremamente intuitivo. Per una spiegazione dettagliata di tutte le funzioni (Zoom, AI, Dizionari), leggi la nostra **[Guida Utente](./GUIDA_UTENTE.md)** oppure puoi scaricare la versione in PDF [Guida Utente NullifyPDF - Passo dopo Passo](Guida%20Utente%20NullifyPDF%20-%20Passo%20dopo%20Passo.pdf)
 
 [Back To The Top](#nullifypdf---ai-forensic-edition)
 
@@ -142,6 +156,10 @@ Per facilitare al massimo la vita agli sviluppatori e ai contributor, la reposit
     Uno script intelligente che pulisce le directory temporanee, rileva il tuo Sistema Operativo, legge dinamicamente il numero di versione dal codice e compila l'eseguibile standalone tramite PyInstaller rinominandolo in modo standardizzato (es. `NullifyPDF_v1.3.0_Windows.exe`).
 
     > **💡 Bonus Linux:** Se lanciato su Ubuntu o Fedora, lo script utilizzerà i tool nativi (`dpkg-deb` o `rpmbuild`) per generare automaticamente anche i pacchetti di installazione `.deb` e `.rpm` direttamente nella tua cartella `dist/`
+
+[Back To The Top](#nullifypdf---ai-forensic-edition)
+
+---
 
 ## 💾 Download release
 
