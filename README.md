@@ -20,7 +20,7 @@ Se è la prima volta che usi NullifyPDF, consulta la nostra [**Guida Utente Pass
 ## 📍 Contenuti
 
 - [NullifyPDF - AI Forensic Edition](#nullifypdf---ai-forensic-edition)
-  - [� Documentazione Rapida](#-documentazione-rapida)
+  - [📖 Documentazione Rapida](#-documentazione-rapida)
   - [📍 Contenuti](#-contenuti)
   - [📝 Descrizione del Progetto](#-descrizione-del-progetto)
     - [🛠️ Tecnologie utilizzate](#️-tecnologie-utilizzate)
