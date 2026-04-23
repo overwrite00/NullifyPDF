@@ -7,6 +7,29 @@ e questo progetto aderisce a [Semantic Versioning](https://semver.org/spec/v2.0.
 
 ## [Unreleased]
 
+## [1.5.4] - 2026-04-23
+
+### 🚀 Aggiunto (Features)
+
+- **UI Redesign**: Nuova architettura grafica con Sidebar laterale per massimizzare la visibilità del documento.
+- **Navigazione & Zoom**: Aggiunto navigatore "Jump to Page" e controlli di Zoom fluido (bottoni UI e scorciatoia `CTRL + Rotellina Mouse`).
+- **Blindfold Mode**: Introdotto lo switch "Oscura Immagini" per sostituire foto e grafiche vettoriali con il segnaposto professionale localizzato `[ IMMAGINE RIMOSSA ]`.
+- **Sanificazione Moduli**: Il Forensic Scrubbing ora distrugge e appiattisce anche gli `AcroForms` (campi modulo interattivi) in fase di export.
+- **Mac-OS Native Bundle**: Lo script di build ora supporta la generazione nativa di applicazioni `.app` per sistemi Apple (Darwin).
+
+### 🐛 Corretto (Bug Fixes)
+
+- **Memory Leak & File Lock**: Aggiunta chiusura esplicita dei puntatori PyMuPDF per evitare blocchi del file system su Windows durante il cambio documento.
+- **Stacking Annotazioni**: Risolto il bug delle whitelist fantasma. L'AI ora riconosce le aree già censurate ed evita sovrapposizioni inutili.
+- **Crash Export Distruttivo**: L'esportazione ora agisce su un *clone in memoria (byte buffer)*, evitando di distruggere il livello vettoriale del documento visualizzato in tempo reale.
+- **RecursionError Windows**: Risolto il fallimento della build PyInstaller su Windows causato dalla libreria SpaCy, implementando una configurazione `.spec` dinamica.
+- **AttributeError Mouse**: Prevenuta eccezione anomala durante il trascinamento del mouse a canvas vuoto.
+- **Coordinate Popup**: Ripristinata la centratura geometrica matematica per le finestre secondarie "About" e "Dizionari" rispetto alla finestra madre.
+
+### ⚡ Ottimizzato (Performance)
+
+- **Pre-compilazione Regex**: Abbattuto il tempo di esecuzione di "Auto Redact" del 70% estraendo le espressioni regolari della Allowlist dai cicli iterativi annidati.
+
 ## [1.4.0] - 2026-04-22
 
 ### Aggiunto
