@@ -20,6 +20,7 @@
   - [📝 Descrizione del Progetto](#-descrizione-del-progetto)
     - [🛠️ Tecnologie utilizzate](#️-tecnologie-utilizzate)
   - [✨ Caratteristiche principali](#-caratteristiche-principali)
+  - [⚠️ Limiti dello Strumento (Cosa NON fa)](#️-limiti-dello-strumento-cosa-non-fa)
   - [🛠️ Come utilizzarlo](#️-come-utilizzarlo)
     - [⚙️ Installazione](#️-installazione)
     - [🤖 Script di automazione (Sviluppo e compilazione in locale)](#-script-di-automazione-sviluppo-e-compilazione-in-locale)
@@ -47,12 +48,30 @@ NullifyPDF va oltre la semplice copertura visiva del testo. Utilizza motori di *
 
 ## ✨ Caratteristiche principali
 
-- 🧠 **AI-Powered Redaction**: Supporto bilingue (IT/EN) per il rilevamento automatico di dati sensibili.
-- 🗄️ **Professional Sidebar UI**: Nuovo layout ottimizzato per monitor widescreen con controlli rapidi sulla sinistra.
-- 📖 **Persistent Smart Dictionaries**: Blocklist e Allowlist globali salvate su disco per un uso coerente su più sessioni.
-- 🔄 **Mutual Exclusivity Logic**: Gestione intelligente dei conflitti tra AI e selezioni manuali.
-- 📍 **Quick Navigation**: Salto rapido alle pagine e anteprima fluida ad alta risoluzione.
-- 🛡️ **Forensic Scrubbing**: Rimozione irreversibile di metadati, link e oggetti nascosti.
+- 🧠 **AI-Powered Redaction:** Riconoscimento automatico bilingue (IT/EN) di PII (Nomi, Luoghi, Email, Telefoni, IBAN, Carte di Credito, Crypto).
+- 🗄️ **Interfaccia Widescreen:** GUI moderna in CustomTkinter con Sidebar laterale, controlli di Zoom fluido e navigatore di pagine a salto diretto.
+- 📖 **Dizionari Intelligenti Persistenti:** Blocklist e Allowlist globali sincronizzate su disco (`~/.nullifypdf`) con logica di mutua esclusività e sistema anti-stacking delle censure.
+- 🛡️ **Forensic Scrubbing:** Non si limita a "colorare di nero". In fase di export, distrugge fisicamente i metadati, rimuove i link nascosti e appiattisce i moduli interattivi (AcroForms).
+- 🖼️ **Blindfold Mode (Sostituzione Immagini):** Interruttore dedicato per censurare automaticamente tutte le immagini, loghi o QR code, sostituendoli con un segnaposto professionale `[ IMMAGINE RIMOSSA ]`.
+- 📦 **Cross-Platform nativo:** Script di build integrati per generare `.exe` (Windows), `.app` bundle (macOS), e pacchetti `.deb`/`.rpm` (Linux).
+
+[Back To The Top](#nullifypdf---ai-forensic-edition)
+
+---
+
+## ⚠️ Limiti dello Strumento (Cosa NON fa)
+
+Per garantire che NullifyPDF rimanga un software leggero, 100% offline e sicuro, sono presenti alcuni limiti tecnici di cui l'utente deve essere consapevole:
+
+1. **Nessun OCR (Optical Character Recognition) Integrato:**
+    L'intelligenza artificiale analizza solo il *testo vettoriale/digitale*. Se carichi un PDF che è una scansione o una fotografia (es. la foto di una patente), l'AI non "leggerà" il testo al suo interno.
+    - *Soluzione integrata:* Utilizzare la funzione **"Oscura Immagini"** per rimuovere preventivamente l'intero blocco fotografico.
+2. **Testo Scritto a Mano:**
+    I modelli NLP non sono in grado di analizzare la grafia umana non digitalizzata.
+3. **PDF Protetti da Password / Criptati:**
+    NullifyPDF non è uno strumento di cracking. Se un documento richiede una password per l'apertura o ha restrizioni di estrazione DRM, il file verrà bloccato in fase di caricamento. È necessario decriptare il file prima di importarlo.
+4. **Invalidazione delle Firme Digitali:**
+    Poiché il processo di "Forensic Scrubbing" distrugge fisicamente oggetti nel codice binario del PDF per garantire la privacy, qualsiasi firma crittografica digitale (es. PAdES, firme notarili) presente sul documento originale risulterà logicamente e matematicamente invalidata nel file esportato.
 
 [Back To The Top](#nullifypdf---ai-forensic-edition)
 
