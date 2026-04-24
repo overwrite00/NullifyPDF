@@ -175,13 +175,25 @@ def build_app():
     icon_path = ensure_icon(sys_os)
     icon_str = f"'{icon_path}'" if icon_path else "None"
 
-    bundle_code = (
-        f"app = BUNDLE(exe, name='NullifyPDF.app', icon={icon_str}, bundle_identifier='com.nullifypdf.forensic')"
-        if sys_os == "Darwin"
-        else ""
-    )
+    # Generazione dinamica del file .spec per supportare il nuovo standard macOS ONEDIR
+    if sys_os == "Darwin":
+        spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_all
+datas = [('images', 'images')] if __import__('os').path.exists('images') else []
+binaries = []
+hiddenimports = ['spacy', 'presidio_analyzer']
+for pkg in ['presidio_analyzer', 'spacy', 'en_core_web_md', 'it_core_news_md']:
+    t = collect_all(pkg)
+    datas += t[0]; binaries += t[1]; hiddenimports += t[2]
 
-    spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
+a = Analysis(['NullifyPDF.py'], datas=datas, hiddenimports=hiddenimports)
+pyz = PYZ(a.pure)
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='NullifyPDF', debug=False, console=False, icon={icon_str})
+coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=True, upx_exclude=[], name='NullifyPDF')
+app = BUNDLE(coll, name='NullifyPDF.app', icon={icon_str}, bundle_identifier='com.nullifypdf.forensic')
+"""
+    else:
+        spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 datas = [('images', 'images')] if __import__('os').path.exists('images') else []
 binaries = []
@@ -193,8 +205,8 @@ for pkg in ['presidio_analyzer', 'spacy', 'en_core_web_md', 'it_core_news_md']:
 a = Analysis(['NullifyPDF.py'], datas=datas, hiddenimports=hiddenimports)
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, a.binaries, a.datas, name='NullifyPDF', debug=False, console=False, icon={icon_str})
-{bundle_code}
 """
+
     with open("NullifyPDF.spec", "w", encoding="utf-8") as f:
         f.write(spec_content)
 
@@ -208,15 +220,16 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, name='NullifyPDF', debug=False, c
             print(f"[✓] Compilazione completata: dist/{final_name}")
         elif sys_os == "Darwin":
             print("[*] Compressione App Bundle per macOS in formato ZIP...")
-            final_zip = f"dist/NullifyPDF_v{version}_macOS.zip"
+            # FIX PATHING ZIP: Il nome file non deve contenere 'dist/' se cwd='dist'
+            zip_filename = f"NullifyPDF_v{version}_macOS.zip"
             subprocess.run(
-                ["zip", "-r", "-y", final_zip, "NullifyPDF.app"],
+                ["zip", "-r", "-y", zip_filename, "NullifyPDF.app"],
                 cwd="dist",
                 check=True,
                 stdout=subprocess.DEVNULL,
             )
             shutil.rmtree("dist/NullifyPDF.app")
-            print(f"[✓] Compilazione completata: {final_zip}")
+            print(f"[✓] Compilazione completata: dist/{zip_filename}")
         else:  # Linux
             os.rename("dist/NullifyPDF", f"dist/{final_name}")
             print(f"[✓] Eseguibile portatile pronto: dist/{final_name}")
@@ -225,8 +238,8 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, name='NullifyPDF', debug=False, c
             if shutil.which("dpkg-deb"):
                 build_deb(version, final_name)
 
-    except subprocess.CalledProcessError:
-        print("\n[-] ERRORE CRITICO: Compilazione fallita.")
+    except subprocess.CalledProcessError as e:
+        print(f"\n[-] ERRORE CRITICO: Compilazione fallita.")
         sys.exit(1)
 
 
