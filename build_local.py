@@ -47,23 +47,23 @@ def ensure_icon(sys_os):
             except:
                 return None
         return icns_path.replace("\\", "/") if os.path.exists(icns_path) else None
-    else:
-        return png_path.replace("\\", "/") if os.path.exists(png_path) else None
+
+    return png_path.replace("\\", "/") if os.path.exists(png_path) else None
 
 
 def build_app():
-    print("--- Avvio Compilazione Sicura di NullifyPDF (PySide6) ---")
+    print("--- Avvio Compilazione NullifyPDF (PySide6) ---")
     version = get_version()
     sys_os = platform.system()
 
-    for item in ["build", "dist", "NullifyPDF.spec", "deb_build_tmp", "rpm_build_tmp"]:
+    for item in ["build", "dist", "NullifyPDF.spec"]:
         if os.path.exists(item):
             shutil.rmtree(item) if os.path.isdir(item) else os.remove(item)
 
     os_name, ext = (
         ("Windows", ".exe")
         if sys_os == "Windows"
-        else ("macOS", ".app") if sys_os == "Darwin" else ("Linux_Portable", "")
+        else ("macOS", ".app") if sys_os == "Darwin" else ("Linux", "")
     )
     final_name = f"NullifyPDF_v{version}_{os_name}{ext}"
     icon_path = ensure_icon(sys_os)
@@ -103,6 +103,8 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name='NullifyPDF', debug=Fals
         subprocess.run(
             [sys.executable, "-m", "PyInstaller", "NullifyPDF.spec"], check=True
         )
+
+        # Rinominazione sicura basata sull'output di PyInstaller
         original_path = os.path.join(
             "dist",
             (
@@ -112,17 +114,16 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name='NullifyPDF', debug=Fals
             ),
         )
         final_path = os.path.join("dist", final_name)
+
         if os.path.exists(original_path):
-            if os.path.exists(final_path):
-                (
-                    shutil.rmtree(final_path)
-                    if os.path.isdir(final_path)
-                    else os.remove(final_path)
-                )
             os.rename(original_path, final_path)
-            print(f"[✓] App compilata e rinominata: dist/{final_name}")
+            print(f"[✓] Compilazione completata: dist/{final_name}")
+        else:
+            print(
+                f"[-] Attenzione: File originale {original_path} non trovato in dist/"
+            )
     except subprocess.CalledProcessError:
-        print("\n[-] ERRORE CRITICO: La compilazione con PyInstaller è fallita.")
+        print("\n[-] ERRORE CRITICO: Compilazione PyInstaller fallita.")
         sys.exit(1)
 
 
