@@ -18,6 +18,7 @@ def get_version():
 
 
 def ensure_icon(sys_os):
+    """Controlla la presenza delle icone native pre-generate nella cartella images"""
     base_dir = "images"
     if sys_os == "Windows":
         ico_path = os.path.join(base_dir, "NullifyPDF_icon.ico")
@@ -35,19 +36,23 @@ def build_app():
     version = get_version()
     sys_os = platform.system()
 
+    # Pulizia vecchi file
     for item in ["build", "dist", "NullifyPDF.spec"]:
         if os.path.exists(item):
             shutil.rmtree(item) if os.path.isdir(item) else os.remove(item)
 
+    # RIPRISTINO LOGICA NOMI PRECEDENTE
     os_name, ext = (
         ("Windows", ".exe")
         if sys_os == "Windows"
-        else ("macOS", ".app") if sys_os == "Darwin" else ("Linux", "")
+        else ("macOS", ".app") if sys_os == "Darwin" else ("Linux_Portable", "")
     )
     final_name = f"NullifyPDF_v{version}_{os_name}{ext}"
+
     icon_path = ensure_icon(sys_os)
     icon_str = f"'{icon_path}'" if icon_path else "None"
 
+    # Definizione specifica per macOS
     bundle_str = (
         f"app = BUNDLE(exe, name='NullifyPDF.app', icon={icon_str}, bundle_identifier='com.nullifypdf.forensic',)"
         if sys_os == "Darwin"
@@ -78,11 +83,13 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name='NullifyPDF', debug=Fals
 """
     with open("NullifyPDF.spec", "w", encoding="utf-8") as f:
         f.write(spec_content)
+
     try:
         subprocess.run(
             [sys.executable, "-m", "PyInstaller", "NullifyPDF.spec"], check=True
         )
 
+        # Percorso generato da PyInstaller
         original_path = os.path.join(
             "dist",
             (
@@ -95,13 +102,12 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name='NullifyPDF', debug=Fals
 
         if os.path.exists(original_path):
             os.rename(original_path, final_path)
-            print(f"[✓] Compilazione completata: dist/{final_name}")
+            print(f"[✓] Compilazione completata con successo!")
+            print(f"[✓] File generato: dist/{final_name}")
         else:
-            print(
-                f"[-] Attenzione: File originale {original_path} non trovato in dist/"
-            )
+            print(f"[-] Errore: File {original_path} non trovato.")
     except subprocess.CalledProcessError:
-        print("\n[-] ERRORE CRITICO: Compilazione PyInstaller fallita.")
+        print("\n[-] ERRORE CRITICO: Compilazione fallita.")
         sys.exit(1)
 
 

@@ -1,4 +1,4 @@
-name: Build NullifyPDF Enterprise
+name: Build and Release NullifyPDF
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Build on ${{ matrix.os }}
+    name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -18,13 +18,13 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.10
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
           cache: "pip"
 
-      - name: Install System Dependencies for Qt6 (Linux only)
+      - name: Install System Dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -35,21 +35,48 @@ jobs:
           python -m pip install --upgrade pip
           pip install PySide6 PyMuPDF presidio-analyzer spacy pyinstaller
 
-      - name: Download spaCy AI Models
+      - name: Download AI Models
         run: |
           python -m spacy download en_core_web_md
           python -m spacy download it_core_news_md
 
-      - name: Compile Application with PyInstaller
+      - name: Build Local
         run: python build_local.py
 
-      - name: Ensure Executable Permissions (Linux)
-        if: runner.os == 'Linux'
-        run: chmod +x dist/NullifyPDF_*
-
-      - name: Upload Artifacts
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NullifyPDF-v2.0.4-${{ runner.os }}
-          path: dist/NullifyPDF*
-          retention-days: 7
+          name: build-${{ runner.os }}
+          path: dist/NullifyPDF_v*
+
+  create_release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-builds
+          pattern: build-*
+          merge-multiple: true
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: all-builds/NullifyPDF_v*
+          body: |
+            ## NullifyPDF v2.0.4 - Enterprise Edition
+
+            Questa versione segna il passaggio al framework **PySide6 (Qt6)** per una stabilità e performance senza precedenti.
+
+            ### Novità:
+            - **Multithreading:** Analisi AI fluida senza blocchi dell'interfaccia.
+            - **Drag & Drop:** Supporto nativo per trascinamento file.
+            - **Log Semantici:** Feedback visivo migliorato.
+            - **Forensic Scrubbing:** Pulizia profonda di metadati e build-id PDF.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
