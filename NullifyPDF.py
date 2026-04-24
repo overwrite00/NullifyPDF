@@ -8,6 +8,7 @@ import string
 import shutil
 import subprocess
 import platform
+import urllib.parse
 import fitz
 import customtkinter as ctk
 from tkinter import filedialog, Canvas
@@ -15,7 +16,7 @@ from PIL import Image, ImageTk
 
 ctk.set_appearance_mode("dark")
 
-__version__ = "1.5.7"
+__version__ = "1.5.8"
 
 
 def resource_path(relative_path):
@@ -28,44 +29,48 @@ def resource_path(relative_path):
 
 # --- FUNZIONI WRAPPER PER FILE DIALOG NATIVI SU LINUX ---
 def native_askopenfilename():
-    """Usa Zenity o Kdialog su Linux per finestre file moderne. Gestisce correttamente l'Annulla."""
+    """Usa Zenity o Kdialog su Linux. Gestisce Annulla e Crash con Fallback Infallibile."""
     if platform.system() == "Linux":
         if shutil.which("zenity"):
             try:
+                # Sintassi corretta per il filtro Zenity
                 res = subprocess.run(
                     [
                         "zenity",
                         "--file-selection",
                         "--title=Apri PDF",
-                        "--file-filter=*.pdf",
+                        "--file-filter=Documenti PDF | *.pdf",
                     ],
                     capture_output=True,
                     text=True,
                 )
                 if res.returncode == 0:
                     return res.stdout.strip()
-                return ""  # Se l'utente preme Annulla, non aprire il fallback Tkinter!
+                elif res.returncode == 1:
+                    return ""  # Utente preme Annulla, fermati.
+                # Se il codice è 255 o un crash, ignora e usa il fallback Tkinter!
             except:
                 pass
-        elif shutil.which("kdialog"):
+
+        if shutil.which("kdialog"):
             try:
                 res = subprocess.run(
-                    ["kdialog", "--getopenfilename", ".", "*.pdf"],
+                    ["kdialog", "--getopenfilename", ".", "*.pdf | Documenti PDF"],
                     capture_output=True,
                     text=True,
                 )
                 if res.returncode == 0:
                     return res.stdout.strip()
-                return ""  # Idem per KDE
+                elif res.returncode == 1:
+                    return ""
             except:
                 pass
 
-    # Fallback per Windows, Mac o Linux senza Zenity/Kdialog
+    # Fallback universale (Windows, Mac o Linux se i tool nativi falliscono)
     return filedialog.askopenfilename(filetypes=[("PDF Documents", "*.pdf")])
 
 
 def native_asksaveasfilename(initial_file):
-    """Finestre di salvataggio native per Linux. Gestisce correttamente l'Annulla."""
     if platform.system() == "Linux":
         if shutil.which("zenity"):
             try:
@@ -84,24 +89,31 @@ def native_asksaveasfilename(initial_file):
                 if res.returncode == 0:
                     path = res.stdout.strip()
                     return path if path.lower().endswith(".pdf") else path + ".pdf"
-                return ""
+                elif res.returncode == 1:
+                    return ""
             except:
                 pass
-        elif shutil.which("kdialog"):
+
+        if shutil.which("kdialog"):
             try:
                 res = subprocess.run(
-                    ["kdialog", "--getsavefilename", initial_file, "*.pdf"],
+                    [
+                        "kdialog",
+                        "--getsavefilename",
+                        initial_file,
+                        "*.pdf | Documenti PDF",
+                    ],
                     capture_output=True,
                     text=True,
                 )
                 if res.returncode == 0:
                     path = res.stdout.strip()
                     return path if path.lower().endswith(".pdf") else path + ".pdf"
-                return ""
+                elif res.returncode == 1:
+                    return ""
             except:
                 pass
 
-    # Fallback per Windows, Mac o Linux senza Zenity/Kdialog
     return filedialog.asksaveasfilename(
         defaultextension=".pdf", initialfile=initial_file
     )
@@ -163,10 +175,19 @@ class NullifyPDF(ctk.CTk):
         self.after(200, self.check_sys_args)
 
     def check_sys_args(self):
+        """Intercetta il caricamento di file da linea di comando o Drag&Drop sull'eseguibile"""
         if len(sys.argv) > 1:
             file_path = sys.argv[1]
+
+            # Decodifica robusta per Linux GNOME/Wayland (Rimuove URI scheme e %20)
+            if file_path.startswith("file://"):
+                file_path = file_path[7:]
+            file_path = urllib.parse.unquote(file_path).strip("\"'")
+
             if os.path.exists(file_path) and file_path.lower().endswith(".pdf"):
                 self.load_path(file_path)
+            else:
+                self.write_log(f"Errore Drag & Drop: File non trovato ({file_path})")
 
     def load_list(self, filepath):
         if filepath.exists():
@@ -425,7 +446,6 @@ class NullifyPDF(ctk.CTk):
         self.canvas.bind("<ButtonRelease-1>", self.on_mouse_release)
         self.canvas.bind("<Enter>", lambda e: self.canvas.focus_set())
 
-        # BINDINGS UNIVERSALI PER SCROLL (Win/Mac + Linux)
         self.canvas.bind("<MouseWheel>", self.on_mouse_wheel)
         self.canvas.bind("<Button-4>", self.on_mouse_wheel)
         self.canvas.bind("<Button-5>", self.on_mouse_wheel)
@@ -614,7 +634,6 @@ class NullifyPDF(ctk.CTk):
         if not self.doc:
             return
 
-        # Uso il wrapper nativo per Linux
         fp = native_asksaveasfilename(
             f"{os.path.splitext(os.path.basename(self.doc.name))[0]}_secured.pdf"
         )
@@ -673,7 +692,6 @@ class NullifyPDF(ctk.CTk):
                 self.doc.close()
             temp_doc = fitz.open(path)
 
-            # RIPRISTINATO: Protezione vitale contro i PDF criptati che causa crash di sistema
             if temp_doc.needs_pass:
                 self.write_log(
                     "ERRORE: PDF protetto da password. Rimuovi la cifratura prima di caricarlo."
@@ -690,7 +708,6 @@ class NullifyPDF(ctk.CTk):
             self.write_log(f"Errore caricamento: {e}")
 
     def load(self):
-        # Uso il wrapper nativo
         p = native_askopenfilename()
         if p:
             self.load_path(p)
@@ -830,9 +847,8 @@ class NullifyPDF(ctk.CTk):
         )
 
     def on_mouse_wheel(self, e):
-        # Compatibilità Universale per Scroll (incluso Linux Button-4/5)
         if getattr(e, "state", 0) & 0x0004:
-            return  # Se preme CTRL, ignora per lo zoom
+            return
         if not self.doc:
             return
         if e.num == 4 or getattr(e, "delta", 0) > 0:
