@@ -16,7 +16,7 @@ from PIL import Image, ImageTk
 
 ctk.set_appearance_mode("dark")
 
-__version__ = "1.5.8"
+__version__ = "1.5.9"
 
 
 def resource_path(relative_path):
@@ -29,33 +29,26 @@ def resource_path(relative_path):
 
 # --- FUNZIONI WRAPPER PER FILE DIALOG NATIVI SU LINUX ---
 def native_askopenfilename():
-    """Usa Zenity o Kdialog su Linux. Gestisce Annulla e Crash con Fallback Infallibile."""
+    """Usa Zenity o Kdialog. Filtri rimossi per prevenire crash sintattici (Zenity exit code 1)."""
     if platform.system() == "Linux":
         if shutil.which("zenity"):
             try:
-                # Sintassi corretta per il filtro Zenity
                 res = subprocess.run(
-                    [
-                        "zenity",
-                        "--file-selection",
-                        "--title=Apri PDF",
-                        "--file-filter=Documenti PDF | *.pdf",
-                    ],
+                    ["zenity", "--file-selection", "--title=Seleziona Documento PDF"],
                     capture_output=True,
                     text=True,
                 )
                 if res.returncode == 0:
                     return res.stdout.strip()
                 elif res.returncode == 1:
-                    return ""  # Utente preme Annulla, fermati.
-                # Se il codice è 255 o un crash, ignora e usa il fallback Tkinter!
+                    return ""  # Annullato
             except:
                 pass
 
         if shutil.which("kdialog"):
             try:
                 res = subprocess.run(
-                    ["kdialog", "--getopenfilename", ".", "*.pdf | Documenti PDF"],
+                    ["kdialog", "--getopenfilename", ".", "*.pdf *.PDF"],
                     capture_output=True,
                     text=True,
                 )
@@ -97,12 +90,7 @@ def native_asksaveasfilename(initial_file):
         if shutil.which("kdialog"):
             try:
                 res = subprocess.run(
-                    [
-                        "kdialog",
-                        "--getsavefilename",
-                        initial_file,
-                        "*.pdf | Documenti PDF",
-                    ],
+                    ["kdialog", "--getsavefilename", initial_file, "*.pdf"],
                     capture_output=True,
                     text=True,
                 )
@@ -179,7 +167,7 @@ class NullifyPDF(ctk.CTk):
         if len(sys.argv) > 1:
             file_path = sys.argv[1]
 
-            # Decodifica robusta per Linux GNOME/Wayland (Rimuove URI scheme e %20)
+            # Decodifica robusta per Linux GNOME/Wayland
             if file_path.startswith("file://"):
                 file_path = file_path[7:]
             file_path = urllib.parse.unquote(file_path).strip("\"'")
@@ -187,7 +175,7 @@ class NullifyPDF(ctk.CTk):
             if os.path.exists(file_path) and file_path.lower().endswith(".pdf"):
                 self.load_path(file_path)
             else:
-                self.write_log(f"Errore Drag & Drop: File non trovato ({file_path})")
+                self.write_log(f"Errore Importazione: File non trovato ({file_path})")
 
     def load_list(self, filepath):
         if filepath.exists():
@@ -236,7 +224,6 @@ class NullifyPDF(ctk.CTk):
             pass
 
     def build_ui(self):
-        # SIDEBAR
         self.sidebar = ctk.CTkFrame(
             self, width=260, corner_radius=0, fg_color=self.panel_color
         )
@@ -474,7 +461,6 @@ class NullifyPDF(ctk.CTk):
     # --- LOGICA CORE ---
 
     def add_professional_redaction(self, page, rect):
-        """Segnaposto professionale per le immagini rimosse"""
         page.add_redact_annot(
             rect,
             text="[ IMMAGINE RIMOSSA ]",
@@ -710,6 +696,10 @@ class NullifyPDF(ctk.CTk):
     def load(self):
         p = native_askopenfilename()
         if p:
+            # Prevenzione per garantire che il file selezionato sia un PDF
+            if not p.lower().endswith(".pdf"):
+                self.write_log("ERRORE: Formato non supportato. Seleziona un file PDF.")
+                return
             self.load_path(p)
 
     def render(self):
