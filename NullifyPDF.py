@@ -15,7 +15,7 @@ from PIL import Image, ImageTk
 
 ctk.set_appearance_mode("dark")
 
-__version__ = "1.5.6"
+__version__ = "1.5.7"
 
 
 def resource_path(relative_path):
@@ -28,7 +28,7 @@ def resource_path(relative_path):
 
 # --- FUNZIONI WRAPPER PER FILE DIALOG NATIVI SU LINUX ---
 def native_askopenfilename():
-    """Usa Zenity o Kdialog su Linux per finestre file moderne, altrimenti fallback a Tkinter"""
+    """Usa Zenity o Kdialog su Linux per finestre file moderne. Gestisce correttamente l'Annulla."""
     if platform.system() == "Linux":
         if shutil.which("zenity"):
             try:
@@ -37,31 +37,35 @@ def native_askopenfilename():
                         "zenity",
                         "--file-selection",
                         "--title=Apri PDF",
-                        "--file-filter=PDF files | *.pdf",
+                        "--file-filter=*.pdf",
                     ],
                     capture_output=True,
                     text=True,
                 )
                 if res.returncode == 0:
                     return res.stdout.strip()
+                return ""  # Se l'utente preme Annulla, non aprire il fallback Tkinter!
             except:
                 pass
         elif shutil.which("kdialog"):
             try:
                 res = subprocess.run(
-                    ["kdialog", "--getopenfilename", ".", "*.pdf | PDF Documents"],
+                    ["kdialog", "--getopenfilename", ".", "*.pdf"],
                     capture_output=True,
                     text=True,
                 )
                 if res.returncode == 0:
                     return res.stdout.strip()
+                return ""  # Idem per KDE
             except:
                 pass
+
+    # Fallback per Windows, Mac o Linux senza Zenity/Kdialog
     return filedialog.askopenfilename(filetypes=[("PDF Documents", "*.pdf")])
 
 
 def native_asksaveasfilename(initial_file):
-    """Finestre di salvataggio native per Linux"""
+    """Finestre di salvataggio native per Linux. Gestisce correttamente l'Annulla."""
     if platform.system() == "Linux":
         if shutil.which("zenity"):
             try:
@@ -80,25 +84,24 @@ def native_asksaveasfilename(initial_file):
                 if res.returncode == 0:
                     path = res.stdout.strip()
                     return path if path.lower().endswith(".pdf") else path + ".pdf"
+                return ""
             except:
                 pass
         elif shutil.which("kdialog"):
             try:
                 res = subprocess.run(
-                    [
-                        "kdialog",
-                        "--getsavefilename",
-                        initial_file,
-                        "*.pdf | PDF Documents",
-                    ],
+                    ["kdialog", "--getsavefilename", initial_file, "*.pdf"],
                     capture_output=True,
                     text=True,
                 )
                 if res.returncode == 0:
                     path = res.stdout.strip()
                     return path if path.lower().endswith(".pdf") else path + ".pdf"
+                return ""
             except:
                 pass
+
+    # Fallback per Windows, Mac o Linux senza Zenity/Kdialog
     return filedialog.asksaveasfilename(
         defaultextension=".pdf", initialfile=initial_file
     )
@@ -520,7 +523,6 @@ class NullifyPDF(ctk.CTk):
                 "CRYPTO",
             ]
 
-            # BUGFIX REGEX: Ripristinata logica boundary per evitare match "substring" accidentali (es. "ma" in "mariella")
             compiled_allowlist = []
             for allowed in self.allowlist:
                 escaped = re.escape(allowed)
@@ -574,7 +576,6 @@ class NullifyPDF(ctk.CTk):
                     )
                     is_protected = False
 
-                    # Verifica incrociata bidirezionale sicura tramite Regex Boundary
                     for allowed_str, forward_regex in compiled_allowlist:
                         if forward_regex.search(clean_match) or re.search(
                             r"\b" + re.escape(clean_match) + r"\b", allowed_str
@@ -670,13 +671,23 @@ class NullifyPDF(ctk.CTk):
         try:
             if self.doc:
                 self.doc.close()
-            self.doc = fitz.open(path)
+            temp_doc = fitz.open(path)
+
+            # RIPRISTINATO: Protezione vitale contro i PDF criptati che causa crash di sistema
+            if temp_doc.needs_pass:
+                self.write_log(
+                    "ERRORE: PDF protetto da password. Rimuovi la cifratura prima di caricarlo."
+                )
+                temp_doc.close()
+                return
+
+            self.doc = temp_doc
             self.page_num = 0
             self.scale = 1.5
             self.update_zoom_ui()
             self.write_log(f"Caricato: {os.path.basename(path)}")
-        except:
-            pass
+        except Exception as e:
+            self.write_log(f"Errore caricamento: {e}")
 
     def load(self):
         # Uso il wrapper nativo
