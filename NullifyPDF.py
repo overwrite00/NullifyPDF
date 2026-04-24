@@ -2,21 +2,44 @@ import os
 import sys
 import re
 import datetime
-import tempfile
 import pathlib
 import string
-import shutil
-import subprocess
-import platform
 import urllib.parse
 import fitz
-import customtkinter as ctk
-from tkinter import filedialog, Canvas
-from PIL import Image, ImageTk
+from PySide6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QRadioButton,
+    QCheckBox,
+    QProgressBar,
+    QTextEdit,
+    QGraphicsView,
+    QGraphicsScene,
+    QFileDialog,
+    QDialog,
+    QLineEdit,
+    QButtonGroup,
+    QGraphicsRectItem,
+    QMessageBox,
+)
+from PySide6.QtGui import (
+    QIcon,
+    QPixmap,
+    QImage,
+    QPainter,
+    QColor,
+    QPen,
+    QDragEnterEvent,
+    QDropEvent,
+)
+from PySide6.QtCore import Qt, QThread, QObject, Signal, Slot, QRectF, QPointF
 
-ctk.set_appearance_mode("dark")
-
-__version__ = "1.5.9"
+__version__ = "2.0.4"
 
 
 def resource_path(relative_path):
@@ -27,499 +50,82 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
-# --- FUNZIONI WRAPPER PER FILE DIALOG NATIVI SU LINUX ---
-def native_askopenfilename():
-    """Usa Zenity o Kdialog. Filtri rimossi per prevenire crash sintattici (Zenity exit code 1)."""
-    if platform.system() == "Linux":
-        if shutil.which("zenity"):
-            try:
-                res = subprocess.run(
-                    ["zenity", "--file-selection", "--title=Seleziona Documento PDF"],
-                    capture_output=True,
-                    text=True,
-                )
-                if res.returncode == 0:
-                    return res.stdout.strip()
-                elif res.returncode == 1:
-                    return ""  # Annullato
-            except:
-                pass
+# --- STILE CYBERSECURITY (QSS) ---
+STYLESHEET = """
+QMainWindow, QDialog { background-color: #0f172a; }
+QWidget { color: #cbd5e1; font-family: 'Segoe UI', 'Roboto', sans-serif; font-size: 13px; }
+QFrame#Sidebar, QFrame#Panel { background-color: #1e293b; border-radius: 6px; }
 
-        if shutil.which("kdialog"):
-            try:
-                res = subprocess.run(
-                    ["kdialog", "--getopenfilename", ".", "*.pdf *.PDF"],
-                    capture_output=True,
-                    text=True,
-                )
-                if res.returncode == 0:
-                    return res.stdout.strip()
-                elif res.returncode == 1:
-                    return ""
-            except:
-                pass
+QPushButton {
+    background-color: #334155; border: 1px solid #475569; border-radius: 4px; padding: 8px; color: #e2e8f0; font-weight: bold;
+}
+QPushButton:hover { background-color: #475569; border-color: #0ea5e9; }
+QPushButton#Primary { background-color: #0284c7; color: white; border: none; }
+QPushButton#Primary:hover { background-color: #0369a1; }
+QPushButton#Danger { background-color: #dc2626; color: white; border: none; }
+QPushButton#Danger:hover { background-color: #b91c1c; }
+QPushButton#Exit { background-color: transparent; border: none; color: #64748b; font-weight: normal; }
+QPushButton#Exit:hover { color: #ef4444; background-color: #1e293b; }
 
-    # Fallback universale (Windows, Mac o Linux se i tool nativi falliscono)
-    return filedialog.askopenfilename(filetypes=[("PDF Documents", "*.pdf")])
+QTextEdit { background-color: #0f172a; border: 1px solid #334155; border-radius: 4px; padding: 4px; color: #94a3b8; font-family: 'Consolas', monospace; }
+
+QLineEdit {
+    background-color: #0f172a; border: 1px solid #334155; border-radius: 4px; padding: 4px; color: #e2e8f0;
+}
+QLineEdit:focus { border: 1px solid #0ea5e9; }
+
+QProgressBar { background-color: #0f172a; border: 1px solid #334155; border-radius: 4px; text-align: center; color: transparent; height: 8px;}
+QProgressBar::chunk { background-color: #0ea5e9; border-radius: 3px; }
+
+QGraphicsView { border: none; background-color: #020617; }
+QRadioButton::indicator, QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid #475569; border-radius: 8px; background-color: #0f172a; }
+QCheckBox::indicator { border-radius: 4px; }
+QRadioButton::indicator:checked, QCheckBox::indicator:checked { background-color: #0ea5e9; border: 1px solid #0ea5e9; }
+"""
 
 
-def native_asksaveasfilename(initial_file):
-    if platform.system() == "Linux":
-        if shutil.which("zenity"):
-            try:
-                res = subprocess.run(
-                    [
-                        "zenity",
-                        "--file-selection",
-                        "--save",
-                        "--confirm-overwrite",
-                        "--title=Esporta PDF Sicuro",
-                        f"--filename={initial_file}",
-                    ],
-                    capture_output=True,
-                    text=True,
-                )
-                if res.returncode == 0:
-                    path = res.stdout.strip()
-                    return path if path.lower().endswith(".pdf") else path + ".pdf"
-                elif res.returncode == 1:
-                    return ""
-            except:
-                pass
+# --- MOTORE AI MULTITHREAD ---
+class AIWorker(QObject):
+    log_sig = Signal(str)
+    progress_sig = Signal(int, int)
+    page_done_sig = Signal(int, set)
+    finished_sig = Signal()
 
-        if shutil.which("kdialog"):
-            try:
-                res = subprocess.run(
-                    ["kdialog", "--getsavefilename", initial_file, "*.pdf"],
-                    capture_output=True,
-                    text=True,
-                )
-                if res.returncode == 0:
-                    path = res.stdout.strip()
-                    return path if path.lower().endswith(".pdf") else path + ".pdf"
-                elif res.returncode == 1:
-                    return ""
-            except:
-                pass
-
-    return filedialog.asksaveasfilename(
-        defaultextension=".pdf", initialfile=initial_file
-    )
-
-
-class NullifyPDF(ctk.CTk):
     def __init__(self):
         super().__init__()
-
-        self.title("NullifyPDF - AI Forensic Edition")
-        self.geometry("1350x950")
-        self.minsize(1000, 700)
-
-        try:
-            self.wm_class("NullifyPDF", "NullifyPDF")
-        except Exception:
-            pass
-
-        self.bg_color = "#141526"
-        self.panel_color = "#1e1f31"
-        self.accent_color = "#1fb2e0"
-        self.hover_color = "#178cae"
-        self.danger_color = "#e74c3c"
-        self.configure(fg_color=self.bg_color)
-
-        self.set_window_icon()
-
-        # STATO APPLICAZIONE
-        self.doc = None
-        self.page_num = 0
-        self.scale = 1.5
-        self.min_scale = 0.5
-        self.max_scale = 4.0
-        self.img = None
-        self.img_id = None
-        self.rect_id = None
-        self.offset_x = 0
-        self.offset_y = 0
-        self.start_xy = None
         self.analyzer = None
-        self.active_langs = []
+        self.loaded_langs = []
 
-        # MUTEX LOCK
-        self.is_processing = False
-
-        # PERSISTENZA DIZIONARI
-        self.config_dir = pathlib.Path.home() / ".nullifypdf"
+    @Slot(list, str, list)
+    def run_scan(self, pages_text, choice, compiled_allowlist):
         try:
-            self.config_dir.mkdir(exist_ok=True)
-        except:
-            pass
+            target_langs = ["en", "it"] if choice == "BOTH" else [choice.lower()]
+            if not self.analyzer or sorted(self.loaded_langs) != sorted(target_langs):
+                self.log_sig.emit(
+                    f"Inizializzazione Modelli AI ({choice}) in RAM... Attendere."
+                )
+                from presidio_analyzer import AnalyzerEngine
+                from presidio_analyzer.nlp_engine import NlpEngineProvider
 
-        self.blocklist_file = self.config_dir / "blocklist.txt"
-        self.allowlist_file = self.config_dir / "allowlist.txt"
-        self.blocklist = self.load_list(self.blocklist_file)
-        self.allowlist = self.load_list(self.allowlist_file)
+                models = (
+                    [{"lang_code": "en", "model_name": "en_core_web_md"}]
+                    if "en" in target_langs
+                    else []
+                )
+                if "it" in target_langs:
+                    models.append({"lang_code": "it", "model_name": "it_core_news_md"})
+                provider = NlpEngineProvider(
+                    nlp_configuration={"nlp_engine_name": "spacy", "models": models}
+                )
+                self.analyzer = AnalyzerEngine(
+                    nlp_engine=provider.create_engine(),
+                    supported_languages=target_langs,
+                )
+                self.loaded_langs = target_langs
+                self.log_sig.emit("Motore AI inizializzato con successo.")
 
-        self.build_ui()
-        self.after(200, self.check_sys_args)
-
-    def check_sys_args(self):
-        """Intercetta il caricamento di file da linea di comando o Drag&Drop sull'eseguibile"""
-        if len(sys.argv) > 1:
-            file_path = sys.argv[1]
-
-            # Decodifica robusta per Linux GNOME/Wayland
-            if file_path.startswith("file://"):
-                file_path = file_path[7:]
-            file_path = urllib.parse.unquote(file_path).strip("\"'")
-
-            if os.path.exists(file_path) and file_path.lower().endswith(".pdf"):
-                self.load_path(file_path)
-            else:
-                self.write_log(f"Errore Importazione: File non trovato ({file_path})")
-
-    def load_list(self, filepath):
-        if filepath.exists():
-            with open(filepath, "r", encoding="utf-8") as f:
-                return {line.strip().lower() for line in f if line.strip()}
-        return set()
-
-    def save_list(self, filepath, data_set):
-        try:
-            with open(filepath, "w", encoding="utf-8") as f:
-                for item in sorted(data_set):
-                    f.write(f"{item}\n")
-        except:
-            pass
-
-    def set_window_icon(self):
-        icon_path_png = resource_path(os.path.join("images", "NullifyPDF_icon.png"))
-        if os.path.exists(icon_path_png):
-            try:
-                if sys.platform.startswith("win"):
-                    ico_path = os.path.join(
-                        tempfile.gettempdir(), "NullifyPDF_icon.ico"
-                    )
-                    img = Image.open(icon_path_png)
-                    img.save(ico_path, format="ICO", sizes=[(256, 256)])
-                    self.after(200, lambda: self.iconbitmap(ico_path))
-                else:
-                    img = Image.open(icon_path_png)
-                    self.icon_photo = ImageTk.PhotoImage(img)
-                    self.after(200, lambda: self.wm_iconphoto(True, self.icon_photo))
-            except:
-                pass
-
-    def apply_child_icon(self, child_window):
-        try:
-            if sys.platform.startswith("win"):
-                ico_path = os.path.join(tempfile.gettempdir(), "NullifyPDF_icon.ico")
-                if os.path.exists(ico_path):
-                    child_window.after(200, lambda: child_window.iconbitmap(ico_path))
-            else:
-                if hasattr(self, "icon_photo"):
-                    child_window.after(
-                        200, lambda: child_window.wm_iconphoto(False, self.icon_photo)
-                    )
-        except:
-            pass
-
-    def build_ui(self):
-        self.sidebar = ctk.CTkFrame(
-            self, width=260, corner_radius=0, fg_color=self.panel_color
-        )
-        self.sidebar.pack(side="left", fill="y")
-        self.sidebar.pack_propagate(False)
-
-        ctk.CTkLabel(
-            self.sidebar,
-            text="NullifyPDF",
-            font=("Roboto", 24, "bold"),
-            text_color=self.accent_color,
-        ).pack(pady=(30, 5))
-        ctk.CTkLabel(
-            self.sidebar,
-            text="AI Forensic Edition",
-            font=("Roboto", 12),
-            text_color="#aaa",
-        ).pack(pady=(0, 30))
-
-        ctk.CTkButton(
-            self.sidebar,
-            text="Apri PDF",
-            font=("Roboto", 14, "bold"),
-            height=45,
-            fg_color=self.accent_color,
-            hover_color=self.hover_color,
-            command=self.load,
-        ).pack(fill="x", padx=20, pady=10)
-
-        ctk.CTkFrame(self.sidebar, height=2, fg_color="#333344").pack(
-            fill="x", padx=20, pady=15
-        )
-
-        ctk.CTkLabel(
-            self.sidebar, text="Modello Lingua AI:", font=("Roboto", 12, "bold")
-        ).pack(anchor="w", padx=25)
-        self.lang_selection = ctk.StringVar(value="EN")
-        lang_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        lang_frame.pack(fill="x", padx=20, pady=5)
-        ctk.CTkRadioButton(
-            lang_frame, text="EN", variable=self.lang_selection, value="EN", width=50
-        ).pack(side="left")
-        ctk.CTkRadioButton(
-            lang_frame, text="IT", variable=self.lang_selection, value="IT", width=50
-        ).pack(side="left")
-        ctk.CTkRadioButton(
-            lang_frame,
-            text="BOTH",
-            variable=self.lang_selection,
-            value="BOTH",
-            width=60,
-        ).pack(side="left")
-
-        ctk.CTkFrame(self.sidebar, height=1, fg_color="#333344").pack(
-            fill="x", padx=25, pady=10
-        )
-        self.redact_images_var = ctk.BooleanVar(value=False)
-        self.img_switch = ctk.CTkSwitch(
-            self.sidebar,
-            text="Oscura Immagini",
-            font=("Roboto", 12),
-            variable=self.redact_images_var,
-            progress_color=self.accent_color,
-        )
-        self.img_switch.pack(anchor="w", padx=25, pady=5)
-        ctk.CTkLabel(
-            self.sidebar,
-            text="Segnaposto professionale",
-            font=("Roboto", 10),
-            text_color="#777",
-        ).pack(anchor="w", padx=25)
-
-        ctk.CTkButton(
-            self.sidebar,
-            text="Dizionari",
-            fg_color="#333344",
-            command=self.open_dictionary,
-        ).pack(fill="x", padx=20, pady=15)
-        ctk.CTkButton(
-            self.sidebar,
-            text="Auto Redact (AI)",
-            font=("Roboto", 13, "bold"),
-            height=40,
-            fg_color=self.danger_color,
-            hover_color="#c0392b",
-            command=self.auto_anon,
-        ).pack(fill="x", padx=20, pady=5)
-        ctk.CTkButton(
-            self.sidebar,
-            text="Pulisci Pagina",
-            fg_color="transparent",
-            border_width=1,
-            border_color="#555",
-            text_color="#aaa",
-            command=self.clear_page,
-        ).pack(fill="x", padx=20, pady=10)
-
-        ctk.CTkButton(
-            self.sidebar,
-            text="Esporta PDF Sicuro",
-            font=("Roboto", 14, "bold"),
-            height=45,
-            fg_color="transparent",
-            border_width=2,
-            border_color=self.accent_color,
-            text_color=self.accent_color,
-            command=self.save,
-        ).pack(fill="x", padx=20, pady=(25, 10))
-
-        bottom_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        bottom_frame.pack(side="bottom", fill="x", pady=20)
-        ctk.CTkButton(
-            bottom_frame,
-            text="Info",
-            fg_color="transparent",
-            text_color=self.accent_color,
-            command=self.show_about,
-        ).pack(pady=5)
-        ctk.CTkButton(
-            bottom_frame,
-            text="Esci",
-            fg_color="transparent",
-            text_color="#888",
-            hover_color="#333",
-            command=self.destroy,
-        ).pack()
-
-        # MAIN AREA
-        self.main_area = ctk.CTkFrame(self, fg_color="transparent")
-        self.main_area.pack(side="right", fill="both", expand=True, padx=15, pady=15)
-
-        nav_bar = ctk.CTkFrame(
-            self.main_area, fg_color=self.panel_color, corner_radius=8, height=50
-        )
-        nav_bar.pack(fill="x", pady=(0, 10))
-        nav_bar.pack_propagate(False)
-
-        ctk.CTkLabel(
-            nav_bar, text="Visualizzatore Documento", font=("Roboto", 14, "bold")
-        ).pack(side="left", padx=15)
-
-        zoom_frame = ctk.CTkFrame(nav_bar, fg_color="transparent")
-        zoom_frame.pack(side="left", padx=15)
-        ctk.CTkButton(
-            zoom_frame,
-            text="-",
-            width=28,
-            height=28,
-            fg_color="#333344",
-            command=self.zoom_out,
-        ).pack(side="left", padx=2)
-        self.zoom_var = ctk.StringVar(value=f"{int(self.scale * 100)}%")
-        ctk.CTkLabel(
-            zoom_frame, textvariable=self.zoom_var, width=45, font=("Roboto", 12)
-        ).pack(side="left", padx=2)
-        ctk.CTkButton(
-            zoom_frame,
-            text="+",
-            width=28,
-            height=28,
-            fg_color="#333344",
-            command=self.zoom_in,
-        ).pack(side="left", padx=2)
-
-        nav_ctrls = ctk.CTkFrame(nav_bar, fg_color="transparent")
-        nav_ctrls.pack(side="right", padx=10)
-        ctk.CTkButton(
-            nav_ctrls,
-            text="<",
-            width=30,
-            fg_color=self.bg_color,
-            command=lambda: self.move_page(-1),
-        ).pack(side="left", padx=5)
-        self.page_entry_var = ctk.StringVar(value="0")
-        self.page_entry = ctk.CTkEntry(
-            nav_ctrls, textvariable=self.page_entry_var, width=40, justify="center"
-        )
-        self.page_entry.pack(side="left", padx=2)
-        self.page_entry.bind("<Return>", self.jump_to_page)
-        self.tot_pages_lab = ctk.CTkLabel(nav_ctrls, text="/ 0", font=("Roboto", 12))
-        self.tot_pages_lab.pack(side="left", padx=(2, 10))
-        ctk.CTkButton(
-            nav_ctrls,
-            text=">",
-            width=30,
-            fg_color=self.bg_color,
-            command=lambda: self.move_page(1),
-        ).pack(side="left", padx=5)
-
-        view_frame = ctk.CTkFrame(
-            self.main_area, fg_color=self.panel_color, corner_radius=8
-        )
-        view_frame.pack(fill="both", expand=True, pady=(0, 10))
-        self.canvas = Canvas(
-            view_frame, bg="#0d0e1b", highlightthickness=0, cursor="crosshair"
-        )
-        self.canvas.pack(side="left", fill="both", expand=True, padx=(5, 0), pady=5)
-        self.v_scroll = ctk.CTkScrollbar(
-            view_frame, orientation="vertical", command=self.canvas.yview
-        )
-        self.v_scroll.pack(side="right", fill="y", padx=(0, 5), pady=5)
-        self.canvas.configure(yscrollcommand=self.v_scroll.set)
-
-        self.canvas.bind("<Configure>", lambda e: self.center_image())
-        self.canvas.bind("<ButtonPress-1>", self.on_mouse_press)
-        self.canvas.bind("<B1-Motion>", self.on_mouse_drag)
-        self.canvas.bind("<ButtonRelease-1>", self.on_mouse_release)
-        self.canvas.bind("<Enter>", lambda e: self.canvas.focus_set())
-
-        self.canvas.bind("<MouseWheel>", self.on_mouse_wheel)
-        self.canvas.bind("<Button-4>", self.on_mouse_wheel)
-        self.canvas.bind("<Button-5>", self.on_mouse_wheel)
-
-        self.canvas.bind("<Control-MouseWheel>", self.on_ctrl_mouse_wheel)
-        self.canvas.bind("<Control-Button-4>", self.on_ctrl_mouse_wheel)
-        self.canvas.bind("<Control-Button-5>", self.on_ctrl_mouse_wheel)
-
-        footer = ctk.CTkFrame(
-            self.main_area, fg_color=self.panel_color, corner_radius=8
-        )
-        footer.pack(fill="x")
-        self.prog = ctk.CTkProgressBar(
-            footer, fg_color=self.bg_color, progress_color=self.accent_color, height=8
-        )
-        self.prog.pack(fill="x", padx=15, pady=(15, 5))
-        self.log = ctk.CTkTextbox(
-            footer,
-            height=80,
-            fg_color=self.bg_color,
-            text_color="#a1a1aa",
-            font=("Consolas", 12),
-        )
-        self.log.pack(fill="x", padx=15, pady=(5, 15))
-
-    # --- LOGICA CORE ---
-
-    def add_professional_redaction(self, page, rect):
-        page.add_redact_annot(
-            rect,
-            text="[ IMMAGINE RIMOSSA ]",
-            align=fitz.TEXT_ALIGN_CENTER,
-            fill=(0.92, 0.92, 0.92),
-            fontname="helv",
-            fontsize=8,
-        )
-
-    def init_ai(self, choice):
-        try:
-            self.write_log(f"Caricamento AI ({choice}) in corso... Attendere prego.")
-            self.update()
-
-            from presidio_analyzer import AnalyzerEngine
-            from presidio_analyzer.nlp_engine import NlpEngineProvider
-
-            models = []
-            if choice in ["EN", "BOTH"]:
-                models.append({"lang_code": "en", "model_name": "en_core_web_md"})
-            if choice in ["IT", "BOTH"]:
-                models.append({"lang_code": "it", "model_name": "it_core_news_md"})
-            configuration = {"nlp_engine_name": "spacy", "models": models}
-            provider = NlpEngineProvider(nlp_configuration=configuration)
-            self.analyzer = AnalyzerEngine(
-                nlp_engine=provider.create_engine(),
-                supported_languages=[m["lang_code"] for m in models],
-            )
-            self.active_langs = [m["lang_code"] for m in models]
-
-            self.write_log("Motore AI inizializzato con successo.")
-            self.update()
-            return True
-        except Exception as e:
-            self.write_log(f"ERRORE Inizializzazione AI: {str(e)}")
-            return False
-
-    def auto_anon(self):
-        if not self.doc:
-            return
-
-        if getattr(self, "is_processing", False):
-            return
-        self.is_processing = True
-
-        try:
-            choice = self.lang_selection.get()
-            if not self.analyzer or sorted(self.active_langs) != sorted(
-                ["en", "it"] if choice == "BOTH" else [choice.lower()]
-            ):
-                if not self.init_ai(choice):
-                    self.is_processing = False
-                    return
-
-            self.write_log("Scansione forense intelligente (in corso)...")
-            self.prog.set(0)
-            self.update()
-
-            target_entities = [
+            self.log_sig.emit("Scansione forense in corso...")
+            targets = [
                 "PERSON",
                 "LOCATION",
                 "EMAIL_ADDRESS",
@@ -529,240 +135,392 @@ class NullifyPDF(ctk.CTk):
                 "CRYPTO",
             ]
 
-            compiled_allowlist = []
-            for allowed in self.allowlist:
-                escaped = re.escape(allowed)
-                compiled_allowlist.append(
-                    (allowed, re.compile(r"\b" + escaped + r"\b"))
-                )
-
-            for i, page in enumerate(self.doc):
-                text = page.get_text()
-                existing_redacts = [
-                    a.rect for a in page.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT
-                ]
-
-                if self.redact_images_var.get():
-                    for img_info in page.get_image_info(hashes=False):
-                        img_rect = fitz.Rect(img_info["bbox"])
-                        self.add_professional_redaction(page, img_rect)
-                        existing_redacts.append(img_rect)
-
-                for block_word in self.blocklist:
-                    for rect in page.search_for(block_word):
-                        center = fitz.Point(
-                            (rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2
-                        )
-                        if not any(e_r.contains(center) for e_r in existing_redacts):
-                            page.add_redact_annot(rect, fill=(0, 0, 0))
-                            existing_redacts.append(rect)
-
-                protected_rects = [
-                    r
-                    for allow_word in self.allowlist
-                    for r in page.search_for(allow_word)
-                ]
-
-                found_ai_words = set()
-                for lang in self.active_langs:
+            for i, text in enumerate(pages_text):
+                found = set()
+                for lang in self.loaded_langs:
                     try:
-                        results = self.analyzer.analyze(
-                            text=text, entities=target_entities, language=lang
+                        res = self.analyzer.analyze(
+                            text=text, entities=targets, language=lang
                         )
-                        for res in results:
-                            word = text[res.start : res.end].strip()
-                            if len(word) > 2:
-                                found_ai_words.add(word)
-                    except Exception as ai_err:
-                        self.write_log(f"Avviso AI su Pagina {i+1}: {ai_err}")
+                        for r in res:
+                            w = text[r.start : r.end].strip()
+                            if len(w) > 2:
+                                found.add(w)
+                    except Exception as e:
+                        self.log_sig.emit(f"Avviso AI su Pagina {i+1}: {e}")
 
-                for match in found_ai_words:
-                    clean_match = " ".join(
-                        match.strip(string.punctuation).lower().split()
+                final_words = set()
+                for match in found:
+                    clean = " ".join(match.strip(string.punctuation).lower().split())
+                    protected = any(
+                        f_reg.search(clean)
+                        or re.search(r"\b" + re.escape(clean) + r"\b", a_str)
+                        for a_str, f_reg in compiled_allowlist
                     )
-                    is_protected = False
+                    if not protected:
+                        final_words.add(match)
 
-                    for allowed_str, forward_regex in compiled_allowlist:
-                        if forward_regex.search(clean_match) or re.search(
-                            r"\b" + re.escape(clean_match) + r"\b", allowed_str
-                        ):
-                            is_protected = True
-                            break
+                self.page_done_sig.emit(i, final_words)
+                self.progress_sig.emit(i + 1, len(pages_text))
 
-                    if is_protected:
-                        continue
-
-                    for ai_rect in page.search_for(match):
-                        if any(
-                            ai_rect.intersects(p_rect) for p_rect in protected_rects
-                        ):
-                            continue
-
-                        center = fitz.Point(
-                            (ai_rect.x0 + ai_rect.x1) / 2, (ai_rect.y0 + ai_rect.y1) / 2
-                        )
-                        if not any(e_r.contains(center) for e_r in existing_redacts):
-                            page.add_redact_annot(ai_rect, fill=(0, 0, 0))
-                            existing_redacts.append(ai_rect)
-
-                self.prog.set((i + 1) / len(self.doc))
-                self.update()
-
-            self.render()
-            self.write_log("Anonimizzazione completata in tempo record.")
-
+            self.log_sig.emit("Anonimizzazione completata in tempo record.")
         except Exception as e:
-            self.write_log(f"ERRORE CRITICO DURANTE LA SCANSIONE: {str(e)}")
+            self.log_sig.emit(f"ERRORE CRITICO AI: {str(e)}")
         finally:
-            self.is_processing = False
+            self.finished_sig.emit()
 
-    def save(self):
-        if not self.doc:
-            return
 
-        fp = native_asksaveasfilename(
-            f"{os.path.splitext(os.path.basename(self.doc.name))[0]}_secured.pdf"
+# --- CANVAS INTERATTIVO PDF ---
+class PDFView(QGraphicsView):
+    rect_drawn = Signal(QRectF)
+    point_clicked = Signal(QPointF)
+    zoom_req = Signal(int)
+
+    def __init__(self, scene, parent=None):
+        super().__init__(scene, parent)
+        self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
+        self.start_pos = None
+        self.temp_rect = None
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            sp = self.mapToScene(event.pos())
+            self.start_pos = sp
+            self.point_clicked.emit(sp)
+            self.temp_rect = QGraphicsRectItem(QRectF(sp, sp))
+            self.temp_rect.setPen(QPen(QColor("#ef4444"), 2))
+            self.scene().addItem(self.temp_rect)
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.start_pos and self.temp_rect:
+            ep = self.mapToScene(event.pos())
+            self.temp_rect.setRect(QRectF(self.start_pos, ep).normalized())
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self.temp_rect:
+            rect = self.temp_rect.rect()
+            self.scene().removeItem(self.temp_rect)
+            self.temp_rect = None
+            self.start_pos = None
+            if rect.width() > 5 and rect.height() > 5:
+                self.rect_drawn.emit(rect)
+        super().mouseReleaseEvent(event)
+
+    def wheelEvent(self, event):
+        if event.modifiers() == Qt.ControlModifier:
+            self.zoom_req.emit(1 if event.angleDelta().y() > 0 else -1)
+            event.accept()
+        else:
+            super().wheelEvent(event)
+
+
+# --- FINESTRA PRINCIPALE ---
+class NullifyPDF(QMainWindow):
+    start_scan_sig = Signal(list, str, list)
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("NullifyPDF - AI Forensic Edition")
+        self.resize(1350, 950)
+        self.setStyleSheet(STYLESHEET)
+        self.setAcceptDrops(True)
+
+        icon_path = resource_path(os.path.join("images", "NullifyPDF_icon.png"))
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+
+        self.doc = None
+        self.page_num = 0
+        self.scale = 1.5
+        self.config_dir = pathlib.Path.home() / ".nullifypdf"
+        self.config_dir.mkdir(exist_ok=True)
+        self.block_file = self.config_dir / "blocklist.txt"
+        self.allow_file = self.config_dir / "allowlist.txt"
+        self.blocklist = self.load_list(self.block_file)
+        self.allowlist = self.load_list(self.allow_file)
+
+        # Thread Setup
+        self.ai_thread = QThread()
+        self.ai_worker = AIWorker()
+        self.ai_worker.moveToThread(self.ai_thread)
+        self.ai_worker.log_sig.connect(self.write_log)
+        self.ai_worker.progress_sig.connect(self.update_progress)
+        self.ai_worker.page_done_sig.connect(self.apply_ai_to_page)
+        self.ai_worker.finished_sig.connect(self.ai_finished)
+        self.start_scan_sig.connect(self.ai_worker.run_scan)
+        self.ai_thread.start()
+
+        self.build_ui()
+        if len(sys.argv) > 1:
+            self.load_path(sys.argv[1])
+
+    def closeEvent(self, event):
+        self.ai_thread.quit()
+        self.ai_thread.wait()
+        super().closeEvent(event)
+
+    def load_list(self, p):
+        return (
+            {l.strip().lower() for l in open(p, "r", encoding="utf-8")}
+            if p.exists()
+            else set()
         )
 
-        if fp:
-            try:
-                self.write_log("Sanificazione forense (Scrubbing) in corso...")
-                self.update()
+    def save_list(self, p, d):
+        with open(p, "w", encoding="utf-8") as f:
+            f.write("\n".join(sorted(d)))
 
-                pdf_bytes = self.doc.write()
-                export_doc = fitz.open("pdf", pdf_bytes)
+    def build_ui(self):
+        c_widget = QWidget()
+        self.setCentralWidget(c_widget)
+        main_lay = QHBoxLayout(c_widget)
+        main_lay.setContentsMargins(10, 10, 10, 10)
 
-                for page in export_doc:
-                    redact_rects = [
-                        a.rect
-                        for a in page.annots()
-                        if a.type[0] == fitz.PDF_ANNOT_REDACT
-                    ]
+        # SIDEBAR
+        sidebar = QWidget()
+        sidebar.setObjectName("Sidebar")
+        sidebar.setFixedWidth(280)
+        s_lay = QVBoxLayout(sidebar)
 
-                    try:
-                        for link in page.get_links():
-                            if any(
-                                fitz.Rect(link["from"]).intersects(r)
-                                for r in redact_rects
-                            ):
-                                page.delete_link(link)
-                    except:
-                        pass
+        lbl_title = QLabel("NullifyPDF")
+        lbl_title.setStyleSheet("font-size: 24px; font-weight: bold; color: #0ea5e9;")
+        s_lay.addWidget(lbl_title)
+        s_lay.addWidget(QLabel("AI Forensic Edition\n"))
 
-                    page.apply_redactions(
-                        images=fitz.PDF_REDACT_IMAGE_REMOVE, graphics=True
-                    )
+        btn_open = QPushButton("Apri PDF")
+        btn_open.setObjectName("Primary")
+        btn_open.clicked.connect(self.cmd_open)
+        s_lay.addWidget(btn_open)
 
-                    try:
-                        for widget in page.widgets():
-                            page.delete_widget(widget)
-                    except:
-                        pass
+        s_lay.addSpacing(20)
+        s_lay.addWidget(QLabel("Modello Lingua AI:"))
+        lang_lay = QHBoxLayout()
+        self.rb_en = QRadioButton("EN")
+        self.rb_it = QRadioButton("IT")
+        self.rb_both = QRadioButton("BOTH")
+        self.rb_en.setChecked(True)
+        self.lang_grp = QButtonGroup(self)
+        for rb in (self.rb_en, self.rb_it, self.rb_both):
+            self.lang_grp.addButton(rb)
+            lang_lay.addWidget(rb)
+        s_lay.addLayout(lang_lay)
 
-                export_doc.set_metadata({})
-                catalog_xref = export_doc.pdf_catalog()
-                for key in ["Metadata", "PieceInfo", "Properties", "AcroForm"]:
-                    export_doc.xref_set_key(catalog_xref, key, "null")
+        s_lay.addSpacing(10)
+        self.chk_img = QCheckBox("Oscura Immagini (Segnaposto)")
+        s_lay.addWidget(self.chk_img)
 
-                export_doc.save(fp, garbage=4, deflate=True, clean=True)
-                export_doc.close()
-                self.write_log(f"ESPORTAZIONE COMPLETATA: {os.path.basename(fp)}")
-            except Exception as e:
-                self.write_log(f"Errore Esportazione: {e}")
+        s_lay.addSpacing(20)
+        btn_dict = QPushButton("Dizionari")
+        btn_dict.clicked.connect(self.cmd_dict)
+        s_lay.addWidget(btn_dict)
 
-    # --- METODI GUI E UTILITY ---
+        self.btn_ai = QPushButton("Auto Redact (AI)")
+        self.btn_ai.setObjectName("Danger")
+        self.btn_ai.clicked.connect(self.cmd_auto_ai)
+        s_lay.addWidget(self.btn_ai)
+
+        btn_clear = QPushButton("Pulisci Pagina")
+        btn_clear.clicked.connect(self.cmd_clear)
+        s_lay.addWidget(btn_clear)
+
+        s_lay.addSpacing(20)
+        btn_export = QPushButton("Esporta PDF Sicuro")
+        btn_export.setStyleSheet("border-color: #0ea5e9; color: #0ea5e9;")
+        btn_export.clicked.connect(self.cmd_export)
+        s_lay.addWidget(btn_export)
+
+        s_lay.addStretch()
+
+        btn_about = QPushButton("Info")
+        btn_about.clicked.connect(self.cmd_about)
+        s_lay.addWidget(btn_about)
+
+        btn_exit = QPushButton("Esci")
+        btn_exit.setObjectName("Exit")
+        btn_exit.clicked.connect(self.close)
+        s_lay.addWidget(btn_exit)
+
+        main_lay.addWidget(sidebar)
+
+        # MAIN AREA
+        right_panel = QWidget()
+        r_lay = QVBoxLayout(right_panel)
+
+        # Top Bar
+        top_bar = QWidget()
+        top_bar.setObjectName("Panel")
+        tb_lay = QHBoxLayout(top_bar)
+        tb_lay.addWidget(QLabel("<b>Visualizzatore Documento</b>"))
+        tb_lay.addStretch()
+
+        btn_zout = QPushButton("-")
+        btn_zout.clicked.connect(lambda: self.adjust_zoom(-1))
+        self.lbl_zoom = QLabel("150%")
+        btn_zin = QPushButton("+")
+        btn_zin.clicked.connect(lambda: self.adjust_zoom(1))
+        tb_lay.addWidget(btn_zout)
+        tb_lay.addWidget(self.lbl_zoom)
+        tb_lay.addWidget(btn_zin)
+
+        tb_lay.addSpacing(20)
+        btn_prev = QPushButton("<")
+        btn_prev.clicked.connect(lambda: self.move_page(-1))
+        self.le_page = QLineEdit("0")
+        self.le_page.setFixedWidth(40)
+        self.le_page.setAlignment(Qt.AlignCenter)
+        self.le_page.returnPressed.connect(self.jump_page)
+        self.lbl_tot = QLabel("/ 0")
+        btn_next = QPushButton(">")
+        btn_next.clicked.connect(lambda: self.move_page(1))
+        tb_lay.addWidget(btn_prev)
+        tb_lay.addWidget(self.le_page)
+        tb_lay.addWidget(self.lbl_tot)
+        tb_lay.addWidget(btn_next)
+        r_lay.addWidget(top_bar)
+
+        # Canvas
+        self.scene = QGraphicsScene()
+        self.view = PDFView(self.scene)
+        self.view.rect_drawn.connect(self.user_draw_rect)
+        self.view.point_clicked.connect(self.user_click_pt)
+        self.view.zoom_req.connect(self.adjust_zoom)
+        r_lay.addWidget(self.view, stretch=1)
+
+        # Footer
+        footer = QWidget()
+        footer.setObjectName("Panel")
+        f_lay = QVBoxLayout(footer)
+        self.prog = QProgressBar()
+        self.prog.setValue(0)
+        self.log = QTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setFixedHeight(80)
+        f_lay.addWidget(self.prog)
+        f_lay.addWidget(self.log)
+        r_lay.addWidget(footer)
+
+        main_lay.addWidget(right_panel, stretch=1)
+
+    # --- DRAG & DROP NATIVO ---
+    def dragEnterEvent(self, e: QDragEnterEvent):
+        if e.mimeData().hasUrls():
+            e.acceptProposedAction()
+
+    def dropEvent(self, e: QDropEvent):
+        urls = e.mimeData().urls()
+        if urls and urls[0].isLocalFile():
+            self.load_path(urls[0].toLocalFile())
+
+    def write_log(self, m):
+        t = datetime.datetime.now().strftime("%H:%M:%S")
+        color = "#94a3b8"
+
+        if "ERRORE" in m or "CRITICO" in m:
+            color = "#ef4444"
+        elif "Avviso" in m or "Attendere" in m:
+            color = "#f59e0b"
+        elif "successo" in m or "completata" in m or "ESPORTA" in m:
+            color = "#10b981"
+
+        self.log.append(f"<span style='color: {color};'>[{t}] {m}</span>")
+
+    def update_progress(self, c, t):
+        self.prog.setValue(int((c / t) * 100))
+
+    # --- LOGICA PDF CORE ---
+    def cmd_open(self):
+        p, _ = QFileDialog.getOpenFileName(self, "Apri PDF", "", "PDF (*.pdf)")
+        if p:
+            self.load_path(p)
 
     def load_path(self, path):
         try:
             if self.doc:
                 self.doc.close()
-            temp_doc = fitz.open(path)
-
-            if temp_doc.needs_pass:
+            tdoc = fitz.open(path)
+            if tdoc.needs_pass:
                 self.write_log(
-                    "ERRORE: PDF protetto da password. Rimuovi la cifratura prima di caricarlo."
+                    "ERRORE: PDF cifrato. Rimuovi password prima del caricamento."
                 )
-                temp_doc.close()
+                tdoc.close()
                 return
-
-            self.doc = temp_doc
+            self.doc = tdoc
             self.page_num = 0
             self.scale = 1.5
-            self.update_zoom_ui()
+            self.adjust_zoom(0)
             self.write_log(f"Caricato: {os.path.basename(path)}")
         except Exception as e:
-            self.write_log(f"Errore caricamento: {e}")
-
-    def load(self):
-        p = native_askopenfilename()
-        if p:
-            # Prevenzione per garantire che il file selezionato sia un PDF
-            if not p.lower().endswith(".pdf"):
-                self.write_log("ERRORE: Formato non supportato. Seleziona un file PDF.")
-                return
-            self.load_path(p)
+            self.write_log(f"ERRORE: Impossibile caricare il file ({e})")
 
     def render(self):
         if not self.doc:
             return
         page = self.doc[self.page_num]
-        pix = page.get_pixmap(matrix=fitz.Matrix(self.scale, self.scale))
-        self.img = ImageTk.PhotoImage(
-            Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        pix = page.get_pixmap(matrix=fitz.Matrix(self.scale, self.scale), annots=True)
+        img = QImage(
+            pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888
         )
-        self.canvas.delete("all")
-        self.img_id = self.canvas.create_image(0, 0, anchor="nw", image=self.img)
-        self.canvas.configure(scrollregion=(0, 0, self.img.width(), self.img.height()))
-        self.center_image()
-        self.page_entry_var.set(str(self.page_num + 1))
-        self.tot_pages_lab.configure(text=f"/ {len(self.doc)}")
+        self.scene.clear()
+        self.scene.addPixmap(QPixmap.fromImage(img))
+        self.scene.setSceneRect(0, 0, pix.width, pix.height)
+        self.le_page.setText(str(self.page_num + 1))
+        self.lbl_tot.setText(f"/ {len(self.doc)}")
 
-    def center_image(self):
-        if self.img:
-            cw = self.canvas.winfo_width()
-            nx = max(0, (cw - self.img.width()) // 2)
-            self.canvas.coords(self.img_id, nx, 0)
-            self.offset_x = nx
-
-    def zoom_in(self):
-        if self.scale < self.max_scale:
-            self.scale += 0.25
-            self.update_zoom_ui()
-
-    def zoom_out(self):
-        if self.scale > self.min_scale:
-            self.scale -= 0.25
-            self.update_zoom_ui()
-
-    def update_zoom_ui(self):
-        self.zoom_var.set(f"{int(self.scale * 100)}%")
+    def adjust_zoom(self, direction):
+        self.scale = max(0.5, min(4.0, self.scale + (0.25 * direction)))
+        self.lbl_zoom.setText(f"{int(self.scale * 100)}%")
         self.render()
-
-    def jump_to_page(self, e=None):
-        try:
-            t = int(self.page_entry_var.get()) - 1
-            if 0 <= t < len(self.doc):
-                self.page_num = t
-                self.render()
-                self.canvas.yview_moveto(0)
-            else:
-                self.page_entry_var.set(str(self.page_num + 1))
-        except:
-            pass
 
     def move_page(self, d):
         if self.doc and 0 <= self.page_num + d < len(self.doc):
             self.page_num += d
             self.render()
-            self.canvas.yview_moveto(0)
 
-    def on_mouse_press(self, event):
+    def jump_page(self):
+        try:
+            n = int(self.le_page.text()) - 1
+            if 0 <= n < len(self.doc):
+                self.page_num = n
+                self.render()
+        except:
+            pass
+
+    # --- INTERAZIONI UTENTE SUL PDF ---
+    def user_draw_rect(self, qrect: QRectF):
         if not self.doc:
             return
-        cx, cy = self.canvas.canvasx(event.x), self.canvas.canvasy(event.y)
-        pt = fitz.Point(
-            (cx - self.offset_x) / self.scale, (cy - self.offset_y) / self.scale
+        r = fitz.Rect(
+            qrect.left() / self.scale,
+            qrect.top() / self.scale,
+            qrect.right() / self.scale,
+            qrect.bottom() / self.scale,
         )
+        p = self.doc[self.page_num]
+        txt = p.get_text("text", clip=r).strip()
+        if not txt:
+            p.add_redact_annot(
+                r,
+                text="[ IMMAGINE RIMOSSA ]",
+                align=fitz.TEXT_ALIGN_CENTER,
+                fill=(0.9, 0.9, 0.9),
+                fontsize=8,
+            )
+        else:
+            p.add_redact_annot(r, fill=(0, 0, 0))
+            cl = " ".join(txt.split()).lower()
+            if len(cl) > 2:
+                self.allowlist.discard(cl)
+                self.blocklist.add(cl)
+                self.save_list(self.block_file, self.blocklist)
+                self.save_list(self.allow_file, self.allowlist)
+        self.render()
+
+    def user_click_pt(self, qpt: QPointF):
+        if not self.doc:
+            return
+        pt = fitz.Point(qpt.x() / self.scale, qpt.y() / self.scale)
         p = self.doc[self.page_num]
         ans = [
             a
@@ -777,185 +535,195 @@ class NullifyPDF(ctk.CTk):
             if len(cl) > 2:
                 self.blocklist.discard(cl)
                 self.allowlist.add(cl)
-                self.save_list(self.blocklist_file, self.blocklist)
-                self.save_list(self.allowlist_file, self.allowlist)
+                self.save_list(self.block_file, self.blocklist)
+                self.save_list(self.allow_file, self.allowlist)
             self.render()
-            return
-        self.start_xy = (cx, cy)
-        if self.rect_id:
-            self.canvas.delete(self.rect_id)
-        self.rect_id = self.canvas.create_rectangle(
-            cx, cy, cx, cy, outline=self.danger_color, width=2
-        )
 
-    def on_mouse_release(self, event):
-        if not self.doc or not self.start_xy:
-            return
-        ex, ey = self.canvas.canvasx(event.x), self.canvas.canvasy(event.y)
-        x0, x1 = sorted(
-            [
-                max(0, min(self.start_xy[0] - self.offset_x, self.img.width())),
-                max(0, min(ex - self.offset_x, self.img.width())),
-            ]
-        )
-        y0, y1 = sorted(
-            [
-                max(0, min(self.start_xy[1] - self.offset_y, self.img.height())),
-                max(0, min(ey - self.offset_y, self.img.height())),
-            ]
-        )
-        if (x1 - x0) > 3:
-            rect = fitz.Rect(
-                x0 / self.scale, y0 / self.scale, x1 / self.scale, y1 / self.scale
-            )
-            txt = self.doc[self.page_num].get_text("text", clip=rect)
-
-            if not txt.strip():
-                self.add_professional_redaction(self.doc[self.page_num], rect)
-            else:
-                self.doc[self.page_num].add_redact_annot(rect, fill=(0, 0, 0))
-                cl = " ".join(txt.split()).lower()
-                if len(cl) > 2:
-                    self.allowlist.discard(cl)
-                    self.blocklist.add(cl)
-                    self.save_list(self.blocklist_file, self.blocklist)
-                    self.save_list(self.allowlist_file, self.allowlist)
-            self.render()
-        if self.rect_id:
-            self.canvas.delete(self.rect_id)
-        self.start_xy = None
-
-    def on_mouse_drag(self, e):
-        if not self.doc or not self.start_xy:
-            return
-        self.canvas.coords(
-            self.rect_id,
-            self.start_xy[0],
-            self.start_xy[1],
-            self.canvas.canvasx(e.x),
-            self.canvas.canvasy(e.y),
-        )
-
-    def on_mouse_wheel(self, e):
-        if getattr(e, "state", 0) & 0x0004:
-            return
-        if not self.doc:
-            return
-        if e.num == 4 or getattr(e, "delta", 0) > 0:
-            self.canvas.yview_scroll(-1, "units")
-        elif e.num == 5 or getattr(e, "delta", 0) < 0:
-            self.canvas.yview_scroll(1, "units")
-
-    def on_ctrl_mouse_wheel(self, e):
-        if self.doc:
-            if e.num == 4 or getattr(e, "delta", 0) > 0:
-                self.zoom_in()
-            elif e.num == 5 or getattr(e, "delta", 0) < 0:
-                self.zoom_out()
-
-    def clear_page(self):
+    def cmd_clear(self):
         if not self.doc:
             return
         p = self.doc[self.page_num]
-        annots_to_delete = [a for a in p.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT]
-        for a in annots_to_delete:
+        ans = [a for a in p.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT]
+        for a in ans:
             p.delete_annot(a)
         self.render()
-        self.write_log(f"Pulite {len(annots_to_delete)} censure.")
+        self.write_log(f"Censure rimosse su pagina {self.page_num+1}")
 
-    def open_dictionary(self):
-        dic_win = ctk.CTkToplevel(self)
-        dic_win.title("Dizionari")
+    def cmd_dict(self):
+        d = QDialog(self)
+        d.setWindowTitle("Dizionari")
+        d.resize(500, 450)
+        lay = QVBoxLayout(d)
+        lay.addWidget(QLabel("<b>🔴 BLOCKLIST GLOBALE</b>"))
+        bx = QTextEdit()
+        bx.setPlainText("\n".join(sorted(self.blocklist)))
+        lay.addWidget(bx)
+        lay.addWidget(QLabel("<b>🟢 ALLOWLIST GLOBALE</b>"))
+        ax = QTextEdit()
+        ax.setPlainText("\n".join(sorted(self.allowlist)))
+        lay.addWidget(ax)
+        btn = QPushButton("Salva e Chiudi")
+        btn.setObjectName("Primary")
 
-        w, h = 500, 450
-        self.update_idletasks()
-        x = self.winfo_x() + (self.winfo_width() // 2) - (w // 2)
-        y = self.winfo_y() + (self.winfo_height() // 2) - (h // 2)
-        dic_win.geometry(f"{w}x{h}+{x}+{y}")
-        dic_win.resizable(False, False)
-
-        self.apply_child_icon(dic_win)
-
-        ctk.CTkLabel(
-            dic_win, text="🔴 BLOCKLIST GLOBALE", font=("Roboto", 13, "bold")
-        ).pack(pady=(15, 5))
-        bx = ctk.CTkTextbox(dic_win, height=120)
-        bx.pack(fill="x", padx=20)
-        bx.insert("1.0", "\n".join(sorted(self.blocklist)))
-
-        ctk.CTkLabel(
-            dic_win, text="🟢 ALLOWLIST GLOBALE", font=("Roboto", 13, "bold")
-        ).pack(pady=(15, 5))
-        ax = ctk.CTkTextbox(dic_win, height=120)
-        ax.pack(fill="x", padx=20)
-        ax.insert("1.0", "\n".join(sorted(self.allowlist)))
-
-        def save_dicts():
+        def s():
             self.blocklist = {
                 l.strip().lower()
-                for l in bx.get("1.0", "end").split("\n")
+                for l in bx.toPlainText().split("\n")
                 if len(l.strip()) > 2
             }
             self.allowlist = {
                 l.strip().lower()
-                for l in ax.get("1.0", "end").split("\n")
+                for l in ax.toPlainText().split("\n")
                 if len(l.strip()) > 2
             }
-            self.save_list(self.blocklist_file, self.blocklist)
-            self.save_list(self.allowlist_file, self.allowlist)
-            dic_win.destroy()
+            self.save_list(self.block_file, self.blocklist)
+            self.save_list(self.allow_file, self.allowlist)
+            d.accept()
 
-        ctk.CTkButton(
-            dic_win,
-            text="Salva e Chiudi",
-            fg_color=self.accent_color,
-            command=save_dicts,
-        ).pack(pady=15)
-        dic_win.transient(self)
-        dic_win.grab_set()
+        btn.clicked.connect(s)
+        lay.addWidget(btn)
+        d.exec()
 
-    def show_about(self):
-        about = ctk.CTkToplevel(self)
-        about.title("Info")
-
-        w, h = 340, 440
-        self.update_idletasks()
-        x = self.winfo_x() + (self.winfo_width() // 2) - (w // 2)
-        y = self.winfo_y() + (self.winfo_height() // 2) - (h // 2)
-        about.geometry(f"{w}x{h}+{x}+{y}")
-        about.resizable(False, False)
-
-        self.apply_child_icon(about)
+    def cmd_about(self):
+        d = QDialog(self)
+        d.setWindowTitle("Info")
+        d.setFixedSize(340, 440)
+        lay = QVBoxLayout(d)
+        lay.setAlignment(Qt.AlignCenter)
 
         ip = resource_path(os.path.join("images", "NullifyPDF_icon.png"))
         if os.path.exists(ip):
-            img = Image.open(ip)
-            self.alogo = ctk.CTkImage(light_image=img, dark_image=img, size=(100, 100))
-            ctk.CTkLabel(about, image=self.alogo, text="").pack(pady=20)
+            lbl_icon = QLabel()
+            pix = QPixmap(ip).scaled(
+                100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation
+            )
+            lbl_icon.setPixmap(pix)
+            lbl_icon.setAlignment(Qt.AlignCenter)
+            lay.addWidget(lbl_icon)
+            lay.addSpacing(10)
 
-        ctk.CTkLabel(about, text="NullifyPDF", font=("Roboto", 24, "bold")).pack()
-        ctk.CTkLabel(
-            about, text=f"v{__version__} AI Forensic", text_color=self.accent_color
-        ).pack()
-        ctk.CTkLabel(
-            about,
-            text="\nAnonimizzazione PDF Professionale Offline.\n\nSviluppato da: Graziano Mariella\nLicenza MIT",
-            justify="center",
-        ).pack(pady=10)
-        ctk.CTkButton(
-            about, text="Chiudi", fg_color=self.bg_color, command=about.destroy
-        ).pack(pady=20)
+        lbl_title = QLabel("NullifyPDF")
+        lbl_title.setStyleSheet("font-size: 24px; font-weight: bold;")
+        lbl_title.setAlignment(Qt.AlignCenter)
+        lay.addWidget(lbl_title)
 
-        about.transient(self)
-        about.grab_set()
+        lbl_ver = QLabel(f"v{__version__} AI Forensic")
+        lbl_ver.setStyleSheet("color: #0ea5e9; font-weight: bold;")
+        lbl_ver.setAlignment(Qt.AlignCenter)
+        lay.addWidget(lbl_ver)
 
-    def write_log(self, m):
-        self.log.insert(
-            "end", f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {m}\n"
+        desc = QLabel(
+            "\nAnonimizzazione PDF Professionale Offline.\n\nSviluppato da: Graziano Mariella\nLicenza MIT"
         )
-        self.log.see("end")
+        desc.setAlignment(Qt.AlignCenter)
+        lay.addWidget(desc)
+
+        lay.addSpacing(20)
+        btn = QPushButton("Chiudi")
+        btn.clicked.connect(d.accept)
+        lay.addWidget(btn)
+
+        d.exec()
+
+    # --- ORCHESTRAZIONE AI ---
+    def cmd_auto_ai(self):
+        if not self.doc:
+            return
+        self.btn_ai.setEnabled(False)
+        self.prog.setValue(0)
+        c_allow = [
+            (a, re.compile(r"\b" + re.escape(a) + r"\b")) for a in self.allowlist
+        ]
+        lang = (
+            "EN"
+            if self.rb_en.isChecked()
+            else "IT" if self.rb_it.isChecked() else "BOTH"
+        )
+        texts = [p.get_text() for p in self.doc]
+        self.start_scan_sig.emit(texts, lang, c_allow)
+
+    @Slot(int, set)
+    def apply_ai_to_page(self, i, words):
+        page = self.doc[i]
+        e_rects = [a.rect for a in page.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT]
+
+        if self.chk_img.isChecked():
+            for img in page.get_image_info(hashes=False):
+                ir = fitz.Rect(img["bbox"])
+                page.add_redact_annot(
+                    ir,
+                    text="[ IMMAGINE RIMOSSA ]",
+                    align=1,
+                    fill=(0.9, 0.9, 0.9),
+                    fontsize=8,
+                )
+                e_rects.append(ir)
+
+        for bw in self.blocklist:
+            for r in page.search_for(bw):
+                c = fitz.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2)
+                if not any(e.contains(c) for e in e_rects):
+                    page.add_redact_annot(r, fill=(0, 0, 0))
+                    e_rects.append(r)
+
+        p_rects = [r for aw in self.allowlist for r in page.search_for(aw)]
+
+        for w in words:
+            for r in page.search_for(w):
+                if any(r.intersects(pr) for pr in p_rects):
+                    continue
+                c = fitz.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2)
+                if not any(e.contains(c) for e in e_rects):
+                    page.add_redact_annot(r, fill=(0, 0, 0))
+                    e_rects.append(r)
+
+    @Slot()
+    def ai_finished(self):
+        self.btn_ai.setEnabled(True)
+        self.render()
+
+    def cmd_export(self):
+        if not self.doc:
+            return
+        p, _ = QFileDialog.getSaveFileName(
+            self,
+            "Esporta Sicuro",
+            f"{os.path.splitext(self.doc.name)[0]}_secured.pdf",
+            "PDF (*.pdf)",
+        )
+        if p:
+            self.write_log("Scrubbing Forense in corso...")
+            ex_doc = fitz.open("pdf", self.doc.write())
+            for page in ex_doc:
+                r_rects = [
+                    a.rect for a in page.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT
+                ]
+                try:
+                    for lnk in page.get_links():
+                        if any(fitz.Rect(lnk["from"]).intersects(r) for r in r_rects):
+                            page.delete_link(lnk)
+                except:
+                    pass
+                page.apply_redactions(
+                    images=fitz.PDF_REDACT_IMAGE_REMOVE, graphics=True
+                )
+                try:
+                    for w in page.widgets():
+                        page.delete_widget(w)
+                except:
+                    pass
+
+            ex_doc.set_metadata({})
+            cx = ex_doc.pdf_catalog()
+            for k in ["Metadata", "PieceInfo", "Properties", "AcroForm"]:
+                ex_doc.xref_set_key(cx, k, "null")
+            ex_doc.save(p, garbage=4, deflate=True, clean=True)
+            ex_doc.close()
+            self.write_log(f"ESPORTAZIONE COMPLETATA: {os.path.basename(p)}")
 
 
 if __name__ == "__main__":
-    app = NullifyPDF()
-    app.mainloop()
+    app = QApplication(sys.argv)
+    window = NullifyPDF()
+    window.show()
+    sys.exit(app.exec())
