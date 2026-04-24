@@ -35,7 +35,7 @@ def setup_environment():
     subprocess.run([venv_python, "-m", "pip", "install", "--upgrade", "pip", "-q"])
 
     print(
-        "[*] Installazione librerie (PySide6, PyMuPDF, pillow, presidio-analyzer, spacy, pyinstaller)..."
+        "[*] Installazione librerie (PySide6, PyMuPDF, presidio-analyzer, spacy, pyinstaller)..."
     )
     subprocess.run(
         [
@@ -45,14 +45,13 @@ def setup_environment():
             "install",
             "PySide6",
             "PyMuPDF",
-            "pillow",
             "presidio-analyzer",
             "spacy",
             "pyinstaller",
         ]
     )
 
-    print("[*] Download dei modelli linguistici AI (spaCy EN & IT)... attendere...")
+    print("[*] Download dei modelli linguistici AI (spaCy EN & IT)...")
     subprocess.run([venv_python, "-m", "spacy", "download", "en_core_web_md"])
     subprocess.run([venv_python, "-m", "spacy", "download", "it_core_news_md"])
 
