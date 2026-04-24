@@ -18,7 +18,6 @@ def get_version():
 
 
 def ensure_icon(sys_os):
-    """Controlla la presenza delle icone native pre-generate nella cartella images"""
     base_dir = "images"
     if sys_os == "Windows":
         ico_path = os.path.join(base_dir, "NullifyPDF_icon.ico")
@@ -26,89 +25,115 @@ def ensure_icon(sys_os):
     elif sys_os == "Darwin":
         icns_path = os.path.join(base_dir, "NullifyPDF_icon.icns")
         return icns_path.replace("\\", "/") if os.path.exists(icns_path) else None
-    else:
-        png_path = os.path.join(base_dir, "NullifyPDF_icon.png")
-        return png_path.replace("\\", "/") if os.path.exists(png_path) else None
+    return os.path.join(base_dir, "NullifyPDF_icon.png").replace("\\", "/")
+
+
+def build_rpm(version, executable_name):
+    print("\n[*] Creazione pacchetto .rpm...")
+    rpm_dir = os.path.abspath("rpm_build_tmp")
+    for d in ["BUILD", "BUILDROOT", "RPMS", "SOURCES", "SPECS", "SRPMS"]:
+        os.makedirs(os.path.join(rpm_dir, d), exist_ok=True)
+
+    spec_path = os.path.join(rpm_dir, "SPECS", "nullify.spec")
+    with open(spec_path, "w", encoding="utf-8") as f:
+        f.write(
+            f"""Name: nullify-pdf\nVersion: {version}\nRelease: 1\nSummary: AI PDF Redaction\nLicense: MIT\n%description\nTool forense AI.\n%install\nmkdir -p %{{buildroot}}/usr/bin\ncp {os.path.abspath(f'dist/{executable_name}')} %{{buildroot}}/usr/bin/nullify-pdf\n%files\n/usr/bin/nullify-pdf"""
+        )
+
+    try:
+        subprocess.run(
+            ["rpmbuild", "--define", f"_topdir {rpm_dir}", "-bb", spec_path],
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
+        for root, _, files in os.walk(os.path.join(rpm_dir, "RPMS")):
+            for file in files:
+                if file.endswith(".rpm"):
+                    shutil.move(
+                        os.path.join(root, file),
+                        f"dist/NullifyPDF_v{version}_Fedora.rpm",
+                    )
+    except:
+        pass
+    finally:
+        shutil.rmtree(rpm_dir, ignore_errors=True)
+
+
+def build_deb(version, executable_name):
+    print("\n[*] Creazione pacchetto .deb...")
+    pkg_dir = "deb_build_tmp"
+    for d in ["DEBIAN", "usr/bin"]:
+        os.makedirs(os.path.join(pkg_dir, d), exist_ok=True)
+    shutil.copy(f"dist/{executable_name}", f"{pkg_dir}/usr/bin/nullify-pdf")
+    os.chmod(f"{pkg_dir}/usr/bin/nullify-pdf", 0o755)
+    with open(f"{pkg_dir}/DEBIAN/control", "w") as f:
+        f.write(
+            f"Package: nullify-pdf\nVersion: {version}\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: Graziano\nDescription: AI PDF Redaction"
+        )
+    try:
+        subprocess.run(
+            ["dpkg-deb", "--build", pkg_dir, f"dist/NullifyPDF_v{version}_Ubuntu.deb"],
+            check=True,
+        )
+    except:
+        pass
+    finally:
+        shutil.rmtree(pkg_dir, ignore_errors=True)
 
 
 def build_app():
-    print("--- Avvio Compilazione NullifyPDF (PySide6) ---")
     version = get_version()
     sys_os = platform.system()
-
-    # Pulizia vecchi file
     for item in ["build", "dist", "NullifyPDF.spec"]:
         if os.path.exists(item):
             shutil.rmtree(item) if os.path.isdir(item) else os.remove(item)
 
-    # RIPRISTINO LOGICA NOMI PRECEDENTE
-    os_name, ext = (
-        ("Windows", ".exe")
-        if sys_os == "Windows"
-        else ("macOS", ".app") if sys_os == "Darwin" else ("Linux_Portable", "")
-    )
-    final_name = f"NullifyPDF_v{version}_{os_name}{ext}"
-
     icon_path = ensure_icon(sys_os)
     icon_str = f"'{icon_path}'" if icon_path else "None"
 
-    # Definizione specifica per macOS
-    bundle_str = (
-        f"app = BUNDLE(exe, name='NullifyPDF.app', icon={icon_str}, bundle_identifier='com.nullifypdf.forensic',)"
+    # Bundle logic per macOS
+    bundle_code = (
+        f"app = BUNDLE(exe, name='NullifyPDF.app', icon={icon_str}, bundle_identifier='com.nullifypdf.forensic')"
         if sys_os == "Darwin"
         else ""
     )
 
     spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
-import sys
-sys.setrecursionlimit(5000)
 from PyInstaller.utils.hooks import collect_all
-
-datas = [('images', 'images')] if __import__('os').path.exists('images') else []
+datas = [('images', 'images')]
 binaries = []
-hiddenimports = ['spacy', 'presidio_analyzer']
-
+hiddenimports = []
 for pkg in ['presidio_analyzer', 'spacy', 'en_core_web_md', 'it_core_news_md']:
-    tmp_ret = collect_all(pkg)
-    datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+    t = collect_all(pkg)
+    datas += t[0]; binaries += t[1]; hiddenimports += t[2]
 
-a = Analysis(['NullifyPDF.py'], pathex=[], binaries=binaries, datas=datas, hiddenimports=hiddenimports,
-    hookspath=[], hooksconfig={{}}, runtime_hooks=[], excludes=[], noarchive=False)
+a = Analysis(['NullifyPDF.py'], datas=datas, hiddenimports=hiddenimports)
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name='NullifyPDF', debug=False,
-    bootloader_ignore_signals=False, strip=False, upx=True, upx_exclude=[], runtime_tmpdir=None,
-    console=False, disable_windowed_traceback=False, argv_emulation=False, target_arch=None,
-    codesign_identity=None, entitlements_file=None, icon={icon_str})
-{bundle_str}
+exe = EXE(pyz, a.scripts, a.binaries, a.datas, name='NullifyPDF', debug=False, console=False, icon={icon_str})
+{bundle_code}
 """
-    with open("NullifyPDF.spec", "w", encoding="utf-8") as f:
+    with open("NullifyPDF.spec", "w") as f:
         f.write(spec_content)
+    subprocess.run([sys.executable, "-m", "PyInstaller", "NullifyPDF.spec"], check=True)
 
-    try:
+    if sys_os == "Windows":
+        os.rename("dist/NullifyPDF.exe", f"dist/NullifyPDF_v{version}_Windows.exe")
+    elif sys_os == "Darwin":
+        # Creazione file ZIP dell'App bundle per la distribuzione
+        app_path = "dist/NullifyPDF.app"
+        final_zip = f"dist/NullifyPDF_v{version}_macOS.zip"
+        print("[*] Compressione App Bundle per macOS...")
         subprocess.run(
-            [sys.executable, "-m", "PyInstaller", "NullifyPDF.spec"], check=True
+            ["zip", "-r", "-y", final_zip, "NullifyPDF.app"], cwd="dist", check=True
         )
-
-        # Percorso generato da PyInstaller
-        original_path = os.path.join(
-            "dist",
-            (
-                "NullifyPDF.app"
-                if sys_os == "Darwin"
-                else "NullifyPDF.exe" if sys_os == "Windows" else "NullifyPDF"
-            ),
-        )
-        final_path = os.path.join("dist", final_name)
-
-        if os.path.exists(original_path):
-            os.rename(original_path, final_path)
-            print(f"[✓] Compilazione completata con successo!")
-            print(f"[✓] File generato: dist/{final_name}")
-        else:
-            print(f"[-] Errore: File {original_path} non trovato.")
-    except subprocess.CalledProcessError:
-        print("\n[-] ERRORE CRITICO: Compilazione fallita.")
-        sys.exit(1)
+        shutil.rmtree(app_path)
+    else:  # Linux
+        portable_name = f"NullifyPDF_v{version}_Linux_Portable"
+        os.rename("dist/NullifyPDF", f"dist/{portable_name}")
+        if shutil.which("rpmbuild"):
+            build_rpm(version, portable_name)
+        if shutil.which("dpkg-deb"):
+            build_deb(version, portable_name)
 
 
 if __name__ == "__main__":

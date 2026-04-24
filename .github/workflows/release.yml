@@ -3,7 +3,7 @@ name: Build and Release NullifyPDF
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
   workflow_dispatch:
 
 jobs:
@@ -21,14 +21,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
-          cache: "pip"
+          python-version: '3.10'
+          cache: 'pip'
 
       - name: Install System Dependencies (Linux)
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libegl1 binutils
+        run: sudo apt-get update && sudo apt-get install -y rpm dpkg binutils libxcb-cursor0 libxkbcommon-x11-0
 
       - name: Install Python Dependencies
         run: |
@@ -40,14 +38,18 @@ jobs:
           python -m spacy download en_core_web_md
           python -m spacy download it_core_news_md
 
-      - name: Build Local
+      - name: Build
         run: python build_local.py
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ runner.os }}
-          path: dist/NullifyPDF_v*
+          path: |
+            dist/NullifyPDF_v*_Windows.exe
+            dist/NullifyPDF_v*_macOS.zip
+            dist/NullifyPDF_v*_Ubuntu.deb
+            dist/NullifyPDF_v*_Fedora.rpm
 
   create_release:
     name: Create GitHub Release
@@ -65,18 +67,11 @@ jobs:
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          files: all-builds/NullifyPDF_v*
-          body: |
-            ## NullifyPDF v2.0.4 - Enterprise Edition
-
-            Questa versione segna il passaggio al framework **PySide6 (Qt6)** per una stabilità e performance senza precedenti.
-
-            ### Novità:
-            - **Multithreading:** Analisi AI fluida senza blocchi dell'interfaccia.
-            - **Drag & Drop:** Supporto nativo per trascinamento file.
-            - **Log Semantici:** Feedback visivo migliorato.
-            - **Forensic Scrubbing:** Pulizia profonda di metadati e build-id PDF.
-          draft: false
-          prerelease: false
+          files: |
+            all-builds/NullifyPDF_v*_Windows.exe
+            all-builds/NullifyPDF_v*_macOS.zip
+            all-builds/NullifyPDF_v*_Ubuntu.deb
+            all-builds/NullifyPDF_v*_Fedora.rpm
+          body: "Release Stabile NullifyPDF v2.0.4. Include App Bundle per macOS (ZIP), eseguibile Windows e pacchetti Linux nativi."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
