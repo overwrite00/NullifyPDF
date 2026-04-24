@@ -29,7 +29,7 @@ def ensure_icon(sys_os):
 
 
 def build_rpm(version, executable_name):
-    print("\n[*] Creazione pacchetto RPM per Fedora/RHEL...")
+    print("\n[INFO] Creazione pacchetto RPM per Fedora/RHEL...")
     rpm_dir = os.path.abspath("rpm_build_tmp")
     for d in ["BUILD", "BUILDROOT", "RPMS", "SOURCES", "SPECS", "SRPMS"]:
         os.makedirs(os.path.join(rpm_dir, d), exist_ok=True)
@@ -97,15 +97,15 @@ EOF
                         os.path.join(root, file),
                         f"dist/NullifyPDF_v{version}_Fedora.rpm",
                     )
-        print("[✓] RPM creato con successo.")
+        print("[OK] RPM creato con successo.")
     except Exception as e:
-        print(f"[-] Errore RPM: {e}")
+        print(f"[ERROR] Errore RPM: {e}")
     finally:
         shutil.rmtree(rpm_dir, ignore_errors=True)
 
 
 def build_deb(version, executable_name):
-    print("\n[*] Creazione pacchetto DEB per Ubuntu/Debian...")
+    print("\n[INFO] Creazione pacchetto DEB per Ubuntu/Debian...")
     pkg_dir = "deb_build_tmp"
     for d in [
         "DEBIAN",
@@ -150,9 +150,9 @@ def build_deb(version, executable_name):
             check=True,
             stdout=subprocess.DEVNULL,
         )
-        print("[✓] DEB creato con successo.")
+        print("[OK] DEB creato con successo.")
     except Exception as e:
-        print(f"[-] Errore DEB: {e}")
+        print(f"[ERROR] Errore DEB: {e}")
     finally:
         shutil.rmtree(pkg_dir, ignore_errors=True)
 
@@ -175,7 +175,6 @@ def build_app():
     icon_path = ensure_icon(sys_os)
     icon_str = f"'{icon_path}'" if icon_path else "None"
 
-    # Generazione dinamica del file .spec per supportare il nuovo standard macOS ONEDIR
     if sys_os == "Darwin":
         spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
@@ -217,10 +216,9 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, name='NullifyPDF', debug=False, c
 
         if sys_os == "Windows":
             os.rename("dist/NullifyPDF.exe", f"dist/{final_name}")
-            print(f"[✓] Compilazione completata: dist/{final_name}")
+            print(f"[OK] Compilazione completata: dist/{final_name}")
         elif sys_os == "Darwin":
-            print("[*] Compressione App Bundle per macOS in formato ZIP...")
-            # FIX PATHING ZIP: Il nome file non deve contenere 'dist/' se cwd='dist'
+            print("[INFO] Compressione App Bundle per macOS in formato ZIP...")
             zip_filename = f"NullifyPDF_v{version}_macOS.zip"
             subprocess.run(
                 ["zip", "-r", "-y", zip_filename, "NullifyPDF.app"],
@@ -229,17 +227,17 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, name='NullifyPDF', debug=False, c
                 stdout=subprocess.DEVNULL,
             )
             shutil.rmtree("dist/NullifyPDF.app")
-            print(f"[✓] Compilazione completata: dist/{zip_filename}")
+            print(f"[OK] Compilazione completata: dist/{zip_filename}")
         else:  # Linux
             os.rename("dist/NullifyPDF", f"dist/{final_name}")
-            print(f"[✓] Eseguibile portatile pronto: dist/{final_name}")
+            print(f"[OK] Eseguibile portatile pronto: dist/{final_name}")
             if shutil.which("rpmbuild"):
                 build_rpm(version, final_name)
             if shutil.which("dpkg-deb"):
                 build_deb(version, final_name)
 
     except subprocess.CalledProcessError as e:
-        print(f"\n[-] ERRORE CRITICO: Compilazione fallita.")
+        print(f"\n[ERROR] ERRORE CRITICO: Compilazione fallita.")
         sys.exit(1)
 
 
