@@ -29,7 +29,7 @@ def ensure_icon(sys_os):
 
 
 def build_rpm(version, executable_name):
-    print("\n[*] Creazione pacchetto RPM per Fedora/RHEL...")
+    print("\n[INFO] Creazione pacchetto RPM per Fedora/RHEL...")
     rpm_dir = os.path.abspath("rpm_build_tmp")
     for d in ["BUILD", "BUILDROOT", "RPMS", "SOURCES", "SPECS", "SRPMS"]:
         os.makedirs(os.path.join(rpm_dir, d), exist_ok=True)
@@ -97,15 +97,15 @@ EOF
                         os.path.join(root, file),
                         f"dist/NullifyPDF_v{version}_Fedora.rpm",
                     )
-        print("[✓] RPM creato con successo.")
+        print("[OK] RPM creato con successo.")
     except Exception as e:
-        print(f"[-] Errore RPM: {e}")
+        print(f"[ERROR] Errore RPM: {e}")
     finally:
         shutil.rmtree(rpm_dir, ignore_errors=True)
 
 
 def build_deb(version, executable_name):
-    print("\n[*] Creazione pacchetto DEB per Ubuntu/Debian...")
+    print("\n[INFO] Creazione pacchetto DEB per Ubuntu/Debian...")
     pkg_dir = "deb_build_tmp"
     for d in [
         "DEBIAN",
@@ -150,9 +150,9 @@ def build_deb(version, executable_name):
             check=True,
             stdout=subprocess.DEVNULL,
         )
-        print("[✓] DEB creato con successo.")
+        print("[OK] DEB creato con successo.")
     except Exception as e:
-        print(f"[-] Errore DEB: {e}")
+        print(f"[ERROR] Errore DEB: {e}")
     finally:
         shutil.rmtree(pkg_dir, ignore_errors=True)
 
@@ -175,13 +175,24 @@ def build_app():
     icon_path = ensure_icon(sys_os)
     icon_str = f"'{icon_path}'" if icon_path else "None"
 
-    bundle_code = (
-        f"app = BUNDLE(exe, name='NullifyPDF.app', icon={icon_str}, bundle_identifier='com.nullifypdf.forensic')"
-        if sys_os == "Darwin"
-        else ""
-    )
+    if sys_os == "Darwin":
+        spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_all
+datas = [('images', 'images')] if __import__('os').path.exists('images') else []
+binaries = []
+hiddenimports = ['spacy', 'presidio_analyzer']
+for pkg in ['presidio_analyzer', 'spacy', 'en_core_web_md', 'it_core_news_md']:
+    t = collect_all(pkg)
+    datas += t[0]; binaries += t[1]; hiddenimports += t[2]
 
-    spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
+a = Analysis(['NullifyPDF.py'], datas=datas, hiddenimports=hiddenimports)
+pyz = PYZ(a.pure)
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='NullifyPDF', debug=False, console=False, icon={icon_str})
+coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=True, upx_exclude=[], name='NullifyPDF')
+app = BUNDLE(coll, name='NullifyPDF.app', icon={icon_str}, bundle_identifier='com.nullifypdf.forensic')
+"""
+    else:
+        spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 datas = [('images', 'images')] if __import__('os').path.exists('images') else []
 binaries = []
@@ -193,8 +204,8 @@ for pkg in ['presidio_analyzer', 'spacy', 'en_core_web_md', 'it_core_news_md']:
 a = Analysis(['NullifyPDF.py'], datas=datas, hiddenimports=hiddenimports)
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, a.binaries, a.datas, name='NullifyPDF', debug=False, console=False, icon={icon_str})
-{bundle_code}
 """
+
     with open("NullifyPDF.spec", "w", encoding="utf-8") as f:
         f.write(spec_content)
 
@@ -205,28 +216,28 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, name='NullifyPDF', debug=False, c
 
         if sys_os == "Windows":
             os.rename("dist/NullifyPDF.exe", f"dist/{final_name}")
-            print(f"[✓] Compilazione completata: dist/{final_name}")
+            print(f"[OK] Compilazione completata: dist/{final_name}")
         elif sys_os == "Darwin":
-            print("[*] Compressione App Bundle per macOS in formato ZIP...")
-            final_zip = f"dist/NullifyPDF_v{version}_macOS.zip"
+            print("[INFO] Compressione App Bundle per macOS in formato ZIP...")
+            zip_filename = f"NullifyPDF_v{version}_macOS.zip"
             subprocess.run(
-                ["zip", "-r", "-y", final_zip, "NullifyPDF.app"],
+                ["zip", "-r", "-y", zip_filename, "NullifyPDF.app"],
                 cwd="dist",
                 check=True,
                 stdout=subprocess.DEVNULL,
             )
             shutil.rmtree("dist/NullifyPDF.app")
-            print(f"[✓] Compilazione completata: {final_zip}")
+            print(f"[OK] Compilazione completata: dist/{zip_filename}")
         else:  # Linux
             os.rename("dist/NullifyPDF", f"dist/{final_name}")
-            print(f"[✓] Eseguibile portatile pronto: dist/{final_name}")
+            print(f"[OK] Eseguibile portatile pronto: dist/{final_name}")
             if shutil.which("rpmbuild"):
                 build_rpm(version, final_name)
             if shutil.which("dpkg-deb"):
                 build_deb(version, final_name)
 
-    except subprocess.CalledProcessError:
-        print("\n[-] ERRORE CRITICO: Compilazione fallita.")
+    except subprocess.CalledProcessError as e:
+        print(f"\n[ERROR] ERRORE CRITICO: Compilazione fallita.")
         sys.exit(1)
 
 
