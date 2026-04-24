@@ -3,7 +3,7 @@
 ![GitHub Release](https://img.shields.io/github/v/release/overwrite00/NullifyPDF?style=flat-square&color=1fb2e0)
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/overwrite00/NullifyPDF/release.yml?style=flat-square&label=build)
 ![GitHub License](https://img.shields.io/github/license/overwrite00/NullifyPDF?style=flat-square&color=blue)
-![Python Version](https://img.shields.io/badge/python-3.10%2B-blue?style=flat-square&logo=python)
+![Python Version](https://img.shields.io/badge/python-3.9%2B-blue?style=flat-square&logo=python)
 
 <p align="center">
   <img src="images/NullifyPDF.png" alt="NullifyPDF">
@@ -42,8 +42,8 @@ NullifyPDF va oltre la semplice copertura visiva del testo. Utilizza motori di *
 
 ### 🛠️ Tecnologie utilizzate
 
-- **Python 3.10+**
-- **CustomTkinter**: Interfaccia grafica moderna in Dark Mode.
+- **Python 3.9+**
+- **PySide6 (Qt6)**: Nuovo motore grafico con nterfaccia grafica moderna in Dark Mode.
 - **PyMuPDF (fitz)**: Motore ad alte prestazioni per la manipolazione di PDF.
 - **Microsoft Presidio & spaCy**: Motori AI per il riconoscimento delle entità (NER).
 - **Pillow**: Gestione avanzata degli asset grafici e icone.
@@ -55,11 +55,12 @@ NullifyPDF va oltre la semplice copertura visiva del testo. Utilizza motori di *
 ## ✨ Caratteristiche principali
 
 - 🧠 **AI-Powered Redaction:** Riconoscimento automatico bilingue (IT/EN) di PII (Nomi, Luoghi, Email, Telefoni, IBAN, Carte di Credito, Crypto).
-- 🗄️ **Interfaccia Widescreen:** GUI moderna in CustomTkinter con Sidebar laterale, controlli di Zoom fluido e navigatore di pagine a salto diretto.
+- 🗄️ - **UI Fluida:** Grazie all'integrazione di PySide6 e all'architettura Multithread, l'interfaccia non si blocca mai durante l'analisi AI.
 - 📖 **Dizionari Intelligenti Persistenti:** Blocklist e Allowlist globali sincronizzate su disco (`~/.nullifypdf`) con logica di mutua esclusività e sistema anti-stacking delle censure.
 - 🛡️ **Forensic Scrubbing:** Non si limita a "colorare di nero". In fase di export, distrugge fisicamente i metadati, rimuove i link nascosti e appiattisce i moduli interattivi (AcroForms).
 - 🖼️ **Blindfold Mode (Sostituzione Immagini):** Interruttore dedicato per censurare automaticamente tutte le immagini, loghi o QR code, sostituendoli con un segnaposto professionale `[ IMMAGINE RIMOSSA ]`.
 - 📦 **Cross-Platform nativo:** Script di build integrati per generare `.exe` (Windows), `.app` bundle (macOS), e pacchetti `.deb`/`.rpm` (Linux).
+- **Drag & Drop:** Supporto nativo per il trascinamento dei file sulla finestra.
 
 [Back To The Top](#nullifypdf---ai-forensic-edition)
 
