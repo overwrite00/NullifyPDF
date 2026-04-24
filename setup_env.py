@@ -34,21 +34,16 @@ def setup_environment():
     print("[*] Aggiornamento di pip...")
     subprocess.run([venv_python, "-m", "pip", "install", "--upgrade", "pip", "-q"])
 
-    print(
-        "[*] Installazione librerie (PySide6, PyMuPDF, presidio-analyzer, spacy, pyinstaller)..."
-    )
+    # --- MODIFICA CHIAVE: Lettura dal requirements.txt ---
+    if not os.path.exists("requirements.txt"):
+        print(
+            "[-] ERRORE: File 'requirements.txt' non trovato nella root del progetto."
+        )
+        sys.exit(1)
+
+    print("[*] Installazione dipendenze da requirements.txt...")
     subprocess.run(
-        [
-            venv_python,
-            "-m",
-            "pip",
-            "install",
-            "PySide6",
-            "PyMuPDF",
-            "presidio-analyzer",
-            "spacy",
-            "pyinstaller",
-        ]
+        [venv_python, "-m", "pip", "install", "-r", "requirements.txt"], check=True
     )
 
     print("[*] Download dei modelli linguistici AI (spaCy EN & IT)...")
