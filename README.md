@@ -46,7 +46,6 @@ NullifyPDF va oltre la semplice copertura visiva del testo. Utilizza motori di *
 - **PySide6 (Qt6)**: Nuovo motore grafico con nterfaccia grafica moderna in Dark Mode.
 - **PyMuPDF (fitz)**: Motore ad alte prestazioni per la manipolazione di PDF.
 - **Microsoft Presidio & spaCy**: Motori AI per il riconoscimento delle entità (NER).
-- **Pillow**: Gestione avanzata degli asset grafici e icone.
 
 [Back To The Top](#nullifypdf---ai-forensic-edition)
 
