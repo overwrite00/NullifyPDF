@@ -1,9 +1,13 @@
-name: Build and Release NullifyPDF
+name: Test Build NullifyPDF
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -44,34 +48,10 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: build-${{ runner.os }}
+          name: test-build-${{ runner.os }}
           path: |
             dist/NullifyPDF_v*_Windows.exe
             dist/NullifyPDF_v*_macOS.zip
             dist/NullifyPDF_v*_Ubuntu.deb
             dist/NullifyPDF_v*_Fedora.rpm
-
-  create_release:
-    name: Create GitHub Release
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-      - name: Download All Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: all-builds
-          pattern: build-*
-          merge-multiple: true
-
-      - name: Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            all-builds/NullifyPDF_v*_Windows.exe
-            all-builds/NullifyPDF_v*_macOS.zip
-            all-builds/NullifyPDF_v*_Ubuntu.deb
-            all-builds/NullifyPDF_v*_Fedora.rpm
-          body: "Release Stabile NullifyPDF. Include App Bundle macOS (ZIP), EXE per Windows e pacchetti nativi Linux."
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          retention-days: 3
