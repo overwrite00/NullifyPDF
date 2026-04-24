@@ -4,13 +4,13 @@ Benvenuto nella guida operativa di NullifyPDF. Questa guida ti accompagnerà pas
 
 ---
 
-### 🟢 Passo 1: Caricare il documento
+## 🟢 Passo 1: Caricare il documento
 
 1. Clicca sul pulsante blu **"Apri PDF"** in alto a sinistra.
 2. Seleziona il file dal tuo computer.
 3. Il documento apparirà nell'area centrale. Puoi scorrere le pagine con il mouse o usare le frecce in alto a destra.
 
-### 🧠 Passo 2: Configurare l'Intelligenza Artificiale
+## 🧠 Passo 2: Configurare l'Intelligenza Artificiale
 
 Prima di iniziare, seleziona la lingua del documento nella sidebar:
 
@@ -18,9 +18,7 @@ Prima di iniziare, seleziona la lingua del documento nella sidebar:
 - **EN**: Per documenti in inglese.
 - **BOTH**: Se il testo contiene entrambe le lingue.
 
-> **Nota:** Al primo avvio, il programma potrebbe impiegare qualche secondo per caricare i modelli. Attendi il messaggio di conferma nel box dei log in basso.
-
-### 🔴 Passo 3: Censura Automatica
+## 🔴 Passo 3: Censura Automatica
 
 Clicca sul pulsante **"Auto Redact (AI)"**. Il programma cercherà e coprirà automaticamente:
 
@@ -29,7 +27,7 @@ Clicca sul pulsante **"Auto Redact (AI)"**. Il programma cercherà e coprirà au
 - Email e Numeri di Telefono
 - IBAN, Carte di Credito e Indirizzi Crypto
 
-### 🖱️ Passo 4: Controllo e Correzione Manuale
+## 🖱️ Passo 4: Controllo e Correzione Manuale
 
 Nessuna macchina è perfetta. Puoi intervenire così:
 
@@ -37,7 +35,7 @@ Nessuna macchina è perfetta. Puoi intervenire così:
 - **Rimuovere una censura:** Fai un singolo **click** sulla macchia nera. La censura sparirà e il programma imparerà a ignorare quella parola.
 - **Zoom:** Usa i tasti **+ / -** o tieni premuto `CTRL` + Rotellina del mouse per vedere meglio il testo piccolo.
 
-### 🖼️ Passo 5: Nascondere Immagini e Foto
+## 🖼️ Passo 5: Nascondere Immagini e Foto
 
 Se vuoi eliminare loghi, firme o foto:
 
@@ -45,7 +43,7 @@ Se vuoi eliminare loghi, firme o foto:
 2. Clicca di nuovo su **"Auto Redact (AI)"**.
 3. Le immagini verranno sostituite da un segnaposto grigio professionale.
 
-### 💾 Passo 6: Esportare il file sicuro
+## 💾 Passo 6: Esportare il file sicuro
 
 Quando hai finito:
 

@@ -4,7 +4,7 @@ import re
 import datetime
 import pathlib
 import string
-import urllib.parse
+import platform
 import fitz
 from PySide6.QtWidgets import (
     QApplication,
@@ -39,7 +39,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtCore import Qt, QThread, QObject, Signal, Slot, QRectF, QPointF
 
-__version__ = "2.0.4"
+__version__ = "2.0.5"
 
 
 def resource_path(relative_path):
@@ -50,15 +50,11 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
-# --- STILE CYBERSECURITY (QSS) ---
 STYLESHEET = """
 QMainWindow, QDialog { background-color: #0f172a; }
 QWidget { color: #cbd5e1; font-family: 'Segoe UI', 'Roboto', sans-serif; font-size: 13px; }
 QFrame#Sidebar, QFrame#Panel { background-color: #1e293b; border-radius: 6px; }
-
-QPushButton {
-    background-color: #334155; border: 1px solid #475569; border-radius: 4px; padding: 8px; color: #e2e8f0; font-weight: bold;
-}
+QPushButton { background-color: #334155; border: 1px solid #475569; border-radius: 4px; padding: 8px; color: #e2e8f0; font-weight: bold; }
 QPushButton:hover { background-color: #475569; border-color: #0ea5e9; }
 QPushButton#Primary { background-color: #0284c7; color: white; border: none; }
 QPushButton#Primary:hover { background-color: #0369a1; }
@@ -66,17 +62,11 @@ QPushButton#Danger { background-color: #dc2626; color: white; border: none; }
 QPushButton#Danger:hover { background-color: #b91c1c; }
 QPushButton#Exit { background-color: transparent; border: none; color: #64748b; font-weight: normal; }
 QPushButton#Exit:hover { color: #ef4444; background-color: #1e293b; }
-
 QTextEdit { background-color: #0f172a; border: 1px solid #334155; border-radius: 4px; padding: 4px; color: #94a3b8; font-family: 'Consolas', monospace; }
-
-QLineEdit {
-    background-color: #0f172a; border: 1px solid #334155; border-radius: 4px; padding: 4px; color: #e2e8f0;
-}
+QLineEdit { background-color: #0f172a; border: 1px solid #334155; border-radius: 4px; padding: 4px; color: #e2e8f0; }
 QLineEdit:focus { border: 1px solid #0ea5e9; }
-
 QProgressBar { background-color: #0f172a; border: 1px solid #334155; border-radius: 4px; text-align: center; color: transparent; height: 8px;}
 QProgressBar::chunk { background-color: #0ea5e9; border-radius: 3px; }
-
 QGraphicsView { border: none; background-color: #020617; }
 QRadioButton::indicator, QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid #475569; border-radius: 8px; background-color: #0f172a; }
 QCheckBox::indicator { border-radius: 4px; }
@@ -84,7 +74,6 @@ QRadioButton::indicator:checked, QCheckBox::indicator:checked { background-color
 """
 
 
-# --- MOTORE AI MULTITHREAD ---
 class AIWorker(QObject):
     log_sig = Signal(str)
     progress_sig = Signal(int, int)
@@ -101,9 +90,7 @@ class AIWorker(QObject):
         try:
             target_langs = ["en", "it"] if choice == "BOTH" else [choice.lower()]
             if not self.analyzer or sorted(self.loaded_langs) != sorted(target_langs):
-                self.log_sig.emit(
-                    f"Inizializzazione Modelli AI ({choice}) in RAM... Attendere."
-                )
+                self.log_sig.emit(f"Inizializzazione AI ({choice})...")
                 from presidio_analyzer import AnalyzerEngine
                 from presidio_analyzer.nlp_engine import NlpEngineProvider
 
@@ -122,8 +109,6 @@ class AIWorker(QObject):
                     supported_languages=target_langs,
                 )
                 self.loaded_langs = target_langs
-                self.log_sig.emit("Motore AI inizializzato con successo.")
-
             self.log_sig.emit("Scansione forense in corso...")
             targets = [
                 "PERSON",
@@ -134,43 +119,34 @@ class AIWorker(QObject):
                 "CREDIT_CARD",
                 "CRYPTO",
             ]
-
             for i, text in enumerate(pages_text):
                 found = set()
                 for lang in self.loaded_langs:
-                    try:
-                        res = self.analyzer.analyze(
-                            text=text, entities=targets, language=lang
-                        )
-                        for r in res:
-                            w = text[r.start : r.end].strip()
-                            if len(w) > 2:
-                                found.add(w)
-                    except Exception as e:
-                        self.log_sig.emit(f"Avviso AI su Pagina {i+1}: {e}")
-
+                    res = self.analyzer.analyze(
+                        text=text, entities=targets, language=lang
+                    )
+                    for r in res:
+                        w = text[r.start : r.end].strip()
+                        if len(w) > 2:
+                            found.add(w)
                 final_words = set()
-                for match in found:
-                    clean = " ".join(match.strip(string.punctuation).lower().split())
-                    protected = any(
+                for m in found:
+                    clean = " ".join(m.strip(string.punctuation).lower().split())
+                    if not any(
                         f_reg.search(clean)
                         or re.search(r"\b" + re.escape(clean) + r"\b", a_str)
                         for a_str, f_reg in compiled_allowlist
-                    )
-                    if not protected:
-                        final_words.add(match)
-
+                    ):
+                        final_words.add(m)
                 self.page_done_sig.emit(i, final_words)
                 self.progress_sig.emit(i + 1, len(pages_text))
-
-            self.log_sig.emit("Anonimizzazione completata in tempo record.")
+            self.log_sig.emit("Anonimizzazione completata.")
         except Exception as e:
-            self.log_sig.emit(f"ERRORE CRITICO AI: {str(e)}")
+            self.log_sig.emit(f"ERRORE AI: {str(e)}")
         finally:
             self.finished_sig.emit()
 
 
-# --- CANVAS INTERATTIVO PDF ---
 class PDFView(QGraphicsView):
     rect_drawn = Signal(QRectF)
     point_clicked = Signal(QPointF)
@@ -216,7 +192,6 @@ class PDFView(QGraphicsView):
             super().wheelEvent(event)
 
 
-# --- FINESTRA PRINCIPALE ---
 class NullifyPDF(QMainWindow):
     start_scan_sig = Signal(list, str, list)
 
@@ -226,11 +201,9 @@ class NullifyPDF(QMainWindow):
         self.resize(1350, 950)
         self.setStyleSheet(STYLESHEET)
         self.setAcceptDrops(True)
-
-        icon_path = resource_path(os.path.join("images", "NullifyPDF_icon.png"))
-        if os.path.exists(icon_path):
-            self.setWindowIcon(QIcon(icon_path))
-
+        ip = resource_path(os.path.join("images", "NullifyPDF_icon.png"))
+        if os.path.exists(ip):
+            self.setWindowIcon(QIcon(ip))
         self.doc = None
         self.page_num = 0
         self.scale = 1.5
@@ -240,8 +213,6 @@ class NullifyPDF(QMainWindow):
         self.allow_file = self.config_dir / "allowlist.txt"
         self.blocklist = self.load_list(self.block_file)
         self.allowlist = self.load_list(self.allow_file)
-
-        # Thread Setup
         self.ai_thread = QThread()
         self.ai_worker = AIWorker()
         self.ai_worker.moveToThread(self.ai_thread)
@@ -251,7 +222,6 @@ class NullifyPDF(QMainWindow):
         self.ai_worker.finished_sig.connect(self.ai_finished)
         self.start_scan_sig.connect(self.ai_worker.run_scan)
         self.ai_thread.start()
-
         self.build_ui()
         if len(sys.argv) > 1:
             self.load_path(sys.argv[1])
@@ -277,23 +247,18 @@ class NullifyPDF(QMainWindow):
         self.setCentralWidget(c_widget)
         main_lay = QHBoxLayout(c_widget)
         main_lay.setContentsMargins(10, 10, 10, 10)
-
-        # SIDEBAR
         sidebar = QWidget()
         sidebar.setObjectName("Sidebar")
         sidebar.setFixedWidth(280)
         s_lay = QVBoxLayout(sidebar)
-
         lbl_title = QLabel("NullifyPDF")
         lbl_title.setStyleSheet("font-size: 24px; font-weight: bold; color: #0ea5e9;")
         s_lay.addWidget(lbl_title)
         s_lay.addWidget(QLabel("AI Forensic Edition\n"))
-
         btn_open = QPushButton("Apri PDF")
         btn_open.setObjectName("Primary")
         btn_open.clicked.connect(self.cmd_open)
         s_lay.addWidget(btn_open)
-
         s_lay.addSpacing(20)
         s_lay.addWidget(QLabel("Modello Lingua AI:"))
         lang_lay = QHBoxLayout()
@@ -302,59 +267,46 @@ class NullifyPDF(QMainWindow):
         self.rb_both = QRadioButton("BOTH")
         self.rb_en.setChecked(True)
         self.lang_grp = QButtonGroup(self)
-        for rb in (self.rb_en, self.rb_it, self.rb_both):
-            self.lang_grp.addButton(rb)
-            lang_lay.addWidget(rb)
+        [
+            (self.lang_grp.addButton(rb), lang_lay.addWidget(rb))
+            for rb in (self.rb_en, self.rb_it, self.rb_both)
+        ]
         s_lay.addLayout(lang_lay)
-
         s_lay.addSpacing(10)
-        self.chk_img = QCheckBox("Oscura Immagini (Segnaposto)")
+        self.chk_img = QCheckBox("Oscura Immagini")
         s_lay.addWidget(self.chk_img)
-
         s_lay.addSpacing(20)
         btn_dict = QPushButton("Dizionari")
         btn_dict.clicked.connect(self.cmd_dict)
         s_lay.addWidget(btn_dict)
-
         self.btn_ai = QPushButton("Auto Redact (AI)")
         self.btn_ai.setObjectName("Danger")
         self.btn_ai.clicked.connect(self.cmd_auto_ai)
         s_lay.addWidget(self.btn_ai)
-
         btn_clear = QPushButton("Pulisci Pagina")
         btn_clear.clicked.connect(self.cmd_clear)
         s_lay.addWidget(btn_clear)
-
         s_lay.addSpacing(20)
         btn_export = QPushButton("Esporta PDF Sicuro")
         btn_export.setStyleSheet("border-color: #0ea5e9; color: #0ea5e9;")
         btn_export.clicked.connect(self.cmd_export)
         s_lay.addWidget(btn_export)
-
         s_lay.addStretch()
-
         btn_about = QPushButton("Info")
         btn_about.clicked.connect(self.cmd_about)
         s_lay.addWidget(btn_about)
-
         btn_exit = QPushButton("Esci")
         btn_exit.setObjectName("Exit")
         btn_exit.clicked.connect(self.close)
         s_lay.addWidget(btn_exit)
-
         main_lay.addWidget(sidebar)
-
-        # MAIN AREA
         right_panel = QWidget()
         r_lay = QVBoxLayout(right_panel)
-
-        # Top Bar
         top_bar = QWidget()
         top_bar.setObjectName("Panel")
         tb_lay = QHBoxLayout(top_bar)
         tb_lay.addWidget(QLabel("<b>Visualizzatore Documento</b>"))
         tb_lay.addStretch()
-
         btn_zout = QPushButton("-")
         btn_zout.clicked.connect(lambda: self.adjust_zoom(-1))
         self.lbl_zoom = QLabel("150%")
@@ -363,7 +315,6 @@ class NullifyPDF(QMainWindow):
         tb_lay.addWidget(btn_zout)
         tb_lay.addWidget(self.lbl_zoom)
         tb_lay.addWidget(btn_zin)
-
         tb_lay.addSpacing(20)
         btn_prev = QPushButton("<")
         btn_prev.clicked.connect(lambda: self.move_page(-1))
@@ -379,16 +330,12 @@ class NullifyPDF(QMainWindow):
         tb_lay.addWidget(self.lbl_tot)
         tb_lay.addWidget(btn_next)
         r_lay.addWidget(top_bar)
-
-        # Canvas
         self.scene = QGraphicsScene()
         self.view = PDFView(self.scene)
         self.view.rect_drawn.connect(self.user_draw_rect)
         self.view.point_clicked.connect(self.user_click_pt)
         self.view.zoom_req.connect(self.adjust_zoom)
         r_lay.addWidget(self.view, stretch=1)
-
-        # Footer
         footer = QWidget()
         footer.setObjectName("Panel")
         f_lay = QVBoxLayout(footer)
@@ -400,36 +347,33 @@ class NullifyPDF(QMainWindow):
         f_lay.addWidget(self.prog)
         f_lay.addWidget(self.log)
         r_lay.addWidget(footer)
-
         main_lay.addWidget(right_panel, stretch=1)
 
-    # --- DRAG & DROP NATIVO ---
-    def dragEnterEvent(self, e: QDragEnterEvent):
+    def dragEnterEvent(self, e):
         if e.mimeData().hasUrls():
             e.acceptProposedAction()
 
-    def dropEvent(self, e: QDropEvent):
+    def dropEvent(self, e):
         urls = e.mimeData().urls()
         if urls and urls[0].isLocalFile():
             self.load_path(urls[0].toLocalFile())
 
     def write_log(self, m):
         t = datetime.datetime.now().strftime("%H:%M:%S")
-        color = "#94a3b8"
-
-        if "ERRORE" in m or "CRITICO" in m:
-            color = "#ef4444"
-        elif "Avviso" in m or "Attendere" in m:
-            color = "#f59e0b"
-        elif "successo" in m or "completata" in m or "ESPORTA" in m:
-            color = "#10b981"
-
+        color = (
+            "#ef4444"
+            if "ERRORE" in m
+            else (
+                "#f59e0b"
+                if "Avviso" in m
+                else "#10b981" if "successo" in m or "completata" in m else "#94a3b8"
+            )
+        )
         self.log.append(f"<span style='color: {color};'>[{t}] {m}</span>")
 
     def update_progress(self, c, t):
         self.prog.setValue(int((c / t) * 100))
 
-    # --- LOGICA PDF CORE ---
     def cmd_open(self):
         p, _ = QFileDialog.getOpenFileName(self, "Apri PDF", "", "PDF (*.pdf)")
         if p:
@@ -441,9 +385,7 @@ class NullifyPDF(QMainWindow):
                 self.doc.close()
             tdoc = fitz.open(path)
             if tdoc.needs_pass:
-                self.write_log(
-                    "ERRORE: PDF cifrato. Rimuovi password prima del caricamento."
-                )
+                self.write_log("ERRORE: PDF cifrato.")
                 tdoc.close()
                 return
             self.doc = tdoc
@@ -452,7 +394,7 @@ class NullifyPDF(QMainWindow):
             self.adjust_zoom(0)
             self.write_log(f"Caricato: {os.path.basename(path)}")
         except Exception as e:
-            self.write_log(f"ERRORE: Impossibile caricare il file ({e})")
+            self.write_log(f"ERRORE: {e}")
 
     def render(self):
         if not self.doc:
@@ -468,8 +410,8 @@ class NullifyPDF(QMainWindow):
         self.le_page.setText(str(self.page_num + 1))
         self.lbl_tot.setText(f"/ {len(self.doc)}")
 
-    def adjust_zoom(self, direction):
-        self.scale = max(0.5, min(4.0, self.scale + (0.25 * direction)))
+    def adjust_zoom(self, d):
+        self.scale = max(0.5, min(4.0, self.scale + (0.25 * d)))
         self.lbl_zoom.setText(f"{int(self.scale * 100)}%")
         self.render()
 
@@ -487,8 +429,7 @@ class NullifyPDF(QMainWindow):
         except:
             pass
 
-    # --- INTERAZIONI UTENTE SUL PDF ---
-    def user_draw_rect(self, qrect: QRectF):
+    def user_draw_rect(self, qrect):
         if not self.doc:
             return
         r = fitz.Rect(
@@ -503,7 +444,7 @@ class NullifyPDF(QMainWindow):
             p.add_redact_annot(
                 r,
                 text="[ IMMAGINE RIMOSSA ]",
-                align=fitz.TEXT_ALIGN_CENTER,
+                align=1,
                 fill=(0.9, 0.9, 0.9),
                 fontsize=8,
             )
@@ -517,7 +458,7 @@ class NullifyPDF(QMainWindow):
                 self.save_list(self.allow_file, self.allowlist)
         self.render()
 
-    def user_click_pt(self, qpt: QPointF):
+    def user_click_pt(self, qpt):
         if not self.doc:
             return
         pt = fitz.Point(qpt.x() / self.scale, qpt.y() / self.scale)
@@ -529,8 +470,7 @@ class NullifyPDF(QMainWindow):
         ]
         if ans:
             txt = p.get_text("text", clip=ans[0].rect)
-            for a in ans:
-                p.delete_annot(a)
+            [p.delete_annot(a) for a in ans]
             cl = " ".join(txt.split()).lower()
             if len(cl) > 2:
                 self.blocklist.discard(cl)
@@ -543,9 +483,7 @@ class NullifyPDF(QMainWindow):
         if not self.doc:
             return
         p = self.doc[self.page_num]
-        ans = [a for a in p.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT]
-        for a in ans:
-            p.delete_annot(a)
+        [p.delete_annot(a) for a in p.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT]
         self.render()
         self.write_log(f"Censure rimosse su pagina {self.page_num+1}")
 
@@ -554,15 +492,15 @@ class NullifyPDF(QMainWindow):
         d.setWindowTitle("Dizionari")
         d.resize(500, 450)
         lay = QVBoxLayout(d)
-        lay.addWidget(QLabel("<b>🔴 BLOCKLIST GLOBALE</b>"))
+        lay.addWidget(QLabel("<b>🔴 BLOCKLIST</b>"))
         bx = QTextEdit()
         bx.setPlainText("\n".join(sorted(self.blocklist)))
         lay.addWidget(bx)
-        lay.addWidget(QLabel("<b>🟢 ALLOWLIST GLOBALE</b>"))
+        lay.addWidget(QLabel("<b>🟢 ALLOWLIST</b>"))
         ax = QTextEdit()
         ax.setPlainText("\n".join(sorted(self.allowlist)))
         lay.addWidget(ax)
-        btn = QPushButton("Salva e Chiudi")
+        btn = QPushButton("Salva")
         btn.setObjectName("Primary")
 
         def s():
@@ -590,42 +528,36 @@ class NullifyPDF(QMainWindow):
         d.setFixedSize(340, 440)
         lay = QVBoxLayout(d)
         lay.setAlignment(Qt.AlignCenter)
-
         ip = resource_path(os.path.join("images", "NullifyPDF_icon.png"))
         if os.path.exists(ip):
             lbl_icon = QLabel()
-            pix = QPixmap(ip).scaled(
-                100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation
+            lbl_icon.setPixmap(
+                QPixmap(ip).scaled(
+                    100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                )
             )
-            lbl_icon.setPixmap(pix)
             lbl_icon.setAlignment(Qt.AlignCenter)
             lay.addWidget(lbl_icon)
             lay.addSpacing(10)
-
         lbl_title = QLabel("NullifyPDF")
         lbl_title.setStyleSheet("font-size: 24px; font-weight: bold;")
         lbl_title.setAlignment(Qt.AlignCenter)
         lay.addWidget(lbl_title)
-
         lbl_ver = QLabel(f"v{__version__} AI Forensic")
         lbl_ver.setStyleSheet("color: #0ea5e9; font-weight: bold;")
         lbl_ver.setAlignment(Qt.AlignCenter)
         lay.addWidget(lbl_ver)
-
         desc = QLabel(
-            "\nAnonimizzazione PDF Professionale Offline.\n\nSviluppato da: Graziano Mariella\nLicenza MIT"
+            "\nAnonimizzazione PDF Offline.\n\nSviluppato da: Graziano Mariella\nLicenza MIT"
         )
         desc.setAlignment(Qt.AlignCenter)
         lay.addWidget(desc)
-
         lay.addSpacing(20)
         btn = QPushButton("Chiudi")
         btn.clicked.connect(d.accept)
         lay.addWidget(btn)
-
         d.exec()
 
-    # --- ORCHESTRAZIONE AI ---
     def cmd_auto_ai(self):
         if not self.doc:
             return
@@ -646,7 +578,6 @@ class NullifyPDF(QMainWindow):
     def apply_ai_to_page(self, i, words):
         page = self.doc[i]
         e_rects = [a.rect for a in page.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT]
-
         if self.chk_img.isChecked():
             for img in page.get_image_info(hashes=False):
                 ir = fitz.Rect(img["bbox"])
@@ -658,22 +589,23 @@ class NullifyPDF(QMainWindow):
                     fontsize=8,
                 )
                 e_rects.append(ir)
-
         for bw in self.blocklist:
             for r in page.search_for(bw):
-                c = fitz.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2)
-                if not any(e.contains(c) for e in e_rects):
+                if not any(
+                    e.contains(fitz.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2))
+                    for e in e_rects
+                ):
                     page.add_redact_annot(r, fill=(0, 0, 0))
                     e_rects.append(r)
-
         p_rects = [r for aw in self.allowlist for r in page.search_for(aw)]
-
         for w in words:
             for r in page.search_for(w):
                 if any(r.intersects(pr) for pr in p_rects):
                     continue
-                c = fitz.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2)
-                if not any(e.contains(c) for e in e_rects):
+                if not any(
+                    e.contains(fitz.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2))
+                    for e in e_rects
+                ):
                     page.add_redact_annot(r, fill=(0, 0, 0))
                     e_rects.append(r)
 
@@ -687,43 +619,48 @@ class NullifyPDF(QMainWindow):
             return
         p, _ = QFileDialog.getSaveFileName(
             self,
-            "Esporta Sicuro",
+            "Esporta",
             f"{os.path.splitext(self.doc.name)[0]}_secured.pdf",
             "PDF (*.pdf)",
         )
         if p:
-            self.write_log("Scrubbing Forense in corso...")
+            self.write_log("Scrubbing Forense...")
             ex_doc = fitz.open("pdf", self.doc.write())
             for page in ex_doc:
                 r_rects = [
                     a.rect for a in page.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT
                 ]
                 try:
-                    for lnk in page.get_links():
-                        if any(fitz.Rect(lnk["from"]).intersects(r) for r in r_rects):
-                            page.delete_link(lnk)
+                    [
+                        page.delete_link(lnk)
+                        for lnk in page.get_links()
+                        if any(fitz.Rect(lnk["from"]).intersects(r) for r in r_rects)
+                    ]
                 except:
                     pass
                 page.apply_redactions(
                     images=fitz.PDF_REDACT_IMAGE_REMOVE, graphics=True
                 )
                 try:
-                    for w in page.widgets():
-                        page.delete_widget(w)
+                    [page.delete_widget(w) for w in page.widgets()]
                 except:
                     pass
-
             ex_doc.set_metadata({})
             cx = ex_doc.pdf_catalog()
             for k in ["Metadata", "PieceInfo", "Properties", "AcroForm"]:
                 ex_doc.xref_set_key(cx, k, "null")
             ex_doc.save(p, garbage=4, deflate=True, clean=True)
             ex_doc.close()
-            self.write_log(f"ESPORTAZIONE COMPLETATA: {os.path.basename(p)}")
+            self.write_log("ESPORTATO.")
 
 
 if __name__ == "__main__":
+    if platform.system() == "Linux":
+        os.environ["QT_LOGGING_RULES"] = "qt.qpa.wayland.*=false"
+
     app = QApplication(sys.argv)
+    app.setDesktopFileName("nullify-pdf")
+
     window = NullifyPDF()
     window.show()
     sys.exit(app.exec())
