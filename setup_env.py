@@ -35,7 +35,7 @@ def setup_environment():
     subprocess.run([venv_python, "-m", "pip", "install", "--upgrade", "pip", "-q"])
 
     print(
-        "[*] Installazione librerie (PySide6, PyMuPDF, pillow, presidio-analyzer, spacy, pyinstaller)..."
+        "[*] Installazione librerie (PySide6, PyMuPDF, presidio-analyzer, spacy, pyinstaller)..."
     )
     subprocess.run(
         [
@@ -45,7 +45,6 @@ def setup_environment():
             "install",
             "PySide6",
             "PyMuPDF",
-            "pillow",
             "presidio-analyzer",
             "spacy",
             "pyinstaller",
