@@ -19,36 +19,15 @@ def get_version():
 
 def ensure_icon(sys_os):
     base_dir = "images"
-    os.makedirs(base_dir, exist_ok=True)
-    png_path = os.path.join(base_dir, "NullifyPDF_icon.png")
-
     if sys_os == "Windows":
         ico_path = os.path.join(base_dir, "NullifyPDF_icon.ico")
-        if not os.path.exists(ico_path) and os.path.exists(png_path):
-            try:
-                from PIL import Image
-
-                img = Image.open(png_path)
-                img.save(ico_path, format="ICO", sizes=[(256, 256)])
-                return ico_path.replace("\\", "/")
-            except:
-                return None
         return ico_path.replace("\\", "/") if os.path.exists(ico_path) else None
-
     elif sys_os == "Darwin":
         icns_path = os.path.join(base_dir, "NullifyPDF_icon.icns")
-        if not os.path.exists(icns_path) and os.path.exists(png_path):
-            try:
-                from PIL import Image
-
-                img = Image.open(png_path)
-                img.save(icns_path, format="ICNS")
-                return icns_path.replace("\\", "/")
-            except:
-                return None
         return icns_path.replace("\\", "/") if os.path.exists(icns_path) else None
-
-    return png_path.replace("\\", "/") if os.path.exists(png_path) else None
+    else:
+        png_path = os.path.join(base_dir, "NullifyPDF_icon.png")
+        return png_path.replace("\\", "/") if os.path.exists(png_path) else None
 
 
 def build_app():
@@ -104,7 +83,6 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name='NullifyPDF', debug=Fals
             [sys.executable, "-m", "PyInstaller", "NullifyPDF.spec"], check=True
         )
 
-        # Rinominazione sicura basata sull'output di PyInstaller
         original_path = os.path.join(
             "dist",
             (

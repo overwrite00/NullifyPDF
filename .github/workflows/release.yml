@@ -33,7 +33,7 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install PySide6 PyMuPDF pillow presidio-analyzer spacy pyinstaller
+          pip install PySide6 PyMuPDF presidio-analyzer spacy pyinstaller
 
       - name: Download spaCy AI Models
         run: |
