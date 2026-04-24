@@ -1,128 +1,55 @@
-name: Build and Release NullifyPDF
+name: Build NullifyPDF Enterprise
 
 on:
   push:
-    branches:
-      - main
-    paths-ignore:
-      - '*.md'
-      - '**/*.md'
-      - 'LICENSE'
-      - '.gitignore'
-      - 'CHANGELOG.md'
+    tags:
+      - "v*"
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build for ${{ matrix.os }}
+    name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [windows-latest, ubuntu-22.04, macos-latest]
 
     steps:
-      - name: Checkout del codice
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
+          cache: "pip"
 
-      - name: Installa dipendenze
+      - name: Install System Dependencies for Qt6 (Linux only)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libegl1 binutils
+
+      - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller PyMuPDF customtkinter Pillow presidio-analyzer spacy
+          pip install PySide6 PyMuPDF pillow presidio-analyzer spacy pyinstaller
+
+      - name: Download spaCy AI Models
+        run: |
           python -m spacy download en_core_web_md
           python -m spacy download it_core_news_md
 
-      - name: Estrazione Versione
-        shell: bash
-        run: |
-          VERSION=$(python -c "import re; print(re.search(r'__version__\s*=\s*[\'\"]([^\'\"]+)[\'\"]', open('NullifyPDF.py', encoding='utf-8').read()).group(1))")
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+      - name: Compile Application with PyInstaller
+        run: python build_local.py
 
-      - name: Build con PyInstaller
-        shell: bash
-        run: |
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            pyinstaller --noconsole --onefile \
-              --hidden-import PIL._tkinter_finder \
-              --collect-all customtkinter --collect-all presidio_analyzer --collect-all spacy \
-              --collect-all en_core_web_md --collect-all it_core_news_md \
-              --add-data "images;images" --icon="images/NullifyPDF_icon.ico" \
-              --name "NullifyPDF" NullifyPDF.py
-          else
-            pyinstaller --noconsole --onefile \
-              --hidden-import PIL._tkinter_finder \
-              --collect-all customtkinter --collect-all presidio_analyzer --collect-all spacy \
-              --collect-all en_core_web_md --collect-all it_core_news_md \
-              --add-data "images:images" --icon="images/NullifyPDF_icon.png" \
-              --name "NullifyPDF" NullifyPDF.py
-          fi
+      - name: Ensure Executable Permissions (Linux)
+        if: runner.os == 'Linux'
+        run: chmod +x dist/NullifyPDF_*
 
-      - name: Creazione pacchetti Linux (.deb & .rpm)
-        if: matrix.os == 'ubuntu-latest'
-        env:
-          VERSION: ${{ env.VERSION }}
-        run: |
-          sudo apt-get update && sudo apt-get install -y alien rpm devscripts
-          echo '%_build_id_links none' > ~/.rpmmacros
-          
-          mkdir -p package/DEBIAN package/usr/bin package/usr/share/applications package/usr/share/pixmaps
-          
-          cp dist/NullifyPDF package/usr/bin/nullify-pdf
-          chmod +x package/usr/bin/nullify-pdf
-          cp images/NullifyPDF_icon.png package/usr/share/pixmaps/nullify-pdf.png
-          
-          cat <<EOF > package/usr/share/applications/nullify-pdf.desktop
-          [Desktop Entry]
-          Name=NullifyPDF
-          Comment=AI-Powered PDF Anonymization Tool
-          Exec=/usr/bin/nullify-pdf
-          Icon=nullify-pdf
-          Terminal=false
-          Type=Application
-          Categories=Utility;Security;
-          EOF
-          
-          cat <<EOF > package/DEBIAN/control
-          Package: nullify-pdf
-          Version: ${VERSION}
-          Section: utils
-          Priority: optional
-          Architecture: amd64
-          Maintainer: Graziano Mariella
-          Description: AI-Powered PDF Anonymization Tool
-          EOF
-          
-          dpkg-deb --build package nullify-pdf_${VERSION}_amd64.deb
-          sudo alien --to-rpm --scripts --fixperms nullify-pdf_${VERSION}_amd64.deb
-          
-          ACTUAL_RPM=$(ls *.rpm | head -n 1)
-          mv "$ACTUAL_RPM" "nullify-pdf-${VERSION}.x86_64.rpm"
-
-      - name: Rinomina Asset Finali
-        shell: bash
-        run: |
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            mv dist/NullifyPDF.exe NullifyPDF_v${{ env.VERSION }}_Windows.exe
-          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
-            mv dist/NullifyPDF NullifyPDF_v${{ env.VERSION }}_macOS
-          else
-            mv nullify-pdf_${{ env.VERSION }}_amd64.deb NullifyPDF_v${{ env.VERSION }}_Ubuntu.deb
-            mv nullify-pdf-${{ env.VERSION }}.x86_64.rpm NullifyPDF_v${{ env.VERSION }}_Fedora.rpm
-          fi
-
-      - name: Creazione Release su GitHub
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/heads/main')
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: v${{ env.VERSION }}
-          name: NullifyPDF v${{ env.VERSION }}
-          fail_on_unmatched_files: false
-          files: |
-            NullifyPDF_v${{ env.VERSION }}_*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: NullifyPDF-v2.0.4-${{ runner.os }}
+          path: dist/NullifyPDF*
+          retention-days: 7

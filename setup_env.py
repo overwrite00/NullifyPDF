@@ -52,7 +52,7 @@ def setup_environment():
         ]
     )
 
-    print("[*] Download dei modelli linguistici AI (spaCy EN & IT)... attendere...")
+    print("[*] Download dei modelli linguistici AI (spaCy EN & IT)...")
     subprocess.run([venv_python, "-m", "spacy", "download", "en_core_web_md"])
     subprocess.run([venv_python, "-m", "spacy", "download", "it_core_news_md"])
 
