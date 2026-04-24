@@ -5,6 +5,9 @@ import datetime
 import tempfile
 import pathlib
 import string
+import shutil
+import subprocess
+import platform
 import fitz
 import customtkinter as ctk
 from tkinter import filedialog, Canvas
@@ -12,7 +15,7 @@ from PIL import Image, ImageTk
 
 ctk.set_appearance_mode("dark")
 
-__version__ = "1.5.5"
+__version__ = "1.5.7"
 
 
 def resource_path(relative_path):
@@ -21,6 +24,87 @@ def resource_path(relative_path):
     except Exception:
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
+
+
+# --- FUNZIONI WRAPPER PER FILE DIALOG NATIVI SU LINUX ---
+def native_askopenfilename():
+    """Usa Zenity o Kdialog su Linux per finestre file moderne. Gestisce correttamente l'Annulla."""
+    if platform.system() == "Linux":
+        if shutil.which("zenity"):
+            try:
+                res = subprocess.run(
+                    [
+                        "zenity",
+                        "--file-selection",
+                        "--title=Apri PDF",
+                        "--file-filter=*.pdf",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                if res.returncode == 0:
+                    return res.stdout.strip()
+                return ""  # Se l'utente preme Annulla, non aprire il fallback Tkinter!
+            except:
+                pass
+        elif shutil.which("kdialog"):
+            try:
+                res = subprocess.run(
+                    ["kdialog", "--getopenfilename", ".", "*.pdf"],
+                    capture_output=True,
+                    text=True,
+                )
+                if res.returncode == 0:
+                    return res.stdout.strip()
+                return ""  # Idem per KDE
+            except:
+                pass
+
+    # Fallback per Windows, Mac o Linux senza Zenity/Kdialog
+    return filedialog.askopenfilename(filetypes=[("PDF Documents", "*.pdf")])
+
+
+def native_asksaveasfilename(initial_file):
+    """Finestre di salvataggio native per Linux. Gestisce correttamente l'Annulla."""
+    if platform.system() == "Linux":
+        if shutil.which("zenity"):
+            try:
+                res = subprocess.run(
+                    [
+                        "zenity",
+                        "--file-selection",
+                        "--save",
+                        "--confirm-overwrite",
+                        "--title=Esporta PDF Sicuro",
+                        f"--filename={initial_file}",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                if res.returncode == 0:
+                    path = res.stdout.strip()
+                    return path if path.lower().endswith(".pdf") else path + ".pdf"
+                return ""
+            except:
+                pass
+        elif shutil.which("kdialog"):
+            try:
+                res = subprocess.run(
+                    ["kdialog", "--getsavefilename", initial_file, "*.pdf"],
+                    capture_output=True,
+                    text=True,
+                )
+                if res.returncode == 0:
+                    path = res.stdout.strip()
+                    return path if path.lower().endswith(".pdf") else path + ".pdf"
+                return ""
+            except:
+                pass
+
+    # Fallback per Windows, Mac o Linux senza Zenity/Kdialog
+    return filedialog.asksaveasfilename(
+        defaultextension=".pdf", initialfile=initial_file
+    )
 
 
 class NullifyPDF(ctk.CTk):
@@ -60,7 +144,7 @@ class NullifyPDF(ctk.CTk):
         self.analyzer = None
         self.active_langs = []
 
-        # MUTEX LOCK (Previene accavallamenti e crash silenziosi)
+        # MUTEX LOCK
         self.is_processing = False
 
         # PERSISTENZA DIZIONARI
@@ -206,7 +290,7 @@ class NullifyPDF(ctk.CTk):
 
         ctk.CTkButton(
             self.sidebar,
-            text="Dizionario 📖",
+            text="Dizionari",
             fg_color="#333344",
             command=self.open_dictionary,
         ).pack(fill="x", padx=20, pady=15)
@@ -221,7 +305,7 @@ class NullifyPDF(ctk.CTk):
         ).pack(fill="x", padx=20, pady=5)
         ctk.CTkButton(
             self.sidebar,
-            text="Pulisci Pagina 🗑️",
+            text="Pulisci Pagina",
             fg_color="transparent",
             border_width=1,
             border_color="#555",
@@ -245,7 +329,7 @@ class NullifyPDF(ctk.CTk):
         bottom_frame.pack(side="bottom", fill="x", pady=20)
         ctk.CTkButton(
             bottom_frame,
-            text="ⓘ About",
+            text="Info",
             fg_color="transparent",
             text_color=self.accent_color,
             command=self.show_about,
@@ -340,8 +424,15 @@ class NullifyPDF(ctk.CTk):
         self.canvas.bind("<B1-Motion>", self.on_mouse_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_mouse_release)
         self.canvas.bind("<Enter>", lambda e: self.canvas.focus_set())
+
+        # BINDINGS UNIVERSALI PER SCROLL (Win/Mac + Linux)
         self.canvas.bind("<MouseWheel>", self.on_mouse_wheel)
+        self.canvas.bind("<Button-4>", self.on_mouse_wheel)
+        self.canvas.bind("<Button-5>", self.on_mouse_wheel)
+
         self.canvas.bind("<Control-MouseWheel>", self.on_ctrl_mouse_wheel)
+        self.canvas.bind("<Control-Button-4>", self.on_ctrl_mouse_wheel)
+        self.canvas.bind("<Control-Button-5>", self.on_ctrl_mouse_wheel)
 
         footer = ctk.CTkFrame(
             self.main_area, fg_color=self.panel_color, corner_radius=8
@@ -376,7 +467,7 @@ class NullifyPDF(ctk.CTk):
     def init_ai(self, choice):
         try:
             self.write_log(f"Caricamento AI ({choice}) in corso... Attendere prego.")
-            self.update()  # FORZA IL RENDERING DELLA UI PRIMA DEL BLOCCO CPU
+            self.update()
 
             from presidio_analyzer import AnalyzerEngine
             from presidio_analyzer.nlp_engine import NlpEngineProvider
@@ -405,10 +496,8 @@ class NullifyPDF(ctk.CTk):
         if not self.doc:
             return
 
-        # MUTEX LOCK: Previene l'accavallamento dei thread se l'utente clicca più volte
         if getattr(self, "is_processing", False):
             return
-
         self.is_processing = True
 
         try:
@@ -422,7 +511,7 @@ class NullifyPDF(ctk.CTk):
 
             self.write_log("Scansione forense intelligente (in corso)...")
             self.prog.set(0)
-            self.update()  # AGGIORNA LA UI PER MOSTRARE IL MESSAGGIO
+            self.update()
 
             target_entities = [
                 "PERSON",
@@ -436,8 +525,9 @@ class NullifyPDF(ctk.CTk):
 
             compiled_allowlist = []
             for allowed in self.allowlist:
+                escaped = re.escape(allowed)
                 compiled_allowlist.append(
-                    (allowed, re.compile(r"\b" + re.escape(allowed) + r"\b"))
+                    (allowed, re.compile(r"\b" + escaped + r"\b"))
                 )
 
             for i, page in enumerate(self.doc):
@@ -470,7 +560,6 @@ class NullifyPDF(ctk.CTk):
                 found_ai_words = set()
                 for lang in self.active_langs:
                     try:
-                        # Scudo di protezione interno contro errori di Parsing di Presidio/Spacy
                         results = self.analyzer.analyze(
                             text=text, entities=target_entities, language=lang
                         )
@@ -487,11 +576,9 @@ class NullifyPDF(ctk.CTk):
                     )
                     is_protected = False
 
-                    # Ottimizzazione Estrema: Niente doppia Regex. Usiamo l'operatore 'in' nativo.
                     for allowed_str, forward_regex in compiled_allowlist:
-                        if (
-                            forward_regex.search(clean_match)
-                            or clean_match in allowed_str
+                        if forward_regex.search(clean_match) or re.search(
+                            r"\b" + re.escape(clean_match) + r"\b", allowed_str
                         ):
                             is_protected = True
                             break
@@ -513,25 +600,25 @@ class NullifyPDF(ctk.CTk):
                             existing_redacts.append(ai_rect)
 
                 self.prog.set((i + 1) / len(self.doc))
-                self.update()  # Mantiene la GUI fluida e responsiva pagina per pagina
+                self.update()
 
             self.render()
             self.write_log("Anonimizzazione completata in tempo record.")
 
         except Exception as e:
-            # INTERCETTAZIONE CRITICA: Niente più crash silenziosi
             self.write_log(f"ERRORE CRITICO DURANTE LA SCANSIONE: {str(e)}")
         finally:
-            # SBLOCCO DEL MUTEX
             self.is_processing = False
 
     def save(self):
         if not self.doc:
             return
-        fp = filedialog.asksaveasfilename(
-            defaultextension=".pdf",
-            initialfile=f"{os.path.splitext(os.path.basename(self.doc.name))[0]}_secured.pdf",
+
+        # Uso il wrapper nativo per Linux
+        fp = native_asksaveasfilename(
+            f"{os.path.splitext(os.path.basename(self.doc.name))[0]}_secured.pdf"
         )
+
         if fp:
             try:
                 self.write_log("Sanificazione forense (Scrubbing) in corso...")
@@ -584,13 +671,29 @@ class NullifyPDF(ctk.CTk):
         try:
             if self.doc:
                 self.doc.close()
-            self.doc = fitz.open(path)
+            temp_doc = fitz.open(path)
+
+            # RIPRISTINATO: Protezione vitale contro i PDF criptati che causa crash di sistema
+            if temp_doc.needs_pass:
+                self.write_log(
+                    "ERRORE: PDF protetto da password. Rimuovi la cifratura prima di caricarlo."
+                )
+                temp_doc.close()
+                return
+
+            self.doc = temp_doc
             self.page_num = 0
             self.scale = 1.5
             self.update_zoom_ui()
             self.write_log(f"Caricato: {os.path.basename(path)}")
-        except:
-            pass
+        except Exception as e:
+            self.write_log(f"Errore caricamento: {e}")
+
+    def load(self):
+        # Uso il wrapper nativo
+        p = native_askopenfilename()
+        if p:
+            self.load_path(p)
 
     def render(self):
         if not self.doc:
@@ -727,28 +830,30 @@ class NullifyPDF(ctk.CTk):
         )
 
     def on_mouse_wheel(self, e):
-        if not (e.state & 0x0004) and self.doc:
-            if e.num == 4 or e.delta > 0:
-                self.canvas.yview_scroll(-1, "units")
-            else:
-                self.canvas.yview_scroll(1, "units")
+        # Compatibilità Universale per Scroll (incluso Linux Button-4/5)
+        if getattr(e, "state", 0) & 0x0004:
+            return  # Se preme CTRL, ignora per lo zoom
+        if not self.doc:
+            return
+        if e.num == 4 or getattr(e, "delta", 0) > 0:
+            self.canvas.yview_scroll(-1, "units")
+        elif e.num == 5 or getattr(e, "delta", 0) < 0:
+            self.canvas.yview_scroll(1, "units")
 
     def on_ctrl_mouse_wheel(self, e):
         if self.doc:
-            if e.num == 4 or e.delta > 0:
+            if e.num == 4 or getattr(e, "delta", 0) > 0:
                 self.zoom_in()
-            else:
+            elif e.num == 5 or getattr(e, "delta", 0) < 0:
                 self.zoom_out()
 
     def clear_page(self):
         if not self.doc:
             return
         p = self.doc[self.page_num]
-
         annots_to_delete = [a for a in p.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT]
         for a in annots_to_delete:
             p.delete_annot(a)
-
         self.render()
         self.write_log(f"Pulite {len(annots_to_delete)} censure.")
 
@@ -837,11 +942,6 @@ class NullifyPDF(ctk.CTk):
 
         about.transient(self)
         about.grab_set()
-
-    def load(self):
-        p = filedialog.askopenfilename(filetypes=[("PDF", "*.pdf")])
-        if p:
-            self.load_path(p)
 
     def write_log(self, m):
         self.log.insert(
