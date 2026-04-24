@@ -26,7 +26,7 @@ jobs:
 
       - name: Install System Dependencies (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y rpm dpkg binutils libxcb-cursor0 libxkbcommon-x11-0
+        run: sudo apt-get update && sudo apt-get install -y rpm dpkg binutils libxcb-cursor0 libxkbcommon-x11-0 libegl1 desktop-file-utils
 
       - name: Install Python Dependencies
         run: |
@@ -72,6 +72,6 @@ jobs:
             all-builds/NullifyPDF_v*_macOS.zip
             all-builds/NullifyPDF_v*_Ubuntu.deb
             all-builds/NullifyPDF_v*_Fedora.rpm
-          body: "Release Stabile NullifyPDF v2.0.4. Include App Bundle per macOS (ZIP), eseguibile Windows e pacchetti Linux nativi."
+          body: "Release Stabile NullifyPDF v2.0.5. Include App Bundle macOS (ZIP), EXE per Windows e pacchetti nativi Linux."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
