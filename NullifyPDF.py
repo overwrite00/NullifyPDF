@@ -94,6 +94,91 @@ def resource_path(relative_path: str) -> str:
     return os.path.join(base_path, relative_path)
 
 
+class PDFListManager:
+    """Manages blocklist/allowlist persistence to disk.
+
+    Handles loading and saving word lists with automatic path management
+    and UTF-8 encoding.
+    """
+
+    def __init__(self, config_dir: pathlib.Path) -> None:
+        """Initialize list manager with config directory.
+
+        Args:
+            config_dir: Path to configuration directory.
+        """
+        self.config_dir = config_dir
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        self.block_file = config_dir / "blocklist.txt"
+        self.allow_file = config_dir / "allowlist.txt"
+
+    def load_blocklist(self) -> Set[str]:
+        """Load blocklist from disk.
+
+        Returns:
+            Set[str]: Words to redact (lowercase).
+        """
+        return self._load_list(self.block_file)
+
+    def load_allowlist(self) -> Set[str]:
+        """Load allowlist from disk.
+
+        Returns:
+            Set[str]: Words to preserve from redaction (lowercase).
+        """
+        return self._load_list(self.allow_file)
+
+    def save_blocklist(self, blocklist: Set[str]) -> None:
+        """Persist blocklist to disk.
+
+        Args:
+            blocklist: Set of words to save.
+        """
+        self._save_list(self.block_file, blocklist)
+
+    def save_allowlist(self, allowlist: Set[str]) -> None:
+        """Persist allowlist to disk.
+
+        Args:
+            allowlist: Set of words to save.
+        """
+        self._save_list(self.allow_file, allowlist)
+
+    def _load_list(self, path: pathlib.Path) -> Set[str]:
+        """Load word list from file with validation.
+
+        Args:
+            path: Path to list file.
+
+        Returns:
+            Set[str]: Set of words (lowercase, stripped, min length 3).
+        """
+        if not path.exists():
+            return set()
+        try:
+            return {
+                l.strip().lower()
+                for l in open(path, "r", encoding="utf-8")
+                if len(l.strip()) > 2
+            }
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Error loading {path}: {e}")
+            return set()
+
+    def _save_list(self, path: pathlib.Path, words: Set[str]) -> None:
+        """Save word list to file.
+
+        Args:
+            path: Path to save list.
+            words: Set of words to save.
+        """
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("\n".join(sorted(words)))
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Error saving {path}: {e}")
+
+
 STYLESHEET = """
 QMainWindow, QDialog { background-color: #0f172a; }
 QWidget { color: #cbd5e1; font-family: 'Segoe UI', 'Roboto', sans-serif; font-size: 13px; }
@@ -153,6 +238,21 @@ class AIWorker(QObject):
             compiled_allowlist: Pre-compiled regex patterns to skip redaction.
         """
         try:
+            if not pages_text or not isinstance(pages_text, list):
+                self.log_sig.emit("ERRORE: pages_text non valido")
+                self.finished_sig.emit()
+                return
+
+            if choice not in ("EN", "IT", "BOTH"):
+                self.log_sig.emit(f"ERRORE: Scelta lingua non valida: {choice}")
+                self.finished_sig.emit()
+                return
+
+            if not isinstance(compiled_allowlist, list):
+                self.log_sig.emit("ERRORE: compiled_allowlist non valido")
+                self.finished_sig.emit()
+                return
+
             target_langs = ["en", "it"] if choice == "BOTH" else [choice.lower()]
             if not self.analyzer or sorted(self.loaded_langs) != sorted(target_langs):
                 self.log_sig.emit(f"Inizializzazione AI ({choice})...")
@@ -306,11 +406,9 @@ class NullifyPDF(QMainWindow):
         self.page_num = 0
         self.scale = 1.5
         self.config_dir = pathlib.Path.home() / ".nullifypdf"
-        self.config_dir.mkdir(exist_ok=True)
-        self.block_file = self.config_dir / "blocklist.txt"
-        self.allow_file = self.config_dir / "allowlist.txt"
-        self.blocklist = self.load_list(self.block_file)
-        self.allowlist = self.load_list(self.allow_file)
+        self.list_manager = PDFListManager(self.config_dir)
+        self.blocklist = self.list_manager.load_blocklist()
+        self.allowlist = self.list_manager.load_allowlist()
         self.ai_thread = QThread()
         self.ai_worker = AIWorker()
         self.ai_worker.moveToThread(self.ai_thread)
@@ -328,31 +426,6 @@ class NullifyPDF(QMainWindow):
         self.ai_thread.quit()
         self.ai_thread.wait()
         super().closeEvent(event)
-
-    def load_list(self, p: pathlib.Path) -> Set[str]:
-        """Load word list from file.
-
-        Args:
-            p: Path to list file.
-
-        Returns:
-            Set[str]: Set of words (lowercase, stripped).
-        """
-        return (
-            {l.strip().lower() for l in open(p, "r", encoding="utf-8")}
-            if p.exists()
-            else set()
-        )
-
-    def save_list(self, p: pathlib.Path, d: Set[str]) -> None:
-        """Save word list to file.
-
-        Args:
-            p: Path to save list.
-            d: Set of words to save.
-        """
-        with open(p, "w", encoding="utf-8") as f:
-            f.write("\n".join(sorted(d)))
 
     def build_ui(self) -> None:
         """Build main application UI layout."""
@@ -380,10 +453,9 @@ class NullifyPDF(QMainWindow):
         self.rb_both = QRadioButton("BOTH")
         self.rb_en.setChecked(True)
         self.lang_grp = QButtonGroup(self)
-        [
-            (self.lang_grp.addButton(rb), lang_lay.addWidget(rb))
-            for rb in (self.rb_en, self.rb_it, self.rb_both)
-        ]
+        for rb in (self.rb_en, self.rb_it, self.rb_both):
+            self.lang_grp.addButton(rb)
+            lang_lay.addWidget(rb)
         s_lay.addLayout(lang_lay)
         s_lay.addSpacing(10)
         self.chk_img = QCheckBox("Oscura Immagini")
@@ -618,8 +690,8 @@ class NullifyPDF(QMainWindow):
             if len(cl) > 2:
                 self.allowlist.discard(cl)
                 self.blocklist.add(cl)
-                self.save_list(self.block_file, self.blocklist)
-                self.save_list(self.allow_file, self.allowlist)
+                self.list_manager.save_blocklist(self.blocklist)
+                self.list_manager.save_allowlist(self.allowlist)
         self.render()
 
     def user_click_pt(self, qpt: QPointF) -> None:
@@ -639,13 +711,14 @@ class NullifyPDF(QMainWindow):
         ]
         if ans:
             txt = p.get_text("text", clip=ans[0].rect)
-            [p.delete_annot(a) for a in ans]
+            for a in ans:
+                p.delete_annot(a)
             cl = " ".join(txt.split()).lower()
             if len(cl) > 2:
                 self.blocklist.discard(cl)
                 self.allowlist.add(cl)
-                self.save_list(self.block_file, self.blocklist)
-                self.save_list(self.allow_file, self.allowlist)
+                self.list_manager.save_blocklist(self.blocklist)
+                self.list_manager.save_allowlist(self.allowlist)
             self.render()
 
     def cmd_clear(self) -> None:
@@ -685,8 +758,8 @@ class NullifyPDF(QMainWindow):
                 for l in ax.toPlainText().split("\n")
                 if len(l.strip()) > 2
             }
-            self.save_list(self.block_file, self.blocklist)
-            self.save_list(self.allow_file, self.allowlist)
+            self.list_manager.save_blocklist(self.blocklist)
+            self.list_manager.save_allowlist(self.allowlist)
             d.accept()
 
         btn.clicked.connect(s)

@@ -1,5 +1,12 @@
-PySide6
-PyMuPDF
-presidio-analyzer
-spacy
-pyinstaller
+# UI Framework
+PySide6==6.7.0
+
+# PDF Processing
+PyMuPDF==1.24.1
+
+# NLP & Security Analysis
+presidio-analyzer==2.2.354
+spacy==3.7.2
+
+# Build Tool
+pyinstaller==6.3.0
