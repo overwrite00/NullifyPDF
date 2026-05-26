@@ -81,14 +81,29 @@ def inspect_pdf(file_path: str, target_word: str) -> None:
     # PHASE 2: Raw Binary Analysis (Data Carving)
     print("[*] Scanning hex/binary...")
     try:
+        needle = word_lower.encode("utf-8")
+        # Stream the file in chunks instead of loading it fully into memory,
+        # so that large PDFs (>1GB) don't OOM the inspector. Overlap chunks
+        # by len(needle)-1 bytes to catch matches that straddle a boundary.
+        chunk_size = 1024 * 1024  # 1 MiB
+        overlap = max(0, len(needle) - 1)
+        found = False
         with open(file_path, "rb") as f:
-            raw_data = f.read().lower()
-            # Searching for exact bytes of the word
-            if word_lower.encode("utf-8") in raw_data:
-                print(
-                    "  [!] THREAT DETECTED: String trace found in the raw source code of the file."
-                )
-                alerts += 1
+            tail = b""
+            while True:
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                window = (tail + chunk).lower()
+                if needle in window:
+                    found = True
+                    break
+                tail = chunk[-overlap:] if overlap else b""
+        if found:
+            print(
+                "  [!] THREAT DETECTED: String trace found in the raw source code of the file."
+            )
+            alerts += 1
     except Exception as e:
         print(f"[-] Binary read error: {e}")
 

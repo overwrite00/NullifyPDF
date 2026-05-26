@@ -141,24 +141,6 @@ Se sei uno sviluppatore e vuoi eseguire il codice sorgente (consigliato usare lo
    python NullifyPDF.py
    ```
 
-### 🐧 Note per lo sviluppo e compilazione in locale su Linux (Fedora / Ubuntu)
-
-Solitamente sui sistemi Windows la libreria grafica standard di Python `tkinter` è già inclusa ma, se intendi clonare la repository per sviluppare o compilare il progetto in locale su Linux, assicurati sia installata a livello di sistema. Senza di essa, PyInstaller genererà un errore fatale durante la compilazione di `customtkinter`.
-
-A seconda della tua distribuzione, apri il terminale ed esegui:
-
-**Su Fedora / RHEL:**
-
-```bash
-sudo dnf install python3-tkinter
-```
-
-**Su Debian / Ubuntu:**
-
-```bash
-sudo apt-get install python3-tk
-```
-
 ### 🤖 Script di automazione (Sviluppo e compilazione in locale)
 
 Per facilitare al massimo la vita agli sviluppatori e ai contributor, la repository include due script Python multipiattaforma che automatizzano l'intero ciclo di vita dello sviluppo:
