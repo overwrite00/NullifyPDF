@@ -1,12 +1,14 @@
 import os
 import sys
 import re
+import signal
 import datetime
 import pathlib
 import string
 import platform
 import logging
 import traceback
+import atexit
 from typing import Optional, List, Set, Dict, Any, Tuple
 import fitz
 from PySide6.QtWidgets import (
@@ -40,7 +42,7 @@ from PySide6.QtGui import (
     QDragEnterEvent,
     QDropEvent,
 )
-from PySide6.QtCore import Qt, QThread, QObject, Signal, Slot, QRectF, QPointF
+from PySide6.QtCore import Qt, QThread, QObject, Signal, Slot, QRectF, QPointF, QMutex, QMutexLocker
 
 __version__ = "2.0.5"
 
@@ -159,11 +161,13 @@ class PDFListManager:
         if not path.exists():
             return set()
         try:
-            return {
-                l.strip().lower()
-                for l in open(path, "r", encoding="utf-8")
-                if len(l.strip()) > 2
-            }
+            # Use context manager to ensure file handle is closed deterministically
+            with open(path, "r", encoding="utf-8") as fh:
+                return {
+                    line.strip().lower()
+                    for line in fh
+                    if len(line.strip()) > 2
+                }
         except Exception as e:
             logging.getLogger(__name__).error(f"Error loading {path}: {e}")
             return set()
@@ -229,20 +233,51 @@ class AIWorker(QObject):
         super().__init__()
         self.analyzer: Optional[Any] = None
         self.loaded_langs: List[str] = []
+        self._stop_requested = False
 
-    @Slot(list, str, list)
-    def run_scan(self, pages_text: List[str], choice: str,
-                 compiled_allowlist: List[Tuple[str, Any]]) -> None:
+    def cleanup(self) -> None:
+        """Release AI resources (Presidio, spaCy models).
+
+        Must be called before thread termination to avoid hanging processes.
+        """
+        self._stop_requested = True
+        try:
+            if self.analyzer:
+                # Clear analyzer reference; let GC reclaim spaCy/Presidio resources.
+                # NOTE: Mutating nlp.vocab.vectors.shape is not supported in modern
+                # spaCy (read-only property), so we simply drop the reference.
+                self.analyzer = None
+            self.loaded_langs.clear()
+        except Exception as e:
+            logging.getLogger("nullifypdf").debug(f"Error during AI cleanup: {e}")
+
+    @Slot(object, object, str, list, set)
+    def run_scan(self, doc: Any, doc_mutex: Any, choice: str,
+                 compiled_allowlist: List[Tuple[str, Any]],
+                 allowlist_set: Set[str]) -> None:
         """Run AI scan on PDF pages and emit detected sensitive entities.
 
+        Text extraction (`page.get_text()`) is performed inside this worker so
+        it does not block the UI thread on large documents. Access to the
+        shared PyMuPDF document is serialized through `doc_mutex` because the
+        UI thread also reads from it (render) and writes to it (apply
+        redactions) concurrently.
+
         Args:
-            pages_text: List of page text content.
+            doc: PyMuPDF document (shared with UI thread, mutex-protected).
+            doc_mutex: QMutex serializing access to `doc`.
             choice: Language choice: 'EN', 'IT', or 'BOTH'.
             compiled_allowlist: Pre-compiled regex patterns to skip redaction.
+            allowlist_set: Set of allowlist entries (lowercase) for O(1)
+                exact-match fast-path lookup before regex any() scan.
         """
         try:
-            if not pages_text or not isinstance(pages_text, list):
-                self.log_sig.emit("ERRORE: pages_text non valido")
+            if self._stop_requested:
+                self.finished_sig.emit()
+                return
+
+            if doc is None:
+                self.log_sig.emit("ERRORE: doc non valido")
                 self.finished_sig.emit()
                 return
 
@@ -255,6 +290,9 @@ class AIWorker(QObject):
                 self.log_sig.emit("ERRORE: compiled_allowlist non valido")
                 self.finished_sig.emit()
                 return
+
+            if not isinstance(allowlist_set, set):
+                allowlist_set = set()
 
             target_langs = ["en", "it"] if choice == "BOTH" else [choice.lower()]
             if not self.analyzer or sorted(self.loaded_langs) != sorted(target_langs):
@@ -287,7 +325,23 @@ class AIWorker(QObject):
                 "CREDIT_CARD",
                 "CRYPTO",
             ]
-            for i, text in enumerate(pages_text):
+
+            # Determine page count under mutex (cheap, but doc may be replaced
+            # mid-flight by load_path if not for the disabled UI during scan).
+            with QMutexLocker(doc_mutex):
+                total_pages = len(doc)
+
+            for i in range(total_pages):
+                if self._stop_requested:
+                    break
+                # Extract text in worker thread (off the UI thread) under mutex
+                # because UI thread renders / mutates annotations on the same doc.
+                with QMutexLocker(doc_mutex):
+                    try:
+                        text = doc[i].get_text()
+                    except Exception as e:
+                        self.log_sig.emit(f"Avviso: get_text fallito pagina {i+1}: {e}")
+                        text = ""
                 found = set()
                 for lang in self.loaded_langs:
                     res = self.analyzer.analyze(
@@ -300,17 +354,32 @@ class AIWorker(QObject):
                 final_words = set()
                 for m in found:
                     clean = " ".join(m.strip(string.punctuation).lower().split())
+                    if not clean:
+                        continue
+                    # Fast path: exact set membership is O(1). The vast majority
+                    # of user allowlist entries are full tokens matched verbatim
+                    # against `clean`, so this short-circuits before the O(N)
+                    # regex any() scan over the whole allowlist.
+                    if clean in allowlist_set:
+                        continue
+                    # Cache the word-boundary regex for `clean` so we don't
+                    # rebuild and recompile it once per allowlist entry.
+                    clean_pattern = re.compile(r"\b" + re.escape(clean) + r"\b")
                     if not any(
-                        f_reg.search(clean)
-                        or re.search(r"\b" + re.escape(clean) + r"\b", a_str)
+                        f_reg.search(clean) or clean_pattern.search(a_str)
                         for a_str, f_reg in compiled_allowlist
                     ):
                         final_words.add(m)
                 self.page_done_sig.emit(i, final_words)
-                self.progress_sig.emit(i + 1, len(pages_text))
-            self.log_sig.emit("Anonimizzazione completata.")
+                self.progress_sig.emit(i + 1, total_pages)
+            if not self._stop_requested:
+                self.log_sig.emit("Anonimizzazione completata.")
         except Exception as e:
-            self.log_sig.emit(f"ERRORE AI: {str(e)}")
+            # Log full traceback to file for diagnostics; show only summary in UI
+            logging.getLogger("nullifypdf").error(
+                f"AI scan error: {traceback.format_exc()}"
+            )
+            self.log_sig.emit(f"ERRORE AI: {type(e).__name__}: {str(e)}")
         finally:
             self.finished_sig.emit()
 
@@ -342,9 +411,10 @@ class PDFView(QGraphicsView):
         self.start_pos: Optional[QPointF] = None
         self.temp_rect: Optional[QGraphicsRectItem] = None
 
-    def mousePressEvent(self, event):
+    def mousePressEvent(self, event: Any) -> None:
+        """Handle mouse press: start selection rectangle on left-click."""
         if event.button() == Qt.LeftButton:
-            sp = self.mapToScene(event.pos())
+            sp = self.mapToScene(event.position())
             self.start_pos = sp
             self.point_clicked.emit(sp)
             self.temp_rect = QGraphicsRectItem(QRectF(sp, sp))
@@ -352,13 +422,15 @@ class PDFView(QGraphicsView):
             self.scene().addItem(self.temp_rect)
         super().mousePressEvent(event)
 
-    def mouseMoveEvent(self, event):
+    def mouseMoveEvent(self, event: Any) -> None:
+        """Update in-progress selection rectangle while dragging."""
         if self.start_pos and self.temp_rect:
-            ep = self.mapToScene(event.pos())
+            ep = self.mapToScene(event.position())
             self.temp_rect.setRect(QRectF(self.start_pos, ep).normalized())
         super().mouseMoveEvent(event)
 
-    def mouseReleaseEvent(self, event):
+    def mouseReleaseEvent(self, event: Any) -> None:
+        """Finalize selection rectangle and emit rect_drawn if large enough."""
         if event.button() == Qt.LeftButton and self.temp_rect:
             rect = self.temp_rect.rect()
             self.scene().removeItem(self.temp_rect)
@@ -368,7 +440,7 @@ class PDFView(QGraphicsView):
                 self.rect_drawn.emit(rect)
         super().mouseReleaseEvent(event)
 
-    def wheelEvent(self, event):
+    def wheelEvent(self, event: Any) -> None:
         if event.modifiers() == Qt.ControlModifier:
             self.zoom_req.emit(1 if event.angleDelta().y() > 0 else -1)
             event.accept()
@@ -391,7 +463,7 @@ class NullifyPDF(QMainWindow):
         config_dir: Path to user config directory (~/.nullifypdf).
     """
 
-    start_scan_sig = Signal(list, str, list)
+    start_scan_sig = Signal(object, object, str, list, set)
 
     def __init__(self) -> None:
         """Initialize main application window and setup UI."""
@@ -408,6 +480,9 @@ class NullifyPDF(QMainWindow):
         self.doc = None
         self.page_num = 0
         self.scale = 1.5
+        # Mutex guards `self.doc` against concurrent access from the AI worker
+        # thread (text extraction) and the UI thread (render, apply redactions).
+        self.doc_mutex = QMutex()
         self.config_dir = pathlib.Path.home() / ".nullifypdf"
         self.list_manager = PDFListManager(self.config_dir)
         self.blocklist = self.list_manager.load_blocklist()
@@ -422,12 +497,87 @@ class NullifyPDF(QMainWindow):
         self.start_scan_sig.connect(self.ai_worker.run_scan)
         self.ai_thread.start()
         self.build_ui()
+        # Setup signal handlers for graceful shutdown
+        self._setup_signal_handlers()
+        # Register cleanup on exit
+        atexit.register(self._cleanup_on_exit)
         if len(sys.argv) > 1:
             self.load_path(sys.argv[1])
 
-    def closeEvent(self, event):
-        self.ai_thread.quit()
-        self.ai_thread.wait()
+    def _setup_signal_handlers(self) -> None:
+        """Setup SIGINT/SIGTERM handlers for graceful shutdown.
+
+        Allows Ctrl+C to properly cleanup resources before exit.
+        """
+        from PySide6.QtCore import QTimer
+
+        def signal_handler(signum: int, frame: Any) -> None:
+            self.logger.info(f"Signal {signum} received, initiating graceful shutdown")
+            # Defer close() onto the Qt event loop. Python signal handlers run
+            # at arbitrary points in main-thread bytecode; calling Qt APIs
+            # directly from one can crash or leave Qt in an inconsistent state.
+            QTimer.singleShot(0, self.close)
+
+        # Windows doesn't support SIGTERM for user processes, but SIGINT works
+        signal.signal(signal.SIGINT, signal_handler)
+        if hasattr(signal, 'SIGTERM'):
+            signal.signal(signal.SIGTERM, signal_handler)
+
+    def _cleanup_resources(self) -> None:
+        """Cleanup all resources before application termination.
+
+        Releases:
+        - PDF document (PyMuPDF)
+        - AI worker thread and models
+        - All connections
+        """
+        self.logger.info("Starting resource cleanup")
+        try:
+            # Stop AI worker from processing
+            if hasattr(self, 'ai_worker'):
+                self.ai_worker.cleanup()
+
+            # Quit and wait for thread
+            if hasattr(self, 'ai_thread') and self.ai_thread.isRunning():
+                self.ai_thread.quit()
+                # Wait up to 5 seconds for thread to finish
+                if not self.ai_thread.wait(5000):
+                    self.logger.warning("AI thread did not terminate within timeout, forcing termination")
+                    self.ai_thread.terminate()
+                    self.ai_thread.wait()
+
+            # Close PDF document
+            if self.doc:
+                try:
+                    self.doc.close()
+                    self.logger.debug("PDF document closed")
+                except Exception as e:
+                    self.logger.debug(f"Error closing PDF: {e}")
+                self.doc = None
+
+            # Note: Signal disconnection is optional - Python's garbage collector
+            # will clean up signal/slot connections when objects are destroyed.
+            # Explicit disconnect() is not necessary and can cause RuntimeWarning
+            # if the worker thread has already been cleaned up.
+
+            self.logger.info("Resource cleanup completed")
+        except Exception as e:
+            self.logger.error(f"Error during cleanup: {e}")
+
+    def _cleanup_on_exit(self) -> None:
+        """Final cleanup hook called on application exit via atexit.
+
+        This ensures cleanup happens even if closeEvent is not called.
+        """
+        self._cleanup_resources()
+
+    def closeEvent(self, event: Any) -> None:
+        """Handle window close event with proper resource cleanup.
+
+        Args:
+            event: Qt QCloseEvent passed by the framework.
+        """
+        self._cleanup_resources()
         super().closeEvent(event)
 
     def build_ui(self) -> None:
@@ -573,6 +723,10 @@ class NullifyPDF(QMainWindow):
             c: Current progress.
             t: Total progress.
         """
+        # Guard against division by zero (empty document edge case)
+        if t <= 0:
+            self.prog.setValue(0)
+            return
         self.prog.setValue(int((c / t) * 100))
 
     def cmd_open(self) -> None:
@@ -581,7 +735,12 @@ class NullifyPDF(QMainWindow):
         if p:
             self.load_path(p)
 
-    def load_path(self, path):
+    def load_path(self, path: str) -> None:
+        """Load a PDF document from disk and reset viewer state.
+
+        Args:
+            path: Filesystem path to a .pdf file.
+        """
         if not path or not isinstance(path, str):
             self.write_log("ERRORE: Path non valido")
             return
@@ -593,16 +752,19 @@ class NullifyPDF(QMainWindow):
             return
 
         try:
-            if self.doc:
-                self.doc.close()
             tdoc = fitz.open(path)
             if tdoc.needs_pass:
                 self.write_log("ERRORE: PDF cifrato - inserire password non supportato")
                 tdoc.close()
                 return
-            self.doc = tdoc
-            self.page_num = 0
-            self.scale = 1.5
+            # Swap docs under mutex so the AI worker thread (if running) is not
+            # holding a reference to a closed document.
+            with QMutexLocker(self.doc_mutex):
+                if self.doc:
+                    self.doc.close()
+                self.doc = tdoc
+                self.page_num = 0
+                self.scale = 1.5
             self.adjust_zoom(0)
             self.write_log(f"Caricato: {os.path.basename(path)}")
         except FileNotFoundError:
@@ -615,16 +777,22 @@ class NullifyPDF(QMainWindow):
         """Render current PDF page to display."""
         if not self.doc:
             return
-        page = self.doc[self.page_num]
-        pix = page.get_pixmap(matrix=fitz.Matrix(self.scale, self.scale), annots=True)
+        with QMutexLocker(self.doc_mutex):
+            if not self.doc or self.page_num >= len(self.doc):
+                return
+            page = self.doc[self.page_num]
+            pix = page.get_pixmap(matrix=fitz.Matrix(self.scale, self.scale), annots=True)
+            total = len(self.doc)
+        # QImage does NOT copy `pix.samples`; if `pix` is garbage-collected before
+        # the image is used the buffer is freed (UB / crash). Force a deep copy.
         img = QImage(
             pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888
-        )
+        ).copy()
         self.scene.clear()
         self.scene.addPixmap(QPixmap.fromImage(img))
         self.scene.setSceneRect(0, 0, pix.width, pix.height)
         self.le_page.setText(str(self.page_num + 1))
-        self.lbl_tot.setText(f"/ {len(self.doc)}")
+        self.lbl_tot.setText(f"/ {total}")
 
     def adjust_zoom(self, d: int) -> None:
         """Adjust zoom level.
@@ -646,7 +814,8 @@ class NullifyPDF(QMainWindow):
             self.page_num += d
             self.render()
 
-    def jump_page(self):
+    def jump_page(self) -> None:
+        """Jump to the page number entered in the page selector."""
         if not self.doc:
             self.write_log("Avviso: Nessun PDF caricato")
             return
@@ -677,24 +846,27 @@ class NullifyPDF(QMainWindow):
             qrect.right() / self.scale,
             qrect.bottom() / self.scale,
         )
-        p = self.doc[self.page_num]
-        txt = p.get_text("text", clip=r).strip()
-        if not txt:
-            p.add_redact_annot(
-                r,
-                text="[ IMMAGINE RIMOSSA ]",
-                align=1,
-                fill=(0.9, 0.9, 0.9),
-                fontsize=8,
-            )
-        else:
-            p.add_redact_annot(r, fill=(0, 0, 0))
-            cl = " ".join(txt.split()).lower()
-            if len(cl) > 2:
-                self.allowlist.discard(cl)
-                self.blocklist.add(cl)
-                self.list_manager.save_blocklist(self.blocklist)
-                self.list_manager.save_allowlist(self.allowlist)
+        with QMutexLocker(self.doc_mutex):
+            if not self.doc:
+                return
+            p = self.doc[self.page_num]
+            txt = p.get_text("text", clip=r).strip()
+            if not txt:
+                p.add_redact_annot(
+                    r,
+                    text="[ IMMAGINE RIMOSSA ]",
+                    align=1,
+                    fill=(0.9, 0.9, 0.9),
+                    fontsize=8,
+                )
+            else:
+                p.add_redact_annot(r, fill=(0, 0, 0))
+                cl = " ".join(txt.split()).lower()
+                if len(cl) > 2:
+                    self.allowlist.discard(cl)
+                    self.blocklist.add(cl)
+                    self.list_manager.save_blocklist(self.blocklist)
+                    self.list_manager.save_allowlist(self.allowlist)
         self.render()
 
     def user_click_pt(self, qpt: QPointF) -> None:
@@ -706,30 +878,46 @@ class NullifyPDF(QMainWindow):
         if not self.doc:
             return
         pt = fitz.Point(qpt.x() / self.scale, qpt.y() / self.scale)
-        p = self.doc[self.page_num]
-        ans = [
-            a
-            for a in (p.annots() or [])
-            if a.type[0] == fitz.PDF_ANNOT_REDACT and a.rect.contains(pt)
-        ]
-        if ans:
-            txt = p.get_text("text", clip=ans[0].rect)
-            for a in ans:
-                p.delete_annot(a)
-            cl = " ".join(txt.split()).lower()
-            if len(cl) > 2:
-                self.blocklist.discard(cl)
-                self.allowlist.add(cl)
-                self.list_manager.save_blocklist(self.blocklist)
-                self.list_manager.save_allowlist(self.allowlist)
+        has_ans = False
+        with QMutexLocker(self.doc_mutex):
+            if not self.doc:
+                return
+            p = self.doc[self.page_num]
+            ans = [
+                a
+                for a in (p.annots() or [])
+                if a.type[0] == fitz.PDF_ANNOT_REDACT and a.rect.contains(pt)
+            ]
+            if ans:
+                has_ans = True
+                txt = p.get_text("text", clip=ans[0].rect)
+                for a in ans:
+                    p.delete_annot(a)
+                cl = " ".join(txt.split()).lower()
+                if len(cl) > 2:
+                    self.blocklist.discard(cl)
+                    self.allowlist.add(cl)
+                    self.list_manager.save_blocklist(self.blocklist)
+                    self.list_manager.save_allowlist(self.allowlist)
+        if has_ans:
             self.render()
 
     def cmd_clear(self) -> None:
         """Clear all redactions on current page."""
         if not self.doc:
             return
-        p = self.doc[self.page_num]
-        [p.delete_annot(a) for a in (p.annots() or []) if a.type[0] == fitz.PDF_ANNOT_REDACT]
+        with QMutexLocker(self.doc_mutex):
+            if not self.doc:
+                return
+            p = self.doc[self.page_num]
+            # Materialize list first: deleting annotations invalidates the
+            # generator returned by p.annots(), and list-comprehension-for-
+            # side-effects is an anti-pattern (PEP 8 / pylint W0106).
+            to_delete = [
+                a for a in (p.annots() or []) if a.type[0] == fitz.PDF_ANNOT_REDACT
+            ]
+            for a in to_delete:
+                p.delete_annot(a)
         self.render()
         self.write_log(f"Censure rimosse su pagina {self.page_num+1}")
 
@@ -750,16 +938,16 @@ class NullifyPDF(QMainWindow):
         btn = QPushButton("Salva")
         btn.setObjectName("Primary")
 
-        def s():
+        def s() -> None:
             self.blocklist = {
-                l.strip().lower()
-                for l in bx.toPlainText().split("\n")
-                if len(l.strip()) > 2
+                line.strip().lower()
+                for line in bx.toPlainText().split("\n")
+                if len(line.strip()) > 2
             }
             self.allowlist = {
-                l.strip().lower()
-                for l in ax.toPlainText().split("\n")
-                if len(l.strip()) > 2
+                line.strip().lower()
+                for line in ax.toPlainText().split("\n")
+                if len(line.strip()) > 2
             }
             self.list_manager.save_blocklist(self.blocklist)
             self.list_manager.save_allowlist(self.allowlist)
@@ -807,7 +995,12 @@ class NullifyPDF(QMainWindow):
         d.exec()
 
     def cmd_auto_ai(self) -> None:
-        """Start AI scan for sensitive entities."""
+        """Start AI scan for sensitive entities.
+
+        Text extraction is delegated to the AIWorker thread so the UI stays
+        responsive on large documents. Access to `self.doc` is serialized via
+        `self.doc_mutex` between the UI thread and the worker.
+        """
         if not self.doc:
             return
         self.btn_ai.setEnabled(False)
@@ -820,49 +1013,60 @@ class NullifyPDF(QMainWindow):
             if self.rb_en.isChecked()
             else "IT" if self.rb_it.isChecked() else "BOTH"
         )
-        texts = [p.get_text() for p in self.doc]
-        self.start_scan_sig.emit(texts, lang, c_allow)
+        # Pass a snapshot copy of the allowlist set so the worker is insulated
+        # from concurrent mutation by the UI (user_draw_rect / cmd_dict).
+        self.start_scan_sig.emit(
+            self.doc, self.doc_mutex, lang, c_allow, set(self.allowlist)
+        )
 
     @Slot(int, set)
     def apply_ai_to_page(self, i: int, words: Set[str]) -> None:
         """Apply AI-detected redactions to page.
 
+        Runs on the UI thread (Qt slot). Holds `doc_mutex` while mutating the
+        page so the AI worker's `get_text()` calls do not race.
+
         Args:
             i: Page index.
             words: Set of words detected as sensitive.
         """
-        page = self.doc[i]
-        e_rects = [a.rect for a in (page.annots() or []) if a.type[0] == fitz.PDF_ANNOT_REDACT]
-        if self.chk_img.isChecked():
-            for img in page.get_image_info(hashes=False):
-                ir = fitz.Rect(img["bbox"])
-                page.add_redact_annot(
-                    ir,
-                    text="[ IMMAGINE RIMOSSA ]",
-                    align=1,
-                    fill=(0.9, 0.9, 0.9),
-                    fontsize=8,
-                )
-                e_rects.append(ir)
-        for bw in self.blocklist:
-            for r in page.search_for(bw):
-                if not any(
-                    e.contains(fitz.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2))
-                    for e in e_rects
-                ):
-                    page.add_redact_annot(r, fill=(0, 0, 0))
-                    e_rects.append(r)
-        p_rects = [r for aw in self.allowlist for r in page.search_for(aw)]
-        for w in words:
-            for r in page.search_for(w):
-                if any(r.intersects(pr) for pr in p_rects):
-                    continue
-                if not any(
-                    e.contains(fitz.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2))
-                    for e in e_rects
-                ):
-                    page.add_redact_annot(r, fill=(0, 0, 0))
-                    e_rects.append(r)
+        if not self.doc:
+            return
+        with QMutexLocker(self.doc_mutex):
+            if i >= len(self.doc):
+                return
+            page = self.doc[i]
+            e_rects = [a.rect for a in (page.annots() or []) if a.type[0] == fitz.PDF_ANNOT_REDACT]
+            if self.chk_img.isChecked():
+                for img in page.get_image_info(hashes=False):
+                    ir = fitz.Rect(img["bbox"])
+                    page.add_redact_annot(
+                        ir,
+                        text="[ IMMAGINE RIMOSSA ]",
+                        align=1,
+                        fill=(0.9, 0.9, 0.9),
+                        fontsize=8,
+                    )
+                    e_rects.append(ir)
+            for bw in self.blocklist:
+                for r in page.search_for(bw):
+                    if not any(
+                        e.contains(fitz.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2))
+                        for e in e_rects
+                    ):
+                        page.add_redact_annot(r, fill=(0, 0, 0))
+                        e_rects.append(r)
+            p_rects = [r for aw in self.allowlist for r in page.search_for(aw)]
+            for w in words:
+                for r in page.search_for(w):
+                    if any(r.intersects(pr) for pr in p_rects):
+                        continue
+                    if not any(
+                        e.contains(fitz.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2))
+                        for e in e_rects
+                    ):
+                        page.add_redact_annot(r, fill=(0, 0, 0))
+                        e_rects.append(r)
 
     @Slot()
     def ai_finished(self) -> None:
@@ -871,7 +1075,23 @@ class NullifyPDF(QMainWindow):
         self.render()
 
     def cmd_export(self) -> None:
-        """Export current PDF with forensic scrubbing."""
+        """Export current PDF with forensic scrubbing.
+
+        Memory strategy (fix C1): instead of materializing the whole document
+        in RAM via `self.doc.write()` (which would double peak memory on large
+        PDFs), we stream through a sibling temp file next to the target path:
+
+            1. Save `self.doc` (with annotations, NOT yet flattened) to
+               `<target>.tmp` on disk.
+            2. Open the temp file as `ex_doc`.
+            3. Apply redactions / scrub metadata on `ex_doc`.
+            4. Save `ex_doc` to the user-chosen final path.
+            5. Remove the temp file.
+
+        The original `self.doc` is never mutated (redactions stay as
+        annotations), so the user can keep editing after export. Peak extra
+        memory is O(1) over what PyMuPDF needs internally for save().
+        """
         if not self.doc:
             return
         p, _ = QFileDialog.getSaveFileName(
@@ -880,35 +1100,83 @@ class NullifyPDF(QMainWindow):
             f"{os.path.splitext(self.doc.name)[0]}_secured.pdf",
             "PDF (*.pdf)",
         )
-        if p:
-            self.write_log("Scrubbing Forense...")
-            ex_doc = fitz.open("pdf", self.doc.write())
+        if not p:
+            return
+
+        self.write_log("Scrubbing Forense...")
+        # Sibling temp file (same directory as target so rename/cleanup are
+        # always on the same filesystem; avoids cross-device issues).
+        tmp_path = p + ".nullifypdf.tmp"
+        ex_doc = None
+        try:
+            # Step 1: serialize `self.doc` (with annotations) to disk under
+            # the mutex so the AI worker thread cannot mutate mid-write.
+            with QMutexLocker(self.doc_mutex):
+                if not self.doc:
+                    return
+                # `clean=False` here: we want a faithful copy of the
+                # in-memory state, including all redact annotations. The
+                # real cleanup pass happens on ex_doc.save() below.
+                self.doc.save(tmp_path, garbage=0, deflate=False, clean=False)
+
+            # Step 2: reopen the on-disk copy. PyMuPDF lazy-parses pages, so
+            # this does NOT load the whole PDF into RAM up front.
+            ex_doc = fitz.open(tmp_path)
+
+            # Step 3: scrub on the disk-backed copy.
             for page in ex_doc:
+                # page.annots() may return None for pages with no annotations
                 r_rects = [
-                    a.rect for a in page.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT
+                    a.rect for a in (page.annots() or [])
+                    if a.type[0] == fitz.PDF_ANNOT_REDACT
                 ]
                 try:
-                    [
-                        page.delete_link(lnk)
-                        for lnk in page.get_links()
+                    links_to_delete = [
+                        lnk for lnk in page.get_links()
                         if any(fitz.Rect(lnk["from"]).intersects(r) for r in r_rects)
                     ]
+                    for lnk in links_to_delete:
+                        page.delete_link(lnk)
                 except (RuntimeError, AttributeError, KeyError) as e:
                     self.logger.debug(f"Could not delete link: {e}")
                 page.apply_redactions(
                     images=fitz.PDF_REDACT_IMAGE_REMOVE, graphics=True
                 )
                 try:
-                    [page.delete_widget(w) for w in page.widgets()]
+                    # Materialize first: mutating during iteration of
+                    # page.widgets() can invalidate the generator.
+                    for w in list(page.widgets() or []):
+                        page.delete_widget(w)
                 except (RuntimeError, AttributeError) as e:
                     self.logger.debug(f"Could not delete widget: {e}")
             ex_doc.set_metadata({})
             cx = ex_doc.pdf_catalog()
             for k in ["Metadata", "PieceInfo", "Properties", "AcroForm"]:
                 ex_doc.xref_set_key(cx, k, "null")
+
+            # Step 4: write final scrubbed output. Must save to a different
+            # path than the open source (`tmp_path`) to avoid PyMuPDF's
+            # "save to original" restriction on incremental saves.
             ex_doc.save(p, garbage=4, deflate=True, clean=True)
-            ex_doc.close()
             self.write_log("ESPORTATO.")
+        except Exception as e:
+            self.logger.error(f"Export failed: {traceback.format_exc()}")
+            self.write_log(f"ERRORE export: {type(e).__name__}: {str(e)}")
+        finally:
+            # Always close ex_doc, even on failure, to release the file
+            # handle on tmp_path before we try to remove it (Windows locks
+            # open files).
+            if ex_doc is not None:
+                try:
+                    ex_doc.close()
+                except Exception as e:
+                    self.logger.debug(f"Error closing ex_doc: {e}")
+            # Step 5: remove temp file (best-effort).
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError as e:
+                self.logger.debug(f"Could not remove temp file {tmp_path}: {e}")
 
 
 if __name__ == "__main__":
@@ -918,6 +1186,20 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setDesktopFileName("nullify-pdf")
 
-    window = NullifyPDF()
-    window.show()
-    sys.exit(app.exec())
+    try:
+        window = NullifyPDF()
+        window.show()
+        exit_code = app.exec()
+    except Exception as e:
+        logger = setup_logging()
+        logger.error(f"Unhandled exception: {traceback.format_exc()}")
+        exit_code = 1
+    finally:
+        # Final cleanup on exit
+        try:
+            if 'window' in locals():
+                window._cleanup_resources()
+        except Exception as e:
+            logging.getLogger("nullifypdf").debug(f"Error in final cleanup: {e}")
+
+    sys.exit(exit_code)

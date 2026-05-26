@@ -18,6 +18,37 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _remove_venv(venv_dir: str) -> bool:
+    """Rimuove il vecchio venv. Se bloccato, chiede all'utente di farlo manualmente.
+
+    Args:
+        venv_dir: Directory path to remove
+
+    Returns:
+        True se rimosso, False se bloccato
+    """
+    if not os.path.exists(venv_dir):
+        return True
+
+    try:
+        shutil.rmtree(venv_dir)
+        logger.info(f"✓ Vecchio venv rimosso")
+        return True
+    except Exception as e:
+        logger.error(f"Impossibile rimuovere {venv_dir}: {e}")
+        logger.error("")
+        logger.error("=== SOLUZIONE ===")
+        logger.error("Il venv è bloccato da un processo in esecuzione.")
+        logger.error("")
+        logger.error("1. Chiudi VS Code e tutti gli editor/IDE")
+        logger.error("2. Chiudi tutti i terminali con il venv attivo")
+        logger.error("3. Chiudi tutti i processi Python in esecuzione")
+        logger.error("4. Elimina manualmente la cartella: .venv")
+        logger.error("5. Riprova: python setup_env.py")
+        logger.error("")
+        return False
+
+
 def setup_environment() -> None:
     """Initialize cross-platform virtual environment and install dependencies.
 
@@ -29,24 +60,19 @@ def setup_environment() -> None:
 
     if os.path.exists(venv_dir):
         logger.info(f"Rimozione vecchio ambiente virtuale: {venv_dir}")
-        # Retry logic for robust removal
-        for attempt in range(3):
-            try:
-                shutil.rmtree(venv_dir, ignore_errors=False)
-                logger.debug(f"Rimozione completata al tentativo {attempt + 1}")
-                break
-            except Exception as e:
-                if attempt < 2:
-                    logger.debug(f"Tentativo {attempt + 1} fallito: {e}, riprovo...")
-                    import time
-                    time.sleep(0.5)
-                else:
-                    logger.warning(f"Impossibile rimuovere completamente {venv_dir}: {e}")
-                    logger.info("Procedendo con creazione venv comunque...")
+        if not _remove_venv(venv_dir):
+            sys.exit(1)
 
     logger.info(f"Creazione nuovo ambiente virtuale: {venv_dir}")
     try:
-        subprocess.run([sys.executable, "-m", "venv", venv_dir], check=True)
+        if platform.system() == "Windows":
+            subprocess.run(["py", "-3.12", "-m", "venv", venv_dir], check=True)
+        else:
+            try:
+                subprocess.run(["python3.12", "-m", "venv", venv_dir], check=True)
+            except FileNotFoundError:
+                logger.error("Python 3.12 non trovato. Installa Python 3.12 e riprova.")
+                sys.exit(1)
     except subprocess.CalledProcessError as e:
         logger.error(f"Errore critico durante la creazione del venv: {e}")
         sys.exit(1)
@@ -63,7 +89,16 @@ def setup_environment() -> None:
         sys.exit(1)
 
     logger.info("Aggiornamento pip")
-    subprocess.run([venv_python, "-m", "pip", "install", "--upgrade", "pip", "-q"])
+    try:
+        # check=True so a failed upgrade is surfaced instead of silently
+        # continuing with a stale pip that may break later installs.
+        subprocess.run(
+            [venv_python, "-m", "pip", "install", "--upgrade", "pip", "-q"],
+            check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Errore durante l'aggiornamento di pip: {e}")
+        sys.exit(1)
 
     if not os.path.exists("requirements.txt"):
         logger.error("File 'requirements.txt' non trovato nella root del progetto")
@@ -79,9 +114,13 @@ def setup_environment() -> None:
         sys.exit(1)
 
     logger.info("Download modelli linguistici spaCy (EN & IT)")
+    spacy_models = [
+        "https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.7.1/en_core_web_md-3.7.1-py3-none-any.whl",
+        "https://github.com/explosion/spacy-models/releases/download/it_core_news_md-3.7.0/it_core_news_md-3.7.0-py3-none-any.whl"
+    ]
     try:
-        subprocess.run([venv_python, "-m", "spacy", "download", "en_core_web_md"])
-        subprocess.run([venv_python, "-m", "spacy", "download", "it_core_news_md"])
+        for model_url in spacy_models:
+            subprocess.run([venv_python, "-m", "pip", "install", model_url], check=True)
     except Exception as e:
         logger.warning(f"Errore durante il download modelli (non-critico): {e}")
 
