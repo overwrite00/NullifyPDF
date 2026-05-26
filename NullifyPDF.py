@@ -5,6 +5,8 @@ import datetime
 import pathlib
 import string
 import platform
+import logging
+import traceback
 import fitz
 from PySide6.QtWidgets import (
     QApplication,
@@ -40,6 +42,35 @@ from PySide6.QtGui import (
 from PySide6.QtCore import Qt, QThread, QObject, Signal, Slot, QRectF, QPointF
 
 __version__ = "2.0.5"
+
+
+def setup_logging():
+    """Configure file-based logging with rotation."""
+    log_dir = pathlib.Path.home() / ".nullifypdf" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    logger = logging.getLogger("nullifypdf")
+    logger.setLevel(logging.DEBUG)
+
+    if logger.handlers:
+        return logger
+
+    try:
+        handler = logging.FileHandler(
+            log_dir / "nullifypdf.log",
+            encoding="utf-8"
+        )
+        handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter(
+            '%(asctime)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    except Exception as e:
+        print(f"Warning: Could not setup file logging: {e}")
+
+    return logger
 
 
 def resource_path(relative_path):
@@ -197,6 +228,8 @@ class NullifyPDF(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        self.logger = setup_logging()
+        self.logger.info("Application started")
         self.setWindowTitle("NullifyPDF - AI Forensic Edition")
         self.resize(1350, 950)
         self.setStyleSheet(STYLESHEET)
@@ -380,12 +413,22 @@ class NullifyPDF(QMainWindow):
             self.load_path(p)
 
     def load_path(self, path):
+        if not path or not isinstance(path, str):
+            self.write_log("ERRORE: Path non valido")
+            return
+        if not os.path.exists(path):
+            self.write_log(f"ERRORE: File non trovato: {path}")
+            return
+        if not path.lower().endswith('.pdf'):
+            self.write_log("ERRORE: Solo file PDF sono supportati")
+            return
+
         try:
             if self.doc:
                 self.doc.close()
             tdoc = fitz.open(path)
             if tdoc.needs_pass:
-                self.write_log("ERRORE: PDF cifrato.")
+                self.write_log("ERRORE: PDF cifrato - inserire password non supportato")
                 tdoc.close()
                 return
             self.doc = tdoc
@@ -393,8 +436,11 @@ class NullifyPDF(QMainWindow):
             self.scale = 1.5
             self.adjust_zoom(0)
             self.write_log(f"Caricato: {os.path.basename(path)}")
+        except FileNotFoundError:
+            self.write_log(f"ERRORE: File non trovato")
         except Exception as e:
-            self.write_log(f"ERRORE: {e}")
+            self.logger.error(f"Error loading PDF: {traceback.format_exc()}")
+            self.write_log(f"ERRORE: {type(e).__name__}: {str(e)}")
 
     def render(self):
         if not self.doc:
@@ -421,13 +467,21 @@ class NullifyPDF(QMainWindow):
             self.render()
 
     def jump_page(self):
+        if not self.doc:
+            self.write_log("Avviso: Nessun PDF caricato")
+            return
         try:
             n = int(self.le_page.text()) - 1
             if 0 <= n < len(self.doc):
                 self.page_num = n
                 self.render()
-        except:
-            pass
+            else:
+                self.write_log(f"Avviso: Pagina {n + 1} non esiste (intervallo: 1-{len(self.doc)})")
+        except ValueError:
+            self.write_log("ERRORE: Inserire un numero valido per il numero di pagina")
+        except Exception as e:
+            self.logger.error(f"Unexpected error in jump_page: {traceback.format_exc()}")
+            self.write_log(f"ERRORE: {type(e).__name__}: {str(e)}")
 
     def user_draw_rect(self, qrect):
         if not self.doc:
@@ -465,7 +519,7 @@ class NullifyPDF(QMainWindow):
         p = self.doc[self.page_num]
         ans = [
             a
-            for a in p.annots()
+            for a in (p.annots() or [])
             if a.type[0] == fitz.PDF_ANNOT_REDACT and a.rect.contains(pt)
         ]
         if ans:
@@ -483,7 +537,7 @@ class NullifyPDF(QMainWindow):
         if not self.doc:
             return
         p = self.doc[self.page_num]
-        [p.delete_annot(a) for a in p.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT]
+        [p.delete_annot(a) for a in (p.annots() or []) if a.type[0] == fitz.PDF_ANNOT_REDACT]
         self.render()
         self.write_log(f"Censure rimosse su pagina {self.page_num+1}")
 
@@ -577,7 +631,7 @@ class NullifyPDF(QMainWindow):
     @Slot(int, set)
     def apply_ai_to_page(self, i, words):
         page = self.doc[i]
-        e_rects = [a.rect for a in page.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT]
+        e_rects = [a.rect for a in (page.annots() or []) if a.type[0] == fitz.PDF_ANNOT_REDACT]
         if self.chk_img.isChecked():
             for img in page.get_image_info(hashes=False):
                 ir = fitz.Rect(img["bbox"])
@@ -636,15 +690,15 @@ class NullifyPDF(QMainWindow):
                         for lnk in page.get_links()
                         if any(fitz.Rect(lnk["from"]).intersects(r) for r in r_rects)
                     ]
-                except:
-                    pass
+                except (RuntimeError, AttributeError, KeyError) as e:
+                    self.logger.debug(f"Could not delete link: {e}")
                 page.apply_redactions(
                     images=fitz.PDF_REDACT_IMAGE_REMOVE, graphics=True
                 )
                 try:
                     [page.delete_widget(w) for w in page.widgets()]
-                except:
-                    pass
+                except (RuntimeError, AttributeError) as e:
+                    self.logger.debug(f"Could not delete widget: {e}")
             ex_doc.set_metadata({})
             cx = ex_doc.pdf_catalog()
             for k in ["Metadata", "PieceInfo", "Properties", "AcroForm"]:
