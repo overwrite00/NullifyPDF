@@ -1,3 +1,9 @@
+"""Virtual environment and dependency setup for NullifyPDF.
+
+Sets up isolated Python environment with PySide6, PyMuPDF, Presidio,
+spaCy models, and PyInstaller for cross-platform builds.
+"""
+
 import os
 import sys
 import shutil
@@ -5,7 +11,12 @@ import subprocess
 import platform
 
 
-def setup_environment():
+def setup_environment() -> None:
+    """Initialize cross-platform virtual environment and install dependencies.
+
+    Creates .venv directory, installs requirements.txt, and downloads spaCy
+    language models for EN and IT.
+    """
     venv_dir = ".venv"
     print("--- Inizializzazione Ambiente Virtuale Cross-Platform ---")
 
