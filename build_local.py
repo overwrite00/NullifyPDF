@@ -7,13 +7,17 @@ import re
 
 
 def get_version():
+    """Extract version from NullifyPDF.py with fallback."""
     try:
+        if not os.path.exists("NullifyPDF.py"):
+            return "unknown"
         with open("NullifyPDF.py", "r", encoding="utf-8") as f:
-            match = re.search(r'__version__\s*=\s*[\'"]([^\'"]+)[\'"]', f.read())
+            content = f.read()
+            match = re.search(r'__version__\s*=\s*[\'"]([^\'"]+)[\'"]', content)
             if match:
                 return match.group(1)
-    except:
-        pass
+    except (IOError, OSError) as e:
+        print(f"[WARNING] Could not read version: {e}")
     return "unknown"
 
 
