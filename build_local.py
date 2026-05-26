@@ -209,7 +209,9 @@ def build_app() -> None:
     )
     final_name = f"NullifyPDF_v{version}_{os_name}{ext}"
     icon_path = ensure_icon(sys_os)
-    icon_str = f"'{icon_path}'" if icon_path else "None"
+    # Use repr() to safely embed the path as a Python literal in the spec file.
+    # Manual single-quote wrapping is unsafe for paths containing quotes/backslashes.
+    icon_str = repr(icon_path) if icon_path else "None"
 
     if sys_os == "Darwin":
         spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
@@ -273,7 +275,7 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, name='NullifyPDF', debug=False, c
                 build_deb(version, final_name)
 
     except subprocess.CalledProcessError as e:
-        print(f"\n[ERROR] ERRORE CRITICO: Compilazione fallita.")
+        print(f"\n[ERROR] ERRORE CRITICO: Compilazione fallita (exit {e.returncode}).")
         sys.exit(1)
 
 
