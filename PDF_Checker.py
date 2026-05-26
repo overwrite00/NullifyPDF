@@ -7,11 +7,12 @@ traces of sensitive data in text layers, metadata, and binary data.
 import fitz
 import os
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
-def inspect_pdf(file_path, target_word):
+def inspect_pdf(file_path: str, target_word: str) -> None:
     """Inspect PDF for remaining traces of sensitive data.
 
     Performs three-layer forensic scan:
