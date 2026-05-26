@@ -25,7 +25,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.12'
           cache: 'pip' # CACHE RIPRISTINATA!
 
       - name: Install System Dependencies (Linux)
@@ -41,6 +41,12 @@ jobs:
         run: |
           python -m spacy download en_core_web_md
           python -m spacy download it_core_news_md
+
+      - name: Run Smoke Tests
+        run: pytest tests/ -v
+
+      - name: Type Check (mypy)
+        run: mypy NullifyPDF.py --ignore-missing-imports --no-error-summary 2>&1 | head -50 || true
 
       - name: Build
         run: python build_local.py

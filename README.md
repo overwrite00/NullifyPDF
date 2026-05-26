@@ -3,7 +3,7 @@
 ![GitHub Release](https://img.shields.io/github/v/release/overwrite00/NullifyPDF?style=flat-square&color=1fb2e0)
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/overwrite00/NullifyPDF/release.yml?style=flat-square&label=build)
 ![GitHub License](https://img.shields.io/github/license/overwrite00/NullifyPDF?style=flat-square&color=blue)
-![Python Version](https://img.shields.io/badge/python-3.9%2B-blue?style=flat-square&logo=python)
+![Python Version](https://img.shields.io/badge/python-3.12-blue?style=flat-square&logo=python)
 
 <p align="center">
   <img src="images/NullifyPDF.png" alt="NullifyPDF">
@@ -42,7 +42,7 @@ NullifyPDF va oltre la semplice copertura visiva del testo. Utilizza motori di *
 
 ### 🛠️ Tecnologie utilizzate
 
-- **Python 3.9+**
+- **Python 3.12**: Versione supportata (richiesta per compatibilità con PyMuPDF wheel pre-compilate)
 - **PySide6 (Qt6)**: Nuovo motore grafico con nterfaccia grafica moderna in Dark Mode.
 - **PyMuPDF (fitz)**: Motore ad alte prestazioni per la manipolazione di PDF.
 - **Microsoft Presidio & spaCy**: Motori AI per il riconoscimento delle entità (NER).
@@ -54,12 +54,13 @@ NullifyPDF va oltre la semplice copertura visiva del testo. Utilizza motori di *
 ## ✨ Caratteristiche principali
 
 - 🧠 **AI-Powered Redaction:** Riconoscimento automatico bilingue (IT/EN) di PII (Nomi, Luoghi, Email, Telefoni, IBAN, Carte di Credito, Crypto).
-- 🗄️ - **UI Fluida:** Grazie all'integrazione di PySide6 e all'architettura Multithread, l'interfaccia non si blocca mai durante l'analisi AI.
-- 📖 **Dizionari Intelligenti Persistenti:** Blocklist e Allowlist globali sincronizzate su disco (`~/.nullifypdf`) con logica di mutua esclusività e sistema anti-stacking delle censure.
-- 🛡️ **Forensic Scrubbing:** Non si limita a "colorare di nero". In fase di export, distrugge fisicamente i metadati, rimuove i link nascosti e appiattisce i moduli interattivi (AcroForms).
+- 🗄️ **UI Fluida & Thread-Safe:** Grazie all'integrazione di PySide6 e all'architettura Multithread, l'interfaccia non si blocca mai durante l'analisi AI. Estrazione testo in worker thread con serialization QMutex per document access sicuro.
+- 📖 **Dizionari Intelligenti Persistenti:** Blocklist e Allowlist globali sincronizzate su disco (`~/.nullifypdf`) con logica di mutua esclusività e sistema anti-stacking delle censure. Fast-path O(1) per exact-match su allowlist grandi.
+- 🛡️ **Forensic Scrubbing:** Non si limita a "colorare di nero". In fase di export, distrugge fisicamente i metadati, rimuove i link nascosti e appiattisce i moduli interattivi (AcroForms). Memory-efficient disk-backed export.
 - 🖼️ **Blindfold Mode (Sostituzione Immagini):** Interruttore dedicato per censurare automaticamente tutte le immagini, loghi o QR code, sostituendoli con un segnaposto professionale `[ IMMAGINE RIMOSSA ]`.
 - 📦 **Cross-Platform nativo:** Script di build integrati per generare `.exe` (Windows), `.app` bundle (macOS), e pacchetti `.deb`/`.rpm` (Linux).
 - **Drag & Drop:** Supporto nativo per il trascinamento dei file sulla finestra.
+- 📊 **Logging & Diagnostica:** File-based logging con rotation automatica (`~/.nullifypdf/logs/`) e debug mode per troubleshooting avanzato.
 
 [Back To The Top](#nullifypdf---ai-forensic-edition)
 
@@ -93,31 +94,52 @@ L'utilizzo è estremamente intuitivo. Per una spiegazione dettagliata di tutte l
 
 ## 🛠️ Come utilizzarlo
 
+### ✅ Requisiti di Sistema
+
+- **Python 3.12** (obbligatorio - compatibilità con le wheel pre-compilate di PyMuPDF)
+  - **Windows**: Usa il launcher `py -3.12` (incluso in Python)
+  - **macOS/Linux**: Installa `python3.12` tramite package manager (brew, apt, dnf, ecc.)
+- **Spazio disco**: ~2 GB per dipendenze + modelli spaCy
+- **RAM**: Minimo 4 GB (consigliato 8 GB per PDF grandi)
+
 ### ⚙️ Installazione
 
-Se sei uno sviluppatore e vuoi eseguire il codice sorgente:
+Se sei uno sviluppatore e vuoi eseguire il codice sorgente (consigliato usare lo script di automazione):
 
 1. 📥 **Clona il repository**:
 
    ```bash
    git clone https://github.com/overwrite00/NullifyPDF.git
    cd NullifyPDF
+   ```
 
-2. 📦 **Installa le dipendenze**:
-
-   ```bash
-   pip install pyinstaller PyMuPDF customtkinter Pillow presidio-analyzer spacy
-
-3. 🧠 **Scarica i modelli linguistici AI**:
+2. 🐍 **Verifica di avere Python 3.12**:
 
    ```bash
-   python -m spacy download en_core_web_md
-   python -m spacy download it_core_news_md
+   # Windows
+   py -3.12 --version
+   
+   # macOS/Linux
+   python3.12 --version
+   ```
+
+3. 🤖 **Usa lo script di setup automatico** (consigliato):
+
+   ```bash
+   python setup_env.py
+   ```
+   
+   Lo script creerà automaticamente il venv, installerà tutte le dipendenze e scaricherà i modelli spaCy.
 
 4. 🚀 **Avvia l'applicazione**:
 
    ```bash
+   # Attiva il venv (se non già attivato)
+   # Windows: .\.venv\Scripts\Activate.ps1
+   # macOS/Linux: source .venv/bin/activate
+   
    python NullifyPDF.py
+   ```
 
 ### 🐧 Note per lo sviluppo e compilazione in locale su Linux (Fedora / Ubuntu)
 
@@ -143,19 +165,42 @@ Per facilitare al massimo la vita agli sviluppatori e ai contributor, la reposit
 
 1. **Setup dell'Ambiente (`setup_env.py`)**
 
-   Crea un ambiente virtuale isolato (`.venv`), aggiorna i tool di base, installa tutte le dipendenze (`requirements`) e scarica in automatico i modelli NLP di spaCy (EN/IT).
+   Crea un ambiente virtuale isolato (`.venv`) **con Python 3.12**, aggiorna i tool di base, installa tutte le dipendenze (`requirements`) e scarica in automatico i modelli NLP di spaCy (EN/IT).
 
    ```bash
    python setup_env.py
    ```
 
+   **Supporto multipiattaforma automatico:**
+   - **Windows**: Usa `py -3.12` (launcher Python)
+   - **macOS/Linux**: Usa `python3.12` (richiede Python 3.12 installato)
+
     *(Ricordati di attivare l'ambiente dopo il setup:* `source .venv/bin/activate` *su Linux/Mac, o* `.\.venv\Scripts\Activate.ps1` *su Windows)*.
 
 2. **Compilazione Automatica (`build_local.py`)**
   
-    Uno script intelligente che pulisce le directory temporanee, rileva il tuo Sistema Operativo, legge dinamicamente il numero di versione dal codice e compila l'eseguibile standalone tramite PyInstaller rinominandolo in modo standardizzato (es. `NullifyPDF_v1.3.0_Windows.exe`).
+    Uno script intelligente che pulisce le directory temporanee, rileva il tuo Sistema Operativo, legge dinamicamente il numero di versione dal codice e compila l'eseguibile standalone tramite PyInstaller rinominandolo in modo standardizzato (es. `NullifyPDF_v2.0.5_Windows.exe`).
+
+    ```bash
+    python build_local.py
+    ```
 
     > **💡 Bonus Linux:** Se lanciato su Ubuntu o Fedora, lo script utilizzerà i tool nativi (`dpkg-deb` o `rpmbuild`) per generare automaticamente anche i pacchetti di installazione `.deb` e `.rpm` direttamente nella tua cartella `dist/`
+
+3. **Smoke Tests (`pytest tests/`)**
+
+    Per verificare che le correzioni critiche (input validation, resource management, edge cases) funzionino correttamente:
+
+    ```bash
+    # Assicurati di aver attivato il venv prima
+    pip install pytest  # Se non già presente in requirements.txt
+    pytest tests/ -v
+    ```
+
+    I test coprono:
+    - PDFListManager (persistenza blocklist/allowlist)
+    - Input validation (path, type checking, bounds)
+    - Resource path resolution
 
 [Back To The Top](#nullifypdf---ai-forensic-edition)
 
