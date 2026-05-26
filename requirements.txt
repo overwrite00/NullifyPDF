@@ -1,5 +1,21 @@
-PySide6
-PyMuPDF
-presidio-analyzer
-spacy
-pyinstaller
+# Requirements for NullifyPDF - Python 3.12 REQUIRED
+# PyMuPDF does not have pre-compiled wheels for Python 3.13+
+# Update script handles version detection automatically
+
+# UI Framework (compatible with Python 3.12)
+PySide6==6.11.1
+
+# PDF Processing (use pre-compiled wheel for Python 3.12)
+PyMuPDF==1.24.8
+
+# NLP & Security Analysis
+presidio-analyzer==2.2.354
+spacy==3.7.2
+
+# Build Tool (compatible with Python 3.13)
+pyinstaller==6.10.0
+
+# Development Tools
+isort==5.13.2
+pytest==7.4.4
+mypy==1.8.0

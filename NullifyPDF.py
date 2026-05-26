@@ -5,6 +5,9 @@ import datetime
 import pathlib
 import string
 import platform
+import logging
+import traceback
+from typing import Optional, List, Set, Dict, Any, Tuple
 import fitz
 from PySide6.QtWidgets import (
     QApplication,
@@ -42,12 +45,141 @@ from PySide6.QtCore import Qt, QThread, QObject, Signal, Slot, QRectF, QPointF
 __version__ = "2.0.5"
 
 
-def resource_path(relative_path):
+def setup_logging() -> logging.Logger:
+    """Configure file-based logging with rotation.
+
+    Respects NULLIFYPDF_DEBUG environment variable for verbose output.
+
+    Returns:
+        logging.Logger: Configured logger instance for nullifypdf.
+    """
+    log_dir = pathlib.Path.home() / ".nullifypdf" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    logger = logging.getLogger("nullifypdf")
+    debug_mode = os.environ.get("NULLIFYPDF_DEBUG", "").lower() == "true"
+    logger.setLevel(logging.DEBUG if debug_mode else logging.INFO)
+
+    if logger.handlers:
+        return logger
+
+    try:
+        handler = logging.FileHandler(
+            log_dir / "nullifypdf.log",
+            encoding="utf-8"
+        )
+        handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter(
+            '%(asctime)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    except Exception as e:
+        print(f"Warning: Could not setup file logging: {e}")
+
+    return logger
+
+
+def resource_path(relative_path: str) -> str:
+    """Get absolute path for resource file (compatible with PyInstaller).
+
+    Args:
+        relative_path: Relative path to resource file.
+
+    Returns:
+        str: Absolute path to resource.
+    """
     try:
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
+
+
+class PDFListManager:
+    """Manages blocklist/allowlist persistence to disk.
+
+    Handles loading and saving word lists with automatic path management
+    and UTF-8 encoding.
+    """
+
+    def __init__(self, config_dir: pathlib.Path) -> None:
+        """Initialize list manager with config directory.
+
+        Args:
+            config_dir: Path to configuration directory.
+        """
+        self.config_dir = config_dir
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        self.block_file = config_dir / "blocklist.txt"
+        self.allow_file = config_dir / "allowlist.txt"
+
+    def load_blocklist(self) -> Set[str]:
+        """Load blocklist from disk.
+
+        Returns:
+            Set[str]: Words to redact (lowercase).
+        """
+        return self._load_list(self.block_file)
+
+    def load_allowlist(self) -> Set[str]:
+        """Load allowlist from disk.
+
+        Returns:
+            Set[str]: Words to preserve from redaction (lowercase).
+        """
+        return self._load_list(self.allow_file)
+
+    def save_blocklist(self, blocklist: Set[str]) -> None:
+        """Persist blocklist to disk.
+
+        Args:
+            blocklist: Set of words to save.
+        """
+        self._save_list(self.block_file, blocklist)
+
+    def save_allowlist(self, allowlist: Set[str]) -> None:
+        """Persist allowlist to disk.
+
+        Args:
+            allowlist: Set of words to save.
+        """
+        self._save_list(self.allow_file, allowlist)
+
+    def _load_list(self, path: pathlib.Path) -> Set[str]:
+        """Load word list from file with validation.
+
+        Args:
+            path: Path to list file.
+
+        Returns:
+            Set[str]: Set of words (lowercase, stripped, min length 3).
+        """
+        if not path.exists():
+            return set()
+        try:
+            return {
+                l.strip().lower()
+                for l in open(path, "r", encoding="utf-8")
+                if len(l.strip()) > 2
+            }
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Error loading {path}: {e}")
+            return set()
+
+    def _save_list(self, path: pathlib.Path, words: Set[str]) -> None:
+        """Save word list to file.
+
+        Args:
+            path: Path to save list.
+            words: Set of words to save.
+        """
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("\n".join(sorted(words)))
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Error saving {path}: {e}")
 
 
 STYLESHEET = """
@@ -75,19 +207,55 @@ QRadioButton::indicator:checked, QCheckBox::indicator:checked { background-color
 
 
 class AIWorker(QObject):
+    """AI analysis worker thread for PDF sensitive data detection.
+
+    Uses Microsoft Presidio + spaCy for NER (Named Entity Recognition).
+    Runs in separate thread to prevent UI blocking.
+
+    Signals:
+        log_sig: Emits log message (str).
+        progress_sig: Emits (current_page, total_pages) progress.
+        page_done_sig: Emits (page_index, found_words) when page scan completes.
+        finished_sig: Emitted when all pages processed.
+    """
+
     log_sig = Signal(str)
     progress_sig = Signal(int, int)
     page_done_sig = Signal(int, set)
     finished_sig = Signal()
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize AI worker with empty analyzer."""
         super().__init__()
-        self.analyzer = None
-        self.loaded_langs = []
+        self.analyzer: Optional[Any] = None
+        self.loaded_langs: List[str] = []
 
     @Slot(list, str, list)
-    def run_scan(self, pages_text, choice, compiled_allowlist):
+    def run_scan(self, pages_text: List[str], choice: str,
+                 compiled_allowlist: List[Tuple[str, Any]]) -> None:
+        """Run AI scan on PDF pages and emit detected sensitive entities.
+
+        Args:
+            pages_text: List of page text content.
+            choice: Language choice: 'EN', 'IT', or 'BOTH'.
+            compiled_allowlist: Pre-compiled regex patterns to skip redaction.
+        """
         try:
+            if not pages_text or not isinstance(pages_text, list):
+                self.log_sig.emit("ERRORE: pages_text non valido")
+                self.finished_sig.emit()
+                return
+
+            if choice not in ("EN", "IT", "BOTH"):
+                self.log_sig.emit(f"ERRORE: Scelta lingua non valida: {choice}")
+                self.finished_sig.emit()
+                return
+
+            if not isinstance(compiled_allowlist, list):
+                self.log_sig.emit("ERRORE: compiled_allowlist non valido")
+                self.finished_sig.emit()
+                return
+
             target_langs = ["en", "it"] if choice == "BOTH" else [choice.lower()]
             if not self.analyzer or sorted(self.loaded_langs) != sorted(target_langs):
                 self.log_sig.emit(f"Inizializzazione AI ({choice})...")
@@ -148,15 +316,31 @@ class AIWorker(QObject):
 
 
 class PDFView(QGraphicsView):
+    """Custom graphics view for interactive PDF page display.
+
+    Handles mouse events for rectangle drawing (redaction) and zoom control.
+
+    Signals:
+        rect_drawn: Emits QRectF when user finishes drawing selection rectangle.
+        point_clicked: Emits QPointF when user clicks on page.
+        zoom_req: Emits int (+1 for zoom in, -1 for zoom out).
+    """
+
     rect_drawn = Signal(QRectF)
     point_clicked = Signal(QPointF)
     zoom_req = Signal(int)
 
-    def __init__(self, scene, parent=None):
+    def __init__(self, scene: QGraphicsScene, parent: Optional[Any] = None) -> None:
+        """Initialize PDF view with scene.
+
+        Args:
+            scene: Graphics scene to display.
+            parent: Parent widget.
+        """
         super().__init__(scene, parent)
         self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
-        self.start_pos = None
-        self.temp_rect = None
+        self.start_pos: Optional[QPointF] = None
+        self.temp_rect: Optional[QGraphicsRectItem] = None
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -193,10 +377,27 @@ class PDFView(QGraphicsView):
 
 
 class NullifyPDF(QMainWindow):
+    """Main application window for PDF redaction using AI.
+
+    Handles PDF loading, manual/AI-assisted redaction, blocklist/allowlist
+    management, and secure export with forensic scrubbing.
+
+    Attributes:
+        doc: Currently loaded PDF document (None if not loaded).
+        page_num: Current page index (0-based).
+        scale: Current zoom scale factor (0.5 - 4.0).
+        blocklist: Set of strings to redact automatically.
+        allowlist: Set of strings to preserve from redaction.
+        config_dir: Path to user config directory (~/.nullifypdf).
+    """
+
     start_scan_sig = Signal(list, str, list)
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize main application window and setup UI."""
         super().__init__()
+        self.logger = setup_logging()
+        self.logger.info("Application started")
         self.setWindowTitle("NullifyPDF - AI Forensic Edition")
         self.resize(1350, 950)
         self.setStyleSheet(STYLESHEET)
@@ -208,11 +409,9 @@ class NullifyPDF(QMainWindow):
         self.page_num = 0
         self.scale = 1.5
         self.config_dir = pathlib.Path.home() / ".nullifypdf"
-        self.config_dir.mkdir(exist_ok=True)
-        self.block_file = self.config_dir / "blocklist.txt"
-        self.allow_file = self.config_dir / "allowlist.txt"
-        self.blocklist = self.load_list(self.block_file)
-        self.allowlist = self.load_list(self.allow_file)
+        self.list_manager = PDFListManager(self.config_dir)
+        self.blocklist = self.list_manager.load_blocklist()
+        self.allowlist = self.list_manager.load_allowlist()
         self.ai_thread = QThread()
         self.ai_worker = AIWorker()
         self.ai_worker.moveToThread(self.ai_thread)
@@ -231,18 +430,8 @@ class NullifyPDF(QMainWindow):
         self.ai_thread.wait()
         super().closeEvent(event)
 
-    def load_list(self, p):
-        return (
-            {l.strip().lower() for l in open(p, "r", encoding="utf-8")}
-            if p.exists()
-            else set()
-        )
-
-    def save_list(self, p, d):
-        with open(p, "w", encoding="utf-8") as f:
-            f.write("\n".join(sorted(d)))
-
-    def build_ui(self):
+    def build_ui(self) -> None:
+        """Build main application UI layout."""
         c_widget = QWidget()
         self.setCentralWidget(c_widget)
         main_lay = QHBoxLayout(c_widget)
@@ -267,10 +456,9 @@ class NullifyPDF(QMainWindow):
         self.rb_both = QRadioButton("BOTH")
         self.rb_en.setChecked(True)
         self.lang_grp = QButtonGroup(self)
-        [
-            (self.lang_grp.addButton(rb), lang_lay.addWidget(rb))
-            for rb in (self.rb_en, self.rb_it, self.rb_both)
-        ]
+        for rb in (self.rb_en, self.rb_it, self.rb_both):
+            self.lang_grp.addButton(rb)
+            lang_lay.addWidget(rb)
         s_lay.addLayout(lang_lay)
         s_lay.addSpacing(10)
         self.chk_img = QCheckBox("Oscura Immagini")
@@ -349,16 +537,23 @@ class NullifyPDF(QMainWindow):
         r_lay.addWidget(footer)
         main_lay.addWidget(right_panel, stretch=1)
 
-    def dragEnterEvent(self, e):
+    def dragEnterEvent(self, e: QDragEnterEvent) -> None:
+        """Accept drag enter event for dropped files."""
         if e.mimeData().hasUrls():
             e.acceptProposedAction()
 
-    def dropEvent(self, e):
+    def dropEvent(self, e: QDropEvent) -> None:
+        """Handle dropped PDF files."""
         urls = e.mimeData().urls()
         if urls and urls[0].isLocalFile():
             self.load_path(urls[0].toLocalFile())
 
-    def write_log(self, m):
+    def write_log(self, m: str) -> None:
+        """Write message to UI log with color coding.
+
+        Args:
+            m: Message to log.
+        """
         t = datetime.datetime.now().strftime("%H:%M:%S")
         color = (
             "#ef4444"
@@ -371,21 +566,38 @@ class NullifyPDF(QMainWindow):
         )
         self.log.append(f"<span style='color: {color};'>[{t}] {m}</span>")
 
-    def update_progress(self, c, t):
+    def update_progress(self, c: int, t: int) -> None:
+        """Update progress bar.
+
+        Args:
+            c: Current progress.
+            t: Total progress.
+        """
         self.prog.setValue(int((c / t) * 100))
 
-    def cmd_open(self):
+    def cmd_open(self) -> None:
+        """Open file dialog to load PDF."""
         p, _ = QFileDialog.getOpenFileName(self, "Apri PDF", "", "PDF (*.pdf)")
         if p:
             self.load_path(p)
 
     def load_path(self, path):
+        if not path or not isinstance(path, str):
+            self.write_log("ERRORE: Path non valido")
+            return
+        if not os.path.exists(path):
+            self.write_log(f"ERRORE: File non trovato: {path}")
+            return
+        if not path.lower().endswith('.pdf'):
+            self.write_log("ERRORE: Solo file PDF sono supportati")
+            return
+
         try:
             if self.doc:
                 self.doc.close()
             tdoc = fitz.open(path)
             if tdoc.needs_pass:
-                self.write_log("ERRORE: PDF cifrato.")
+                self.write_log("ERRORE: PDF cifrato - inserire password non supportato")
                 tdoc.close()
                 return
             self.doc = tdoc
@@ -393,10 +605,14 @@ class NullifyPDF(QMainWindow):
             self.scale = 1.5
             self.adjust_zoom(0)
             self.write_log(f"Caricato: {os.path.basename(path)}")
+        except FileNotFoundError:
+            self.write_log(f"ERRORE: File non trovato")
         except Exception as e:
-            self.write_log(f"ERRORE: {e}")
+            self.logger.error(f"Error loading PDF: {traceback.format_exc()}")
+            self.write_log(f"ERRORE: {type(e).__name__}: {str(e)}")
 
-    def render(self):
+    def render(self) -> None:
+        """Render current PDF page to display."""
         if not self.doc:
             return
         page = self.doc[self.page_num]
@@ -410,26 +626,49 @@ class NullifyPDF(QMainWindow):
         self.le_page.setText(str(self.page_num + 1))
         self.lbl_tot.setText(f"/ {len(self.doc)}")
 
-    def adjust_zoom(self, d):
+    def adjust_zoom(self, d: int) -> None:
+        """Adjust zoom level.
+
+        Args:
+            d: Zoom direction (+1 to zoom in, -1 to zoom out).
+        """
         self.scale = max(0.5, min(4.0, self.scale + (0.25 * d)))
         self.lbl_zoom.setText(f"{int(self.scale * 100)}%")
         self.render()
 
-    def move_page(self, d):
+    def move_page(self, d: int) -> None:
+        """Move to adjacent page.
+
+        Args:
+            d: Page direction (+1 for next, -1 for previous).
+        """
         if self.doc and 0 <= self.page_num + d < len(self.doc):
             self.page_num += d
             self.render()
 
     def jump_page(self):
+        if not self.doc:
+            self.write_log("Avviso: Nessun PDF caricato")
+            return
         try:
             n = int(self.le_page.text()) - 1
             if 0 <= n < len(self.doc):
                 self.page_num = n
                 self.render()
-        except:
-            pass
+            else:
+                self.write_log(f"Avviso: Pagina {n + 1} non esiste (intervallo: 1-{len(self.doc)})")
+        except ValueError:
+            self.write_log("ERRORE: Inserire un numero valido per il numero di pagina")
+        except Exception as e:
+            self.logger.error(f"Unexpected error in jump_page: {traceback.format_exc()}")
+            self.write_log(f"ERRORE: {type(e).__name__}: {str(e)}")
 
-    def user_draw_rect(self, qrect):
+    def user_draw_rect(self, qrect: QRectF) -> None:
+        """Handle user-drawn redaction rectangle.
+
+        Args:
+            qrect: Rectangle drawn by user in scene coordinates.
+        """
         if not self.doc:
             return
         r = fitz.Rect(
@@ -454,40 +693,48 @@ class NullifyPDF(QMainWindow):
             if len(cl) > 2:
                 self.allowlist.discard(cl)
                 self.blocklist.add(cl)
-                self.save_list(self.block_file, self.blocklist)
-                self.save_list(self.allow_file, self.allowlist)
+                self.list_manager.save_blocklist(self.blocklist)
+                self.list_manager.save_allowlist(self.allowlist)
         self.render()
 
-    def user_click_pt(self, qpt):
+    def user_click_pt(self, qpt: QPointF) -> None:
+        """Handle user click on redaction to delete it.
+
+        Args:
+            qpt: Point clicked by user in scene coordinates.
+        """
         if not self.doc:
             return
         pt = fitz.Point(qpt.x() / self.scale, qpt.y() / self.scale)
         p = self.doc[self.page_num]
         ans = [
             a
-            for a in p.annots()
+            for a in (p.annots() or [])
             if a.type[0] == fitz.PDF_ANNOT_REDACT and a.rect.contains(pt)
         ]
         if ans:
             txt = p.get_text("text", clip=ans[0].rect)
-            [p.delete_annot(a) for a in ans]
+            for a in ans:
+                p.delete_annot(a)
             cl = " ".join(txt.split()).lower()
             if len(cl) > 2:
                 self.blocklist.discard(cl)
                 self.allowlist.add(cl)
-                self.save_list(self.block_file, self.blocklist)
-                self.save_list(self.allow_file, self.allowlist)
+                self.list_manager.save_blocklist(self.blocklist)
+                self.list_manager.save_allowlist(self.allowlist)
             self.render()
 
-    def cmd_clear(self):
+    def cmd_clear(self) -> None:
+        """Clear all redactions on current page."""
         if not self.doc:
             return
         p = self.doc[self.page_num]
-        [p.delete_annot(a) for a in p.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT]
+        [p.delete_annot(a) for a in (p.annots() or []) if a.type[0] == fitz.PDF_ANNOT_REDACT]
         self.render()
         self.write_log(f"Censure rimosse su pagina {self.page_num+1}")
 
-    def cmd_dict(self):
+    def cmd_dict(self) -> None:
+        """Open dialog to edit blocklist/allowlist."""
         d = QDialog(self)
         d.setWindowTitle("Dizionari")
         d.resize(500, 450)
@@ -514,15 +761,16 @@ class NullifyPDF(QMainWindow):
                 for l in ax.toPlainText().split("\n")
                 if len(l.strip()) > 2
             }
-            self.save_list(self.block_file, self.blocklist)
-            self.save_list(self.allow_file, self.allowlist)
+            self.list_manager.save_blocklist(self.blocklist)
+            self.list_manager.save_allowlist(self.allowlist)
             d.accept()
 
         btn.clicked.connect(s)
         lay.addWidget(btn)
         d.exec()
 
-    def cmd_about(self):
+    def cmd_about(self) -> None:
+        """Show about dialog."""
         d = QDialog(self)
         d.setWindowTitle("Info")
         d.setFixedSize(340, 440)
@@ -558,7 +806,8 @@ class NullifyPDF(QMainWindow):
         lay.addWidget(btn)
         d.exec()
 
-    def cmd_auto_ai(self):
+    def cmd_auto_ai(self) -> None:
+        """Start AI scan for sensitive entities."""
         if not self.doc:
             return
         self.btn_ai.setEnabled(False)
@@ -575,9 +824,15 @@ class NullifyPDF(QMainWindow):
         self.start_scan_sig.emit(texts, lang, c_allow)
 
     @Slot(int, set)
-    def apply_ai_to_page(self, i, words):
+    def apply_ai_to_page(self, i: int, words: Set[str]) -> None:
+        """Apply AI-detected redactions to page.
+
+        Args:
+            i: Page index.
+            words: Set of words detected as sensitive.
+        """
         page = self.doc[i]
-        e_rects = [a.rect for a in page.annots() if a.type[0] == fitz.PDF_ANNOT_REDACT]
+        e_rects = [a.rect for a in (page.annots() or []) if a.type[0] == fitz.PDF_ANNOT_REDACT]
         if self.chk_img.isChecked():
             for img in page.get_image_info(hashes=False):
                 ir = fitz.Rect(img["bbox"])
@@ -610,11 +865,13 @@ class NullifyPDF(QMainWindow):
                     e_rects.append(r)
 
     @Slot()
-    def ai_finished(self):
+    def ai_finished(self) -> None:
+        """Handle AI scan completion."""
         self.btn_ai.setEnabled(True)
         self.render()
 
-    def cmd_export(self):
+    def cmd_export(self) -> None:
+        """Export current PDF with forensic scrubbing."""
         if not self.doc:
             return
         p, _ = QFileDialog.getSaveFileName(
@@ -636,15 +893,15 @@ class NullifyPDF(QMainWindow):
                         for lnk in page.get_links()
                         if any(fitz.Rect(lnk["from"]).intersects(r) for r in r_rects)
                     ]
-                except:
-                    pass
+                except (RuntimeError, AttributeError, KeyError) as e:
+                    self.logger.debug(f"Could not delete link: {e}")
                 page.apply_redactions(
                     images=fitz.PDF_REDACT_IMAGE_REMOVE, graphics=True
                 )
                 try:
                     [page.delete_widget(w) for w in page.widgets()]
-                except:
-                    pass
+                except (RuntimeError, AttributeError) as e:
+                    self.logger.debug(f"Could not delete widget: {e}")
             ex_doc.set_metadata({})
             cx = ex_doc.pdf_catalog()
             for k in ["Metadata", "PieceInfo", "Properties", "AcroForm"]:

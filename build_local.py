@@ -4,20 +4,37 @@ import shutil
 import subprocess
 import platform
 import re
+from typing import Optional
 
 
-def get_version():
+def get_version() -> str:
+    """Extract version from NullifyPDF.py with fallback.
+
+    Returns:
+        str: Version string from __version__ or 'unknown' fallback.
+    """
     try:
+        if not os.path.exists("NullifyPDF.py"):
+            return "unknown"
         with open("NullifyPDF.py", "r", encoding="utf-8") as f:
-            match = re.search(r'__version__\s*=\s*[\'"]([^\'"]+)[\'"]', f.read())
+            content = f.read()
+            match = re.search(r'__version__\s*=\s*[\'"]([^\'"]+)[\'"]', content)
             if match:
                 return match.group(1)
-    except:
-        pass
+    except (IOError, OSError) as e:
+        print(f"[WARNING] Could not read version: {e}")
     return "unknown"
 
 
-def ensure_icon(sys_os):
+def ensure_icon(sys_os: str) -> Optional[str]:
+    """Find icon file for the current OS.
+
+    Args:
+        sys_os: Operating system name (Windows, Darwin, Linux).
+
+    Returns:
+        Optional[str]: Path to icon file, or None if not found (Windows).
+    """
     base_dir = "images"
     if sys_os == "Windows":
         ico_path = os.path.join(base_dir, "NullifyPDF_icon.ico")
@@ -28,7 +45,13 @@ def ensure_icon(sys_os):
     return os.path.join(base_dir, "NullifyPDF_icon.png").replace("\\", "/")
 
 
-def build_rpm(version, executable_name):
+def build_rpm(version: str, executable_name: str) -> None:
+    """Build RPM package for Fedora/RHEL.
+
+    Args:
+        version: Application version.
+        executable_name: Name of compiled executable.
+    """
     print("\n[INFO] Creazione pacchetto RPM per Fedora/RHEL...")
     rpm_dir = os.path.abspath("rpm_build_tmp")
     for d in ["BUILD", "BUILDROOT", "RPMS", "SOURCES", "SPECS", "SRPMS"]:
@@ -104,7 +127,13 @@ EOF
         shutil.rmtree(rpm_dir, ignore_errors=True)
 
 
-def build_deb(version, executable_name):
+def build_deb(version: str, executable_name: str) -> None:
+    """Build DEB package for Ubuntu/Debian.
+
+    Args:
+        version: Application version.
+        executable_name: Name of compiled executable.
+    """
     print("\n[INFO] Creazione pacchetto DEB per Ubuntu/Debian...")
     pkg_dir = "deb_build_tmp"
     for d in [
@@ -157,7 +186,14 @@ def build_deb(version, executable_name):
         shutil.rmtree(pkg_dir, ignore_errors=True)
 
 
-def build_app():
+def build_app() -> None:
+    """Build NullifyPDF application for current OS using PyInstaller.
+
+    Automatically generates platform-specific executables:
+    - Windows: .exe standalone
+    - macOS: .app bundle (zipped)
+    - Linux: portable binary + .deb + .rpm packages
+    """
     print("--- Avvio Compilazione NullifyPDF (PySide6) ---")
     version = get_version()
     sys_os = platform.system()
