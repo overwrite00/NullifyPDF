@@ -29,13 +29,26 @@ def setup_environment() -> None:
 
     if os.path.exists(venv_dir):
         logger.info(f"Rimozione vecchio ambiente virtuale: {venv_dir}")
-        shutil.rmtree(venv_dir, ignore_errors=True)
+        # Retry logic for robust removal
+        for attempt in range(3):
+            try:
+                shutil.rmtree(venv_dir, ignore_errors=False)
+                logger.debug(f"Rimozione completata al tentativo {attempt + 1}")
+                break
+            except Exception as e:
+                if attempt < 2:
+                    logger.debug(f"Tentativo {attempt + 1} fallito: {e}, riprovo...")
+                    import time
+                    time.sleep(0.5)
+                else:
+                    logger.warning(f"Impossibile rimuovere completamente {venv_dir}: {e}")
+                    logger.info("Procedendo con creazione venv comunque...")
 
     logger.info(f"Creazione nuovo ambiente virtuale: {venv_dir}")
     try:
         subprocess.run([sys.executable, "-m", "venv", venv_dir], check=True)
-    except subprocess.CalledProcessError:
-        logger.error("Errore critico durante la creazione del venv")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Errore critico durante la creazione del venv: {e}")
         sys.exit(1)
 
     if platform.system() == "Windows":
