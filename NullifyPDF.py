@@ -48,6 +48,8 @@ __version__ = "2.0.5"
 def setup_logging() -> logging.Logger:
     """Configure file-based logging with rotation.
 
+    Respects NULLIFYPDF_DEBUG environment variable for verbose output.
+
     Returns:
         logging.Logger: Configured logger instance for nullifypdf.
     """
@@ -55,7 +57,8 @@ def setup_logging() -> logging.Logger:
     log_dir.mkdir(parents=True, exist_ok=True)
 
     logger = logging.getLogger("nullifypdf")
-    logger.setLevel(logging.DEBUG)
+    debug_mode = os.environ.get("NULLIFYPDF_DEBUG", "").lower() == "true"
+    logger.setLevel(logging.DEBUG if debug_mode else logging.INFO)
 
     if logger.handlers:
         return logger

@@ -9,6 +9,13 @@ import sys
 import shutil
 import subprocess
 import platform
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(levelname)-8s: %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 def setup_environment() -> None:
@@ -18,17 +25,17 @@ def setup_environment() -> None:
     language models for EN and IT.
     """
     venv_dir = ".venv"
-    print("--- Inizializzazione Ambiente Virtuale Cross-Platform ---")
+    logger.info("Inizializzazione Ambiente Virtuale Cross-Platform")
 
     if os.path.exists(venv_dir):
-        print("[*] Rimozione vecchio ambiente virtuale in corso...")
+        logger.info(f"Rimozione vecchio ambiente virtuale: {venv_dir}")
         shutil.rmtree(venv_dir, ignore_errors=True)
 
-    print(f"[*] Creazione del nuovo ambiente virtuale ({venv_dir})...")
+    logger.info(f"Creazione nuovo ambiente virtuale: {venv_dir}")
     try:
         subprocess.run([sys.executable, "-m", "venv", venv_dir], check=True)
     except subprocess.CalledProcessError:
-        print("[-] Errore critico durante la creazione del venv.")
+        logger.error("Errore critico durante la creazione del venv")
         sys.exit(1)
 
     if platform.system() == "Windows":
@@ -39,33 +46,33 @@ def setup_environment() -> None:
         activate_cmd = f"source {venv_dir}/bin/activate"
 
     if not os.path.exists(venv_python):
-        print("[-] Errore: L'eseguibile Python non è stato trovato nel nuovo ambiente.")
+        logger.error("Eseguibile Python non trovato nel nuovo ambiente")
         sys.exit(1)
 
-    print("[*] Aggiornamento di pip...")
+    logger.info("Aggiornamento pip")
     subprocess.run([venv_python, "-m", "pip", "install", "--upgrade", "pip", "-q"])
 
-    # --- MODIFICA CHIAVE: Lettura dal requirements.txt ---
     if not os.path.exists("requirements.txt"):
-        print(
-            "[-] ERRORE: File 'requirements.txt' non trovato nella root del progetto."
-        )
+        logger.error("File 'requirements.txt' non trovato nella root del progetto")
         sys.exit(1)
 
-    print("[*] Installazione dipendenze da requirements.txt...")
-    subprocess.run(
-        [venv_python, "-m", "pip", "install", "-r", "requirements.txt"], check=True
-    )
+    logger.info("Installazione dipendenze da requirements.txt")
+    try:
+        subprocess.run(
+            [venv_python, "-m", "pip", "install", "-r", "requirements.txt"], check=True
+        )
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Errore durante l'installazione dipendenze: {e}")
+        sys.exit(1)
 
-    print("[*] Download dei modelli linguistici AI (spaCy EN & IT)...")
-    subprocess.run([venv_python, "-m", "spacy", "download", "en_core_web_md"])
-    subprocess.run([venv_python, "-m", "spacy", "download", "it_core_news_md"])
+    logger.info("Download modelli linguistici spaCy (EN & IT)")
+    try:
+        subprocess.run([venv_python, "-m", "spacy", "download", "en_core_web_md"])
+        subprocess.run([venv_python, "-m", "spacy", "download", "it_core_news_md"])
+    except Exception as e:
+        logger.warning(f"Errore durante il download modelli (non-critico): {e}")
 
-    print("\n" + "=" * 50)
-    print("[✓] Setup Completato con Successo!")
-    print("Per attivare l'ambiente e avviare NullifyPDF, usa questo comando:")
-    print(f"->  {activate_cmd}")
-    print("=" * 50)
+    logger.info(f"Setup completato! Per attivare: {activate_cmd}")
 
 
 if __name__ == "__main__":
