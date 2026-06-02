@@ -11,6 +11,10 @@ PyMuPDF==1.24.8
 # NLP & Security Analysis
 presidio-analyzer==2.2.354
 spacy==3.7.2
+# spaCy language models (pinned to exact versions for reproducibility)
+# These are cached by pip in GitHub Actions, significantly speeding up CI/CD
+en-core-web-md @ https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.7.1/en_core_web_md-3.7.1-py3-none-any.whl
+it-core-news-md @ https://github.com/explosion/spacy-models/releases/download/it_core_news_md-3.7.0/it_core_news_md-3.7.0-py3-none-any.whl
 
 # Build Tool (compatible with Python 3.13)
 pyinstaller==6.10.0
