@@ -39,8 +39,8 @@ jobs:
 
       - name: Download AI Models
         run: |
-          python -m spacy download en_core_web_md
-          python -m spacy download it_core_news_md
+          pip install "https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.7.1/en_core_web_md-3.7.1-py3-none-any.whl"
+          pip install "https://github.com/explosion/spacy-models/releases/download/it_core_news_md-3.7.0/it_core_news_md-3.7.0-py3-none-any.whl"
 
       - name: Run Smoke Tests
         run: pytest tests/ -v
