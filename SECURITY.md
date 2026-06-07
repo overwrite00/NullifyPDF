@@ -115,17 +115,9 @@ We follow responsible disclosure principles:
 
 ---
 
-## 🔒 Supported Versions
+## 🔒 Security Support
 
-Only the latest version receives security updates:
-
-| Version           | Security Support     |
-| ----------------- | -------------------- |
-| **2.0.5**         | ✅ Actively supported |
-| **2.0.x** (older) | ⚠️ Limited support    |
-| **1.x**           | ❌ End of life        |
-
-Update to the latest version for security patches.
+**Only the latest released version receives security updates.** Always use the newest version for security patches and critical fixes.
 
 ---
 
