@@ -6,20 +6,22 @@
 PySide6==6.11.1
 
 # PDF Processing (use pre-compiled wheel for Python 3.12)
-PyMuPDF==1.24.8
+PyMuPDF==1.27.2.3
 
 # NLP & Security Analysis
-presidio-analyzer==2.2.354
-spacy==3.7.2
+presidio-analyzer==2.2.359
+spacy==3.8.14
 # spaCy language models (pinned to exact versions for reproducibility)
+# IMPORTANT: model minor version MUST match the spaCy core minor version
+# (spaCy 3.8.x <-> models 3.8.x). The models declare spacy>=3.8.0,<3.9.0.
 # These are cached by pip in GitHub Actions, significantly speeding up CI/CD
-en-core-web-md @ https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.7.1/en_core_web_md-3.7.1-py3-none-any.whl
-it-core-news-md @ https://github.com/explosion/spacy-models/releases/download/it_core_news_md-3.7.0/it_core_news_md-3.7.0-py3-none-any.whl
+en-core-web-md @ https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl
+it-core-news-md @ https://github.com/explosion/spacy-models/releases/download/it_core_news_md-3.8.0/it_core_news_md-3.8.0-py3-none-any.whl
 
 # Build Tool (compatible with Python 3.13)
-pyinstaller==6.10.0
+pyinstaller==6.20.0
 
 # Development Tools
 isort==5.13.2
-pytest==7.4.4
-mypy==1.8.0
+pytest==9.0.3
+mypy==1.20.2
