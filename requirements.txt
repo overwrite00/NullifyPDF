@@ -9,7 +9,7 @@ PySide6==6.11.1
 PyMuPDF==1.24.8
 
 # NLP & Security Analysis
-presidio-analyzer==2.2.354
+presidio-analyzer==2.2.359
 spacy==3.7.2
 # spaCy language models (pinned to exact versions for reproducibility)
 # These are cached by pip in GitHub Actions, significantly speeding up CI/CD
