@@ -6,7 +6,7 @@
 PySide6==6.11.1
 
 # PDF Processing (use pre-compiled wheel for Python 3.12)
-PyMuPDF==1.24.8
+PyMuPDF==1.27.2.3
 
 # NLP & Security Analysis
 presidio-analyzer==2.2.354
