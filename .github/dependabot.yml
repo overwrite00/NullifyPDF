@@ -8,6 +8,8 @@ updates:
       day: "monday"
       time: "04:00"
     open-pull-requests-limit: 5
+    reviewers:
+      - "overwrite00"
     labels:
       - "dependencies"
       - "python"
