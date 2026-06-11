@@ -109,7 +109,8 @@ jobs:
             # Se PR è stato chiuso
             if [ "$PR_ACTION" = "closed" ]; then
               echo "  - PR closed"
-              if ${{ github.event.pull_request.merged }}; then
+              PR_MERGED="${{ github.event.pull_request.merged }}"
+              if [ "$PR_MERGED" = "true" ]; then
                 echo "    ✅ PR merged - Item will auto-transition in Project"
               fi
             fi
