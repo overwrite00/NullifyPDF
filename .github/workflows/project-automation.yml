@@ -31,7 +31,7 @@ jobs:
             ITEM_ID="${{ github.event.issue.node_id }}"
             ISSUE_NUM="${{ github.event.issue.number }}"
 
-            echo "🔄 Processing Issue #$ISSUE_NUM..."
+            echo "Processing Issue #$ISSUE_NUM..."
 
             # Assegna Issue
             echo "  - Assigning to ${{ env.ASSIGNEE }}..."
@@ -40,7 +40,7 @@ jobs:
               -H "Accept: application/vnd.github+json" \
               -d "{\"assignees\":[\"${{ env.ASSIGNEE }}\"]}" \
               "https://api.github.com/repos/$REPO/issues/$ISSUE_NUM" > /dev/null
-            echo "    ✅ Assigned"
+            echo "    Assigned"
 
             # Aggiungi al Project
             echo "  - Adding to Project..."
@@ -58,9 +58,9 @@ jobs:
               "https://api.github.com/graphql")
 
             if echo "$RESPONSE" | jq -e '.data.addProjectV2ItemById.item.id' > /dev/null 2>&1; then
-              echo "    ✅ Added to Project"
+              echo "    Added to Project"
             else
-              echo "    ❌ Failed to add to Project"
+              echo "    Failed to add to Project"
               echo "    Details: $(echo "$RESPONSE" | jq '.errors')"
             fi
           fi
@@ -71,7 +71,7 @@ jobs:
             PR_NUM="${{ github.event.pull_request.number }}"
             PR_ACTION="${{ github.event.action }}"
 
-            echo "🔄 Processing PR #$PR_NUM ($PR_ACTION)..."
+            echo "Processing PR #$PR_NUM ($PR_ACTION)..."
 
             # Assegna PR
             echo "  - Assigning to ${{ env.ASSIGNEE }}..."
@@ -80,7 +80,7 @@ jobs:
               -H "Accept: application/vnd.github+json" \
               -d "{\"assignees\":[\"${{ env.ASSIGNEE }}\"]}" \
               "https://api.github.com/repos/$REPO/issues/$PR_NUM" > /dev/null
-            echo "    ✅ Assigned"
+            echo "    Assigned"
 
             # Aggiungi al Project (solo se opened o reopened)
             if [ "$PR_ACTION" = "opened" ] || [ "$PR_ACTION" = "reopened" ]; then
@@ -99,9 +99,9 @@ jobs:
                 "https://api.github.com/graphql")
 
               if echo "$RESPONSE" | jq -e '.data.addProjectV2ItemById.item.id' > /dev/null 2>&1; then
-                echo "    ✅ Added to Project"
+                echo "    Added to Project"
               else
-                echo "    ❌ Failed to add to Project"
+                echo "    Failed to add to Project"
                 echo "    Details: $(echo "$RESPONSE" | jq '.errors')"
               fi
             fi
@@ -111,7 +111,7 @@ jobs:
               echo "  - PR closed"
               PR_MERGED="${{ github.event.pull_request.merged }}"
               if [ "$PR_MERGED" = "true" ]; then
-                echo "    ✅ PR merged - Item will auto-transition in Project"
+                echo "    PR merged - Item will auto-transition in Project"
               fi
             fi
           fi
@@ -119,6 +119,6 @@ jobs:
       - name: "Workflow Summary"
         if: always()
         run: |
-          echo "✅ Project automation completed"
-          echo "📌 Project ID: ${{ env.PROJECT_ID }}"
-          echo "👤 Assignee: ${{ env.ASSIGNEE }}"
+          echo "Project automation completed"
+          echo "Project ID: ${{ env.PROJECT_ID }}"
+          echo "Assignee: ${{ env.ASSIGNEE }}"
