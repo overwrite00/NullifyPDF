@@ -28,9 +28,16 @@ updates:
           - "minor"
           - "patch"
     ignore:
-      - dependency-name: "*"
+      # Dev-only deps: block majors, keep production deps fully updated.
+      # `ignore` does not support `dependency-type`, so dev deps are named explicitly.
+      - dependency-name: "isort"
         update-types: ["version-update:semver-major"]
-        dependency-type: "development"
+      - dependency-name: "pytest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "mypy"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pyinstaller"
+        update-types: ["version-update:semver-major"]
 
   # GitHub Actions — no major version ignore (CI/CD security-critical)
   - package-ecosystem: "github-actions"
