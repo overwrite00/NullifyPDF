@@ -16,14 +16,25 @@ updates:
     commit-message:
       prefix: "chore(deps)"
       include: "scope"
-    allow:
-      - dependency-type: "all"
+    groups:
+      minor-and-patch:
+        dependency-types:
+          - "production"
+        update-types:
+          - "minor"
+          - "patch"
+      development-updates:
+        dependency-types:
+          - "development"
+        update-types:
+          - "minor"
+          - "patch"
     ignore:
-      # Ignore pre-release versions
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+        dependency-type: "development"
 
-  # GitHub Actions
+  # GitHub Actions — no major version ignore (CI/CD security-critical)
   - package-ecosystem: "github-actions"
     directory: "/"
     target-branch: "develop"
@@ -38,3 +49,8 @@ updates:
     commit-message:
       prefix: "ci(deps)"
       include: "scope"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
