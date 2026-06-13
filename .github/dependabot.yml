@@ -16,14 +16,30 @@ updates:
     commit-message:
       prefix: "chore(deps)"
       include: "scope"
-    allow:
-      - dependency-type: "all"
+    groups:
+      minor-and-patch:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+      development-updates:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
     ignore:
-      # Ignore pre-release versions
-      - dependency-name: "*"
+      # Dev-only deps: block majors, keep production deps fully updated.
+      # `ignore` does not support `dependency-type`, so dev deps are named explicitly.
+      - dependency-name: "isort"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pytest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "mypy"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pyinstaller"
         update-types: ["version-update:semver-major"]
 
-  # GitHub Actions
+  # GitHub Actions — no major version ignore (CI/CD security-critical)
   - package-ecosystem: "github-actions"
     directory: "/"
     target-branch: "develop"
@@ -38,3 +54,8 @@ updates:
     commit-message:
       prefix: "ci(deps)"
       include: "scope"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
