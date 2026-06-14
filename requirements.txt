@@ -19,7 +19,7 @@ en-core-web-md @ https://github.com/explosion/spacy-models/releases/download/en_
 it-core-news-md @ https://github.com/explosion/spacy-models/releases/download/it_core_news_md-3.8.0/it_core_news_md-3.8.0-py3-none-any.whl
 
 # Build Tool (compatible with Python 3.13)
-pyinstaller==6.20.0
+pyinstaller==6.21.0
 
 # Development Tools
 isort==5.13.2
