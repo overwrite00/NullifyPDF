@@ -23,5 +23,5 @@ pyinstaller==6.21.0
 
 # Development Tools
 isort==5.13.2
-pytest==9.0.3
+pytest==9.1.0
 mypy==1.20.2
