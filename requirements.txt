@@ -10,7 +10,7 @@ PyMuPDF==1.27.2.3
 
 # NLP & Security Analysis
 presidio-analyzer==2.2.359
-spacy==3.8.14
+spacy==3.8.13
 # spaCy language models (pinned to exact versions for reproducibility)
 # IMPORTANT: model minor version MUST match the spaCy core minor version
 # (spaCy 3.8.x <-> models 3.8.x). The models declare spacy>=3.8.0,<3.9.0.
@@ -23,5 +23,5 @@ pyinstaller==6.21.0
 
 # Development Tools
 isort==5.13.2
-pytest==9.1.0
+pytest==9.1.1
 mypy==1.20.2
