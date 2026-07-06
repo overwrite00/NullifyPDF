@@ -80,9 +80,9 @@ To keep NullifyPDF lightweight, 100% offline, and secure, be aware of these tech
 
 Download the latest pre-compiled executable from [Releases](https://github.com/overwrite00/NullifyPDF/releases):
 
-- **Windows:** `NullifyPDF_v2.0.5_Windows.exe`
-- **macOS:** `NullifyPDF_v2.0.5_macOS.app`
-- **Linux:** `nullifypdf_2.0.5_amd64.deb` or `.rpm`
+- **Windows:** `NullifyPDF_v2.0.6_Windows.exe`
+- **macOS:** `NullifyPDF_v2.0.6_macOS.app`
+- **Linux:** `nullifypdf_2.0.6_amd64.deb` or `.rpm`
 
 No installation needed on Windows/macOS — just run. Linux users: `sudo dpkg -i nullifypdf_*.deb`
 
@@ -172,7 +172,7 @@ python build_local.py
 - Cleans temporary directories
 - Auto-detects your OS
 - Reads version dynamically from code
-- Generates named executable: `NullifyPDF_v2.0.5_Windows.exe`
+- Generates named executable: `NullifyPDF_v2.0.6_Windows.exe`
 
 **Linux bonus:** On Ubuntu/Fedora, automatically builds `.deb` and `.rpm` packages in `dist/`
 

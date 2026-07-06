@@ -7,6 +7,24 @@ e questo progetto aderisce a [Semantic Versioning](https://semver.org/spec/v2.0.
 
 ## [Unreleased]
 
+## [2.0.6] - 2026-07-06
+
+### ⚡ Ottimizzato (Dependencies)
+
+- **PyMuPDF 1.28.0**: Aggiornato da 1.27.2.3 per beneficiare dei bugfix importanti:
+  - Fix per ComboBox con choice_values piene di stringhe vuote
+  - Fix per `remove_rotation()` su widget con rect non validi
+  - Fix per formulae PDF renderizzate come scatole nere
+  - Fix per `Annot.set_rotation(0)` che causava AttributeError
+  - Nuovo parametro `archive` in `Document.__init__()` per supportare documenti con archivi
+  - Nuovo metodo `Document.apply_css()` per CSS styling
+  - Supporto Windows builds con free thread Python
+- **spacy 3.8.13**: Mantenuto in 3.8.13 per garantire compatibilità con presidio-analyzer 2.2.363 (spacy 3.8.14 è escluso da presidio-analyzer per preparare compatibilità Python 3.14)
+
+### 🔧 Internals
+
+- Aggiunto commento esplicativo nel requirements.txt sul vincolo di spacy per documentare la decisione di mantenerlo in versione 3.8.13
+
 ## [2.0.5] - 2026-05-26
 
 ### ✨ Migliorato (Code Quality)
