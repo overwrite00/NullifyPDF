@@ -66,12 +66,12 @@ def setup_environment() -> None:
     logger.info(f"Creazione nuovo ambiente virtuale: {venv_dir}")
     try:
         if platform.system() == "Windows":
-            subprocess.run(["py", "-3.12", "-m", "venv", venv_dir], check=True)
+            subprocess.run(["py", "-3.13", "-m", "venv", venv_dir], check=True)
         else:
             try:
-                subprocess.run(["python3.12", "-m", "venv", venv_dir], check=True)
+                subprocess.run(["python3.13", "-m", "venv", venv_dir], check=True)
             except FileNotFoundError:
-                logger.error("Python 3.12 non trovato. Installa Python 3.12 e riprova.")
+                logger.error("Python 3.13 non trovato. Installa Python 3.13 e riprova.")
                 sys.exit(1)
     except subprocess.CalledProcessError as e:
         logger.error(f"Errore critico durante la creazione del venv: {e}")

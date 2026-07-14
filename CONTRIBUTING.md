@@ -194,7 +194,7 @@ git commit -m "feat(ai): add IBAN detection to Presidio pipeline"
 git commit -m "fix(export): resolve memory doubling in forensic scrubbing"
 
 # Documentation
-git commit -m "docs: update installation guide for Python 3.12"
+git commit -m "docs: update installation guide for Python 3.13"
 
 # Performance
 git commit -m "perf(allowlist): implement O(1) exact-match lookup"
@@ -279,7 +279,7 @@ python NullifyPDF.py
 
 # macOS/Linux (Bash)
 export NULLIFYPDF_DEBUG=true
-python3.12 NullifyPDF.py
+python3.13 NullifyPDF.py
 ```
 
 ---
@@ -351,7 +351,7 @@ feature/your-feature (your work)
 
 ## 🎓 Learning Resources
 
-- **Python 3.12** — [docs.python.org](https://docs.python.org/3.12/)
+- **Python 3.13** — [docs.python.org](https://docs.python.org/3.13/)
 - **PySide6** — [doc.qt.io/qtforpython](https://doc.qt.io/qtforpython/)
 - **PyMuPDF** — [pymupdf.io](https://pymupdf.io/)
 - **spaCy** — [spacy.io](https://spacy.io/)

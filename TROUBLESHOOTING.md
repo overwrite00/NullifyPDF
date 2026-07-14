@@ -11,7 +11,7 @@ Common issues and how to fix them.
 
 Before diving in, verify these basics:
 
-- ✅ Python 3.12 installed? Run: `python --version` (or `python3.12 --version`)
+- ✅ Python 3.13 installed? Run: `python --version` (or `python3.13 --version`)
 - ✅ NullifyPDF running? Check: Can you open a PDF?
 - ✅ Debug mode enabled? Set: `NULLIFYPDF_DEBUG=true`
 - ✅ Logs checked? Look in: `~/.nullifypdf/logs/nullifypdf.log`
@@ -136,7 +136,7 @@ Enable debug mode and check logs:
 
 ```bash
 export NULLIFYPDF_DEBUG=true
-python3.12 NullifyPDF.py
+python3.13 NullifyPDF.py
 ```
 
 Then try export again. Upload `~/.nullifypdf/logs/nullifypdf.log` to GitHub issue.
@@ -297,7 +297,7 @@ PDF contains unusual characters or encoding.
 If still occurring:
 
 1. Try on different PDF (test with simple document)
-2. Check Python version: `python --version` (should be 3.12)
+2. Check Python version: `python --version` (should be 3.13)
 3. Report on GitHub with:
    - Python version
    - Error message
@@ -384,7 +384,7 @@ C:\Users\<username>\.nullifypdf\logs\nullifypdf.log
 
 ```bash
 export NULLIFYPDF_DEBUG=true
-python3.12 NullifyPDF.py
+python3.13 NullifyPDF.py
 ```
 
 Logs:
@@ -399,7 +399,7 @@ Logs:
 
 ```bash
 export NULLIFYPDF_DEBUG=true
-python3.12 NullifyPDF.py
+python3.13 NullifyPDF.py
 ```
 
 Logs:

@@ -116,7 +116,7 @@ python NullifyPDF.py
 ### macOS/Linux (Bash)
 ```bash
 export NULLIFYPDF_DEBUG=true
-python3.12 NullifyPDF.py
+python3.13 NullifyPDF.py
 ```
 
 **Effetto**: Il programma creerà log più dettagliati con stacktrace completi in:

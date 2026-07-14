@@ -221,7 +221,7 @@ python NullifyPDF.py
 
 ```bash
 export NULLIFYPDF_DEBUG=true
-python3.12 NullifyPDF.py
+python3.13 NullifyPDF.py
 ```
 
 </details>

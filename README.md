@@ -3,7 +3,7 @@
 ![GitHub Release](https://img.shields.io/github/v/release/overwrite00/NullifyPDF?style=flat-square&color=1fb2e0)
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/overwrite00/NullifyPDF/release.yml?style=flat-square&label=build)
 ![GitHub License](https://img.shields.io/github/license/overwrite00/NullifyPDF?style=flat-square&color=blue)
-![Python Version](https://img.shields.io/badge/python-3.12-blue?style=flat-square&logo=python)
+![Python Version](https://img.shields.io/badge/python-3.13-blue?style=flat-square&logo=python)
 
 <p align="center">
   <img src="images/NullifyPDF.png" alt="NullifyPDF Logo" width="500">
@@ -63,7 +63,7 @@ To keep NullifyPDF lightweight, 100% offline, and secure, be aware of these tech
 ### 📋 System Requirements
 
 ```
-✅ Python 3.12 (required for PyMuPDF wheel compatibility)
+✅ Python 3.13 (required for PyMuPDF wheel compatibility)
 ✅ 2 GB disk space (dependencies + spaCy models)
 ✅ 4 GB RAM minimum (8 GB recommended for large PDFs)
 ```
@@ -80,9 +80,9 @@ To keep NullifyPDF lightweight, 100% offline, and secure, be aware of these tech
 
 Download the latest pre-compiled executable from [Releases](https://github.com/overwrite00/NullifyPDF/releases):
 
-- **Windows:** `NullifyPDF_v2.0.6_Windows.exe`
-- **macOS:** `NullifyPDF_v2.0.6_macOS.app`
-- **Linux:** `nullifypdf_2.0.6_amd64.deb` or `.rpm`
+- **Windows:** `NullifyPDF_v2.0.7_Windows.exe`
+- **macOS:** `NullifyPDF_v2.0.7_macOS.app`
+- **Linux:** `nullifypdf_2.0.7_amd64.deb` or `.rpm`
 
 No installation needed on Windows/macOS — just run. Linux users: `sudo dpkg -i nullifypdf_*.deb`
 
@@ -98,14 +98,14 @@ No installation needed on Windows/macOS — just run. Linux users: `sudo dpkg -i
    cd NullifyPDF
    ```
 
-2. **Verify Python 3.12**
+2. **Verify Python 3.13**
 
    ```bash
    # Windows
-   py -3.12 --version
+   py -3.13 --version
    
    # macOS/Linux
-   python3.12 --version
+   python3.13 --version
    ```
 
 3. **Run automated setup** (recommended)
@@ -128,7 +128,7 @@ No installation needed on Windows/macOS — just run. Linux users: `sudo dpkg -i
    
    # macOS/Linux (Bash)
    source .venv/bin/activate
-   python3.12 NullifyPDF.py
+   python3.13 NullifyPDF.py
    ```
 
 </details>
@@ -140,7 +140,7 @@ The repository includes cross-platform Python scripts for developers:
 <details>
 <summary><strong>🔧 setup_env.py — Environment Setup</strong></summary>
 
-Configures development environment with Python 3.12, virtual environment, and NLP models.
+Configures development environment with Python 3.13, virtual environment, and NLP models.
 
 ```bash
 python setup_env.py
@@ -148,14 +148,14 @@ python setup_env.py
 
 **What it does:**
 - Detects OS (Windows/macOS/Linux)
-- Creates `.venv` with Python 3.12
+- Creates `.venv` with Python 3.13
 - Installs `requirements.txt` dependencies
 - Downloads spaCy models (English, Italian, both)
 - Runs smoke tests to verify installation
 
 **Automatic OS detection:**
-- Windows: Uses `py -3.12` launcher
-- macOS/Linux: Uses `python3.12` directly
+- Windows: Uses `py -3.13` launcher
+- macOS/Linux: Uses `python3.13` directly
 
 </details>
 
@@ -172,7 +172,7 @@ python build_local.py
 - Cleans temporary directories
 - Auto-detects your OS
 - Reads version dynamically from code
-- Generates named executable: `NullifyPDF_v2.0.6_Windows.exe`
+- Generates named executable: `NullifyPDF_v2.0.7_Windows.exe`
 
 **Linux bonus:** On Ubuntu/Fedora, automatically builds `.deb` and `.rpm` packages in `dist/`
 
@@ -229,7 +229,7 @@ See [SECURITY.md](./SECURITY.md) for responsible disclosure and privacy details.
 
 | Technology             | Purpose                                             |
 | ---------------------- | --------------------------------------------------- |
-| **Python 3.12**        | Core language (required for PyMuPDF compatibility)  |
+| **Python 3.13**        | Core language (required for PyMuPDF compatibility)  |
 | **PySide6 (Qt6)**      | Modern dark-mode GUI with multi-threading           |
 | **PyMuPDF (fitz)**     | High-performance PDF manipulation                   |
 | **Microsoft Presidio** | PII (Personally Identifiable Information) detection |
