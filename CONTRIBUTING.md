@@ -26,6 +26,12 @@ python setup_env.py
 
 This creates isolated venv, installs dependencies, and downloads NLP models.
 
+Then enable the repo's git hooks (one-time per clone) so the `Last updated` footer in docs stays in sync automatically:
+
+```bash
+git config core.hooksPath .githooks
+```
+
 ### 3️⃣ Create Feature Branch
 
 ```bash
