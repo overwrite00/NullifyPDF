@@ -550,5 +550,5 @@ Ready to contribute? See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
 
 ---
 
-*Last updated: 2026-06-06*  
+*Last updated: 2026-07-14*  
 *← [Troubleshooting](./TROUBLESHOOTING.md) | [Back to README →](./README.md)*

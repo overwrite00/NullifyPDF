@@ -253,5 +253,5 @@ Want to help improve NullifyPDF? See [CONTRIBUTING.md](./CONTRIBUTING.md) for gu
 
 ---
 
-*Last updated: 2026-06-06*  
-*← [README_IT](./README_IT.md) | [User Guide →](./USER_GUIDE.md)*
+*Last updated: 2026-07-14*  
+*[User Guide →](./USER_GUIDE.md)*

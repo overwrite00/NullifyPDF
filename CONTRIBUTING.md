@@ -372,5 +372,5 @@ Every contribution — code, docs, bug reports, ideas — helps make NullifyPDF 
 
 ---
 
-*Last updated: 2026-06-06*  
+*Last updated: 2026-07-14*  
 *← [Back to README](./README.md) | [Architecture →](./ARCHITECTURE.md)*

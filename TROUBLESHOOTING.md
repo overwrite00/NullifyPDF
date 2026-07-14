@@ -457,5 +457,5 @@ The more details, the faster we can fix it! 🚀
 
 ---
 
-*Last updated: 2026-06-06*  
+*Last updated: 2026-07-14*  
 *← [User Guide](./USER_GUIDE.md) | [Development →](./DEVELOPMENT.md)*

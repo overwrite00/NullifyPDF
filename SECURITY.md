@@ -282,5 +282,5 @@ For **security vulnerabilities only**:
 
 ---
 
-*Last updated: 2026-06-06*  
+*Last updated: 2026-06-07*  
 *← [Contributing](./CONTRIBUTING.md) | [Back to README →](./README.md)*
