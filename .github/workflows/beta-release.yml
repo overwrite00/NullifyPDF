@@ -1,17 +1,17 @@
-name: Test Build NullifyPDF
+name: Build and Release NullifyPDF (Beta)
 
 on:
-  pull_request:
-    branches:
-      - main
+  push:
+    tags:
+      - 'v*-beta.*'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 concurrency:
-  group: test-build-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: beta-release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -31,7 +31,7 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-          cache: 'pip' # CACHE RIPRISTINATA!
+          cache: 'pip'
 
       - name: Install System Dependencies (Linux)
         if: runner.os == 'Linux'
@@ -55,10 +55,36 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: test-build-${{ runner.os }}
+          name: beta-build-${{ runner.os }}
+          retention-days: 5
           path: |
             dist/NullifyPDF_v*_Windows.exe
             dist/NullifyPDF_v*_macOS.zip
             dist/NullifyPDF_v*_Ubuntu.deb
             dist/NullifyPDF_v*_Fedora.rpm
-          retention-days: 3
+
+  create_beta_release:
+    name: Create GitHub Beta Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: all-builds
+          pattern: beta-build-*
+          merge-multiple: true
+
+      - name: Release
+        uses: softprops/action-gh-release@v3
+        with:
+          prerelease: true
+          files: |
+            all-builds/NullifyPDF_v*_Windows.exe
+            all-builds/NullifyPDF_v*_macOS.zip
+            all-builds/NullifyPDF_v*_Ubuntu.deb
+            all-builds/NullifyPDF_v*_Fedora.rpm
+          body: "Beta release NullifyPDF (build da develop). Non usare in produzione. Se supera i test, questa build verra' promossa a stable senza ricompilazione."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

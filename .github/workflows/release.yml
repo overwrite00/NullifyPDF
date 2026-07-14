@@ -1,82 +1,69 @@
-name: Build and Release NullifyPDF
+name: Promote Beta to Stable Release
 
 on:
   push:
     tags:
       - 'v*'
+      - '!v*-beta.*'
   workflow_dispatch:
+    inputs:
+      beta_tag:
+        description: 'Beta tag to promote (leave empty to auto-select the latest beta)'
+        required: false
+        type: string
 
 permissions:
   contents: write
-  actions: read
+
+concurrency:
+  group: stable-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build for ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [windows-latest, ubuntu-22.04, macos-latest]
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-          cache: 'pip' # CACHE RIPRISTINATA!
-
-      - name: Install System Dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y rpm dpkg binutils libxcb-cursor0 libxkbcommon-x11-0 libegl1 desktop-file-utils
-
-      - name: Install Python Dependencies (includes spaCy models)
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run Smoke Tests
-        run: pytest tests/ -v
-
-      - name: Type Check (mypy)
-        run: mypy NullifyPDF.py --ignore-missing-imports --no-error-summary 2>&1 | head -50 || true
-
-      - name: Build
-        run: python build_local.py
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: build-${{ runner.os }}
-          path: |
-            dist/NullifyPDF_v*_Windows.exe
-            dist/NullifyPDF_v*_macOS.zip
-            dist/NullifyPDF_v*_Ubuntu.deb
-            dist/NullifyPDF_v*_Fedora.rpm
-
-  create_release:
-    name: Create GitHub Release
-    needs: build
+  promote:
+    name: Promote latest beta artifacts to stable
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
     steps:
-      - name: Download All Artifacts
-        uses: actions/download-artifact@v8
-        with:
-          path: all-builds
-          pattern: build-*
-          merge-multiple: true
+      - name: Resolve target beta release
+        id: beta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BETA_TAG_INPUT: ${{ github.event.inputs.beta_tag }}
+        run: |
+          if [ -n "$BETA_TAG_INPUT" ]; then
+            TAG="$BETA_TAG_INPUT"
+          else
+            TAG=$(gh release list --repo "${{ github.repository }}" --limit 50 --json tagName,isPrerelease,createdAt \
+              --jq '[.[] | select(.isPrerelease == true)] | sort_by(.createdAt) | last | .tagName // empty')
+          fi
 
-      - name: Release
+          if [ -z "$TAG" ]; then
+            echo "::error::No beta release found to promote. Publish a beta release first (tag v*-beta.*) or pass beta_tag explicitly."
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Promoting beta release: $TAG"
+
+      - name: Download beta release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p stable-assets
+          gh release download "${{ steps.beta.outputs.tag }}" --repo "${{ github.repository }}" --dir stable-assets \
+            --pattern "NullifyPDF_v*_Windows.exe" \
+            --pattern "NullifyPDF_v*_macOS.zip" \
+            --pattern "NullifyPDF_v*_Ubuntu.deb" \
+            --pattern "NullifyPDF_v*_Fedora.rpm"
+
+      - name: Create Stable Release
         uses: softprops/action-gh-release@v3
         with:
-          files: |
-            all-builds/NullifyPDF_v*_Windows.exe
-            all-builds/NullifyPDF_v*_macOS.zip
-            all-builds/NullifyPDF_v*_Ubuntu.deb
-            all-builds/NullifyPDF_v*_Fedora.rpm
-          body: "Release Stabile NullifyPDF. Include App Bundle macOS (ZIP), EXE per Windows e pacchetti nativi Linux."
+          files: stable-assets/*
+          prerelease: false
+          body: |
+            Release Stabile NullifyPDF.
+            Promossa dalla beta `${{ steps.beta.outputs.tag }}` (build gia' verificata, nessuna ricompilazione).
+            Include App Bundle macOS (ZIP), EXE per Windows e pacchetti nativi Linux.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
