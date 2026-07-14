@@ -1,11 +1,11 @@
-# Requirements for NullifyPDF - Python 3.12 REQUIRED
-# PyMuPDF does not have pre-compiled wheels for Python 3.13+
+# Requirements for NullifyPDF - Python 3.13 REQUIRED
+# PyMuPDF 1.28.0+ ships abi3 wheels (cp310-abi3) that cover Python 3.13 as well
 # Update script handles version detection automatically
 
-# UI Framework (compatible with Python 3.12)
+# UI Framework (compatible with Python 3.13)
 PySide6==6.11.1
 
-# PDF Processing (use pre-compiled wheel for Python 3.12)
+# PDF Processing (abi3 wheel, compatible with Python 3.13)
 PyMuPDF==1.28.0
 
 # NLP & Security Analysis

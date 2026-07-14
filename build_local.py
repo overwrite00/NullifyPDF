@@ -45,11 +45,14 @@ def ensure_icon(sys_os: str) -> Optional[str]:
     return os.path.join(base_dir, "NullifyPDF_icon.png").replace("\\", "/")
 
 
-def build_rpm(version: str, executable_name: str) -> None:
+def build_rpm(version: str, file_version: str, executable_name: str) -> None:
     """Build RPM package for Fedora/RHEL.
 
     Args:
-        version: Application version.
+        version: Application version used for the RPM package metadata
+            (must not contain hyphens, which the RPM Version tag disallows).
+        file_version: Version string used for the output artifact filename
+            (may include a beta suffix, e.g. "2.0.7-beta.3").
         executable_name: Name of compiled executable.
     """
     print("\n[INFO] Creazione pacchetto RPM per Fedora/RHEL...")
@@ -118,7 +121,7 @@ EOF
                 if file.endswith(".rpm"):
                     shutil.move(
                         os.path.join(root, file),
-                        f"dist/NullifyPDF_v{version}_Fedora.rpm",
+                        f"dist/NullifyPDF_v{file_version}_Fedora.rpm",
                     )
         print("[OK] RPM creato con successo.")
     except Exception as e:
@@ -127,11 +130,13 @@ EOF
         shutil.rmtree(rpm_dir, ignore_errors=True)
 
 
-def build_deb(version: str, executable_name: str) -> None:
+def build_deb(version: str, file_version: str, executable_name: str) -> None:
     """Build DEB package for Ubuntu/Debian.
 
     Args:
-        version: Application version.
+        version: Application version used for the DEB package metadata.
+        file_version: Version string used for the output artifact filename
+            (may include a beta suffix, e.g. "2.0.7-beta.3").
         executable_name: Name of compiled executable.
     """
     print("\n[INFO] Creazione pacchetto DEB per Ubuntu/Debian...")
@@ -175,7 +180,7 @@ def build_deb(version: str, executable_name: str) -> None:
 
     try:
         subprocess.run(
-            ["dpkg-deb", "--build", pkg_dir, f"dist/NullifyPDF_v{version}_Ubuntu.deb"],
+            ["dpkg-deb", "--build", pkg_dir, f"dist/NullifyPDF_v{file_version}_Ubuntu.deb"],
             check=True,
             stdout=subprocess.DEVNULL,
         )
@@ -196,6 +201,8 @@ def build_app() -> None:
     """
     print("--- Avvio Compilazione NullifyPDF (PySide6) ---")
     version = get_version()
+    beta_suffix = os.environ.get("NULLIFYPDF_BETA_SUFFIX", "").strip()
+    file_version = f"{version}-{beta_suffix}" if beta_suffix else version
     sys_os = platform.system()
 
     for item in ["build", "dist", "NullifyPDF.spec"]:
@@ -207,7 +214,7 @@ def build_app() -> None:
         if sys_os == "Windows"
         else ("macOS", "") if sys_os == "Darwin" else ("Linux_Portable", "")
     )
-    final_name = f"NullifyPDF_v{version}_{os_name}{ext}"
+    final_name = f"NullifyPDF_v{file_version}_{os_name}{ext}"
     icon_path = ensure_icon(sys_os)
     # Use repr() to safely embed the path as a Python literal in the spec file.
     # Manual single-quote wrapping is unsafe for paths containing quotes/backslashes.
@@ -257,7 +264,7 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, name='NullifyPDF', debug=False, c
             print(f"[OK] Compilazione completata: dist/{final_name}")
         elif sys_os == "Darwin":
             print("[INFO] Compressione App Bundle per macOS in formato ZIP...")
-            zip_filename = f"NullifyPDF_v{version}_macOS.zip"
+            zip_filename = f"NullifyPDF_v{file_version}_macOS.zip"
             subprocess.run(
                 ["zip", "-r", "-y", zip_filename, "NullifyPDF.app"],
                 cwd="dist",
@@ -270,9 +277,9 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, name='NullifyPDF', debug=False, c
             os.rename("dist/NullifyPDF", f"dist/{final_name}")
             print(f"[OK] Eseguibile portatile pronto: dist/{final_name}")
             if shutil.which("rpmbuild"):
-                build_rpm(version, final_name)
+                build_rpm(version, file_version, final_name)
             if shutil.which("dpkg-deb"):
-                build_deb(version, final_name)
+                build_deb(version, file_version, final_name)
 
     except subprocess.CalledProcessError as e:
         print(f"\n[ERROR] ERRORE CRITICO: Compilazione fallita (exit {e.returncode}).")

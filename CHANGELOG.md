@@ -7,6 +7,15 @@ e questo progetto aderisce a [Semantic Versioning](https://semver.org/spec/v2.0.
 
 ## [Unreleased]
 
+## [2.0.7] - 2026-07-14
+
+### 🔧 Internals
+
+- **Migrazione a Python 3.13**: Il runtime richiesto passa da Python 3.12 a Python 3.13. PyMuPDF 1.28.0 pubblica wheel `abi3` (`cp310-abi3`) forward-compatibili che coprono nativamente Python 3.13, rimuovendo il precedente vincolo di compatibilità.
+- Aggiornati i workflow CI/CD (`test_build.yml`, `beta-release.yml`) per compilare con Python 3.13.
+- Aggiornata tutta la documentazione (README, DEVELOPMENT, ARCHITECTURE, CONTRIBUTING, TROUBLESHOOTING, USER_GUIDE, GUIDA_UTENTE) e `setup_env.py` per riflettere il nuovo requisito.
+- Verificata l'intera suite di test (11/11) e una build completa (PyInstaller) su Python 3.13 in ambiente isolato prima del merge.
+
 ## [2.0.6] - 2026-07-06
 
 ### ⚡ Optimized (Dependencies)

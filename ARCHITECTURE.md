@@ -140,7 +140,7 @@ doc.save("output.pdf", deflate=True)
 
 **Key Constraints:**
 
-- ✅ PyMuPDF wheels are pre-compiled → **requires Python 3.12**
+- ✅ PyMuPDF wheels are pre-compiled → **requires Python 3.13**
 - ✅ `doc.get_text()` is CPU-bound → run in worker thread
 - ✅ Metadata destruction is binary-level → cannot undo after export
 - ✅ Digital signatures invalidated after redaction
@@ -435,7 +435,7 @@ python NullifyPDF.py
 
 # macOS/Linux (Bash)
 export NULLIFYPDF_DEBUG=true
-python3.12 NullifyPDF.py
+python3.13 NullifyPDF.py
 ```
 
 **Effect:** Log level changes from `INFO` to `DEBUG`, includes full stack traces.
@@ -457,7 +457,7 @@ python3.12 NullifyPDF.py
 **Steps:**
 
 1. Detect OS (Windows/macOS/Linux)
-2. Create virtual environment with Python 3.12
+2. Create virtual environment with Python 3.13
 3. Upgrade pip, setuptools, wheel
 4. Install requirements.txt dependencies
 5. Download spaCy models (EN + IT)
@@ -619,7 +619,7 @@ NullifyPDF/
 1. **Enable debug mode:**
    ```bash
    export NULLIFYPDF_DEBUG=true
-   python3.12 NullifyPDF.py
+   python3.13 NullifyPDF.py
    ```
 
 2. **Check logs:** `~/.nullifypdf/logs/nullifypdf.log`

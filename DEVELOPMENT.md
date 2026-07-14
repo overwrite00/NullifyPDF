@@ -3,7 +3,7 @@
 Complete guide for developers setting up a local development environment and contributing to NullifyPDF.
 
 > [!IMPORTANT]
-> Requires **Python 3.12**. Older versions are not compatible with PyMuPDF wheels.
+> Requires **Python 3.13**. Older versions are not compatible with PyMuPDF wheels.
 
 ---
 
@@ -13,7 +13,7 @@ Before starting, verify you have:
 
 | 📦 Requirement           | 💾 Space | 📝 Notes                                       |
 | ----------------------- | ------- | --------------------------------------------- |
-| **Python 3.12**         | 150 MB  | [Download](https://www.python.org/downloads/) |
+| **Python 3.13**         | 150 MB  | [Download](https://www.python.org/downloads/) |
 | **Git**                 | 50 MB   | [Download](https://git-scm.com/)              |
 | **Virtual Environment** | 2 GB    | `.venv/` auto-created by setup script         |
 | **Disk Space**          | 3 GB    | Dependencies + spaCy models                   |
@@ -30,17 +30,17 @@ git clone https://github.com/overwrite00/NullifyPDF.git
 cd NullifyPDF
 ```
 
-### 2️⃣ Verify Python 3.12
+### 2️⃣ Verify Python 3.13
 
 ```bash
 # Windows
-py -3.12 --version
+py -3.13 --version
 
 # macOS/Linux
-python3.12 --version
+python3.13 --version
 ```
 
-Should output: `Python 3.12.x`
+Should output: `Python 3.13.x`
 
 ### 3️⃣ Run Automated Setup
 
@@ -338,7 +338,7 @@ python NullifyPDF.py
 
 # macOS/Linux
 export NULLIFYPDF_DEBUG=true
-python3.12 NullifyPDF.py
+python3.13 NullifyPDF.py
 ```
 
 **Effect:** Logs verbose output to `~/.nullifypdf/logs/nullifypdf.log`

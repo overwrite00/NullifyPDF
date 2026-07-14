@@ -44,7 +44,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtCore import Qt, QThread, QObject, Signal, Slot, QRectF, QPointF, QMutex, QMutexLocker
 
-__version__ = "2.0.6"
+__version__ = "2.0.7"
 
 
 def setup_logging() -> logging.Logger:

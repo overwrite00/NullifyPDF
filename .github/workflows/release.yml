@@ -56,6 +56,17 @@ jobs:
             --pattern "NullifyPDF_v*_Ubuntu.deb" \
             --pattern "NullifyPDF_v*_Fedora.rpm"
 
+      - name: Strip beta suffix from filenames
+        run: |
+          cd stable-assets
+          for f in *; do
+            new="$(echo "$f" | sed -E 's/-beta\.[0-9]+//')"
+            if [ "$f" != "$new" ]; then
+              mv "$f" "$new"
+            fi
+          done
+          ls -la
+
       - name: Create Stable Release
         uses: softprops/action-gh-release@v3
         with:
