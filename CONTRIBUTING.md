@@ -26,15 +26,10 @@ python setup_env.py
 
 This creates isolated venv, installs dependencies, and downloads NLP models.
 
-Then run this one-time setup so docs stay in sync automatically — no manual "fix the date/badge" commits needed:
+Then enable the repo's git hooks (one-time per clone) so the `Last updated` footer in docs stays in sync automatically:
 
 ```bash
-# Auto-updates the "Last updated" footer on every commit
 git config core.hooksPath .githooks
-
-# Keeps each branch's own README release badge (stable on main, beta on
-# develop) intact whenever the branches are merged into one another
-git config merge.readme-badge.driver "python scripts/merge_readme_badge.py %O %A %B"
 ```
 
 ### 3️⃣ Create Feature Branch
