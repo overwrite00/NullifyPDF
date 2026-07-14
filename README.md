@@ -206,6 +206,7 @@ pytest tests/ -v
 | [USER_GUIDE.md](./USER_GUIDE.md)           | Step-by-step usage instructions        |
 | [CONTRIBUTING.md](./CONTRIBUTING.md)       | How to contribute code & report issues |
 | [ARCHITECTURE.md](./ARCHITECTURE.md)       | System design & technical overview     |
+| [DEVELOPMENT.md](./DEVELOPMENT.md)         | Local dev setup, testing & builds      |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | Common issues & solutions              |
 | [CHANGELOG.md](./CHANGELOG.md)             | Release history & updates              |
 
