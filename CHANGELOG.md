@@ -1,9 +1,9 @@
 # Changelog
 
-Tutti i cambiamenti significativi a questo progetto saranno documentati in questo file.
+All notable changes to this project will be documented in this file.
 
-Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/),
-e questo progetto aderisce a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
@@ -11,10 +11,10 @@ e questo progetto aderisce a [Semantic Versioning](https://semver.org/spec/v2.0.
 
 ### 🔧 Internals
 
-- **Migrazione a Python 3.13**: Il runtime richiesto passa da Python 3.12 a Python 3.13. PyMuPDF 1.28.0 pubblica wheel `abi3` (`cp310-abi3`) forward-compatibili che coprono nativamente Python 3.13, rimuovendo il precedente vincolo di compatibilità.
-- Aggiornati i workflow CI/CD (`test_build.yml`, `beta-release.yml`) per compilare con Python 3.13.
-- Aggiornata tutta la documentazione (README, DEVELOPMENT, ARCHITECTURE, CONTRIBUTING, TROUBLESHOOTING, USER_GUIDE, GUIDA_UTENTE) e `setup_env.py` per riflettere il nuovo requisito.
-- Verificata l'intera suite di test (11/11) e una build completa (PyInstaller) su Python 3.13 in ambiente isolato prima del merge.
+- **Migration to Python 3.13**: The required runtime moves from Python 3.12 to Python 3.13. PyMuPDF 1.28.0 publishes forward-compatible `abi3` wheels (`cp310-abi3`) that natively cover Python 3.13, removing the previous compatibility constraint.
+- Updated CI/CD workflows (`test_build.yml`, `beta-release.yml`) to build with Python 3.13.
+- Updated all documentation (README, DEVELOPMENT, ARCHITECTURE, CONTRIBUTING, TROUBLESHOOTING, USER_GUIDE) and `setup_env.py` to reflect the new requirement.
+- Verified the entire test suite (11/11) and a full build (PyInstaller) on Python 3.13 in an isolated environment before merging.
 
 ## [2.0.6] - 2026-07-06
 
@@ -36,136 +36,136 @@ e questo progetto aderisce a [Semantic Versioning](https://semver.org/spec/v2.0.
 
 ## [2.0.5] - 2026-05-26
 
-### ✨ Migliorato (Code Quality)
+### ✨ Improved (Code Quality)
 
-- **Type Hints Completi**: Aggiunto type hints a 100% di tutte le funzioni e metodi per migliorare static analysis e IDE support.
-- **Docstrings Google Style**: Introdotta documentazione completa con Args, Returns, Raises per facilità di manutenzione.
-- **File-based Logging**: Aggiunto logging su file (`~/.nullifypdf/logs/nullifypdf.log`) con rotazione automatica e supporto debug mode via `NULLIFYPDF_DEBUG=true`.
-- **Input Validation**: Aggiunta validazione esplicita per path, range pagine, e scelte linguistiche per evitare crash su input malformato.
+- **Complete Type Hints**: Added type hints to 100% of functions and methods to improve static analysis and IDE support.
+- **Google-Style Docstrings**: Introduced full documentation with Args, Returns, Raises for easier maintenance.
+- **File-based Logging**: Added file logging (`~/.nullifypdf/logs/nullifypdf.log`) with automatic rotation and debug mode support via `NULLIFYPDF_DEBUG=true`.
+- **Input Validation**: Added explicit validation for paths, page ranges, and language choices to avoid crashes on malformed input.
 
-### 🐛 Corretto (Bug Fixes)
+### 🐛 Fixed (Bug Fixes)
 
-- **Export Crash su Pagine Senza Annotazioni**: Risolto TypeError su `page.annots()` che ritornava `None` durante l'export di pagine non annotate.
-- **spaCy Vocab Mutation Error**: Rimosso assignment unsafe a `nlp.vocab.vectors.shape` che causava AttributeError su spaCy 3.5+ con vocab read-only.
-- **File Handle Leak**: Aggiunto context manager `with` statement per chiusura sicura file descriptor durante caricamento liste persistenti.
-- **Division by Zero in Progress Bar**: Aggiunto guard `if t <= 0` per evitare crash durante rendering barra di progresso su documenti vuoti.
-- **QImage Segfault**: Aggiunto `.copy()` al buffer QImage per evitare segfault quando PyMuPDF pixmap viene liberato prima del rendering.
-- **Signal Handler Crash**: Cambiato `self.close()` in `QTimer.singleShot(0, self.close)` per deferire al Qt event loop durante SIGINT handler.
-- **PyInstaller Path Traversal**: Sostituito manual quote wrapping con `repr()` per path spec file, prevenendo path traversal in build system.
-- **Silent pip Upgrade Failure**: Aggiunto `check=True` a subprocess.run() per setup_env.py così che fallisca fast su errori pip anzi che continuare silenziosamente.
+- **Export Crash on Pages Without Annotations**: Fixed TypeError on `page.annots()` returning `None` when exporting unannotated pages.
+- **spaCy Vocab Mutation Error**: Removed unsafe assignment to `nlp.vocab.vectors.shape` that caused an AttributeError on spaCy 3.5+ with read-only vocab.
+- **File Handle Leak**: Added `with` context manager for safe file descriptor closure when loading persistent lists.
+- **Division by Zero in Progress Bar**: Added `if t <= 0` guard to avoid crashes when rendering the progress bar on empty documents.
+- **QImage Segfault**: Added `.copy()` to the QImage buffer to avoid segfaults when the PyMuPDF pixmap is freed before rendering.
+- **Signal Handler Crash**: Changed `self.close()` to `QTimer.singleShot(0, self.close)` to defer to the Qt event loop during the SIGINT handler.
+- **PyInstaller Path Traversal**: Replaced manual quote wrapping with `repr()` for the spec file path, preventing path traversal in the build system.
+- **Silent pip Upgrade Failure**: Added `check=True` to subprocess.run() in setup_env.py so it fails fast on pip errors instead of continuing silently.
 
-### ⚡ Ottimizzato (Performance)
+### ⚡ Optimized (Performance)
 
-- **Memory Doubling in Export**: Implementato disk-backed temp file con lazy-parse di PyMuPDF per ridurre picco RAM da 2x a 1x dimensione documento durante forensic scrubbing.
-- **Regex Recompilation**: Precompilato pattern regex fuori dai loop in `AIWorker.run_scan()` per 10-100x speedup su allowlist grandi.
-- **Allowlist Fast-path**: Aggiunto O(1) exact-match check su set prima di regex any() scan, short-circuitando il 90% dei casi comuni.
-- **AI Scan Responsiveness**: Spostato `get_text()` dal UI thread nel `AIWorker` thread pool con QMutex serialization per evitare UI freezing su PDF grandi.
+- **Memory Doubling in Export**: Implemented a disk-backed temp file with lazy-parsing via PyMuPDF to reduce peak RAM from 2x to 1x document size during forensic scrubbing.
+- **Regex Recompilation**: Precompiled regex patterns outside loops in `AIWorker.run_scan()` for a 10-100x speedup on large allowlists.
+- **Allowlist Fast-path**: Added an O(1) exact-match check against a set before the regex `any()` scan, short-circuiting 90% of common cases.
+- **AI Scan Responsiveness**: Moved `get_text()` off the UI thread into the `AIWorker` thread pool with QMutex serialization to avoid UI freezing on large PDFs.
 
 ### 🔧 Internals
 
-- **QMouseEvent Deprecation Fix**: Cambiato `event.pos()` → `event.position()` per compatibilità con PySide6 moderno.
-- **Signal Cleanup**: Rimosso manual `disconnect()` che causava RuntimeWarning, lasciato Python GC handle cleanup automatico.
-- **Thread Safety**: Aggiunto `QMutex` serialization per document access tra UI thread (render, redact) e worker thread (AI scan).
+- **QMouseEvent Deprecation Fix**: Changed `event.pos()` → `event.position()` for compatibility with modern PySide6.
+- **Signal Cleanup**: Removed manual `disconnect()` that caused a RuntimeWarning, letting Python's GC handle cleanup automatically.
+- **Thread Safety**: Added `QMutex` serialization for document access between the UI thread (render, redact) and worker thread (AI scan).
 
 ## [1.5.4] - 2026-04-23
 
-### 🚀 Aggiunto (Features)
+### 🚀 Added (Features)
 
-- **UI Redesign**: Nuova architettura grafica con Sidebar laterale per massimizzare la visibilità del documento.
-- **Navigazione & Zoom**: Aggiunto navigatore "Jump to Page" e controlli di Zoom fluido (bottoni UI e scorciatoia `CTRL + Rotellina Mouse`).
-- **Blindfold Mode**: Introdotto lo switch "Oscura Immagini" per sostituire foto e grafiche vettoriali con il segnaposto professionale localizzato `[ IMMAGINE RIMOSSA ]`.
-- **Sanificazione Moduli**: Il Forensic Scrubbing ora distrugge e appiattisce anche gli `AcroForms` (campi modulo interattivi) in fase di export.
-- **Mac-OS Native Bundle**: Lo script di build ora supporta la generazione nativa di applicazioni `.app` per sistemi Apple (Darwin).
+- **UI Redesign**: New graphical architecture with a side Sidebar to maximize document visibility.
+- **Navigation & Zoom**: Added a "Jump to Page" navigator and smooth Zoom controls (UI buttons and `CTRL + Mouse Wheel` shortcut).
+- **Blindfold Mode**: Introduced the "Blindfold Images" switch to replace photos and vector graphics with a professional, localized `[ IMAGE REMOVED ]` placeholder.
+- **Form Sanitization**: Forensic Scrubbing now also destroys and flattens `AcroForms` (interactive form fields) during export.
+- **Mac-OS Native Bundle**: The build script now supports native `.app` bundle generation for Apple (Darwin) systems.
 
-### 🐛 Corretto (Bug Fixes)
+### 🐛 Fixed (Bug Fixes)
 
-- **Memory Leak & File Lock**: Aggiunta chiusura esplicita dei puntatori PyMuPDF per evitare blocchi del file system su Windows durante il cambio documento.
-- **Stacking Annotazioni**: Risolto il bug delle whitelist fantasma. L'AI ora riconosce le aree già censurate ed evita sovrapposizioni inutili.
-- **Crash Export Distruttivo**: L'esportazione ora agisce su un *clone in memoria (byte buffer)*, evitando di distruggere il livello vettoriale del documento visualizzato in tempo reale.
-- **RecursionError Windows**: Risolto il fallimento della build PyInstaller su Windows causato dalla libreria SpaCy, implementando una configurazione `.spec` dinamica.
-- **AttributeError Mouse**: Prevenuta eccezione anomala durante il trascinamento del mouse a canvas vuoto.
-- **Coordinate Popup**: Ripristinata la centratura geometrica matematica per le finestre secondarie "About" e "Dizionari" rispetto alla finestra madre.
+- **Memory Leak & File Lock**: Added explicit closure of PyMuPDF pointers to avoid file system locks on Windows when switching documents.
+- **Annotation Stacking**: Fixed the ghost whitelist bug. The AI now recognizes already-redacted areas and avoids unnecessary overlaps.
+- **Destructive Export Crash**: Export now operates on an *in-memory clone (byte buffer)*, avoiding destruction of the vector layer of the live-viewed document.
+- **RecursionError on Windows**: Fixed the PyInstaller build failure on Windows caused by the SpaCy library, by implementing a dynamic `.spec` configuration.
+- **Mouse AttributeError**: Prevented an anomalous exception when dragging the mouse onto an empty canvas.
+- **Popup Coordinates**: Restored correct mathematical geometric centering for the "About" and "Dictionaries" child windows relative to the parent window.
 
-### ⚡ Ottimizzato (Performance)
+### ⚡ Optimized (Performance)
 
-- **Pre-compilazione Regex**: Abbattuto il tempo di esecuzione di "Auto Redact" del 70% estraendo le espressioni regolari della Allowlist dai cicli iterativi annidati.
+- **Regex Pre-compilation**: Cut "Auto Redact" execution time by 70% by extracting Allowlist regular expressions out of nested iteration loops.
 
 ## [1.4.0] - 2026-04-22
 
-### Aggiunto
+### Added
 
-- **Nuovo Layout GUI**: Introdotta Sidebar laterale per massimizzare lo spazio dell'anteprima PDF.
-- **Navigazione Avanzata**: Aggiunto navigatore di pagine con funzione "Jump to Page" (salto diretto inserendo il numero).
-- **Persistenza Dizionari**: Blocklist e Allowlist ora vengono salvate permanentemente in `~/.nullifypdf/` su Linux e su Windows nella cartella del profilo dell'utente.
-- **Pulsante Exit**: Aggiunta chiusura sicura dell'applicazione dalla sidebar.
+- **New GUI Layout**: Introduced a side Sidebar to maximize PDF preview space.
+- **Advanced Navigation**: Added a page navigator with a "Jump to Page" function (direct jump by entering the page number).
+- **Dictionary Persistence**: Blocklist and Allowlist are now permanently saved in `~/.nullifypdf/` on Linux and in the user profile folder on Windows.
+- **Exit Button**: Added a safe application shutdown option from the sidebar.
 
-### Corretto
+### Fixed
 
-- **Anti-Stacking**: Risolto il bug delle annotazioni sovrapposte; l'AI ora rileva se un'area è già censurata.
-- **Deep Clean**: La rimozione manuale ora cancella tutti i livelli di censura sovrapposti nello stesso punto.
-- **HighDPI Fix**: Logo e icone ora sono nitidi su monitor 4K/Retina grazie a `ctk.CTkImage`.
-- **Mutua Esclusività**: Risolto conflitto tra liste; una parola non può più essere contemporaneamente in Blocklist e Allowlist.
-- **AttributeError**: Risolto crash al rilascio del mouse se il click iniziale avveniva fuori dal canvas.
+- **Anti-Stacking**: Fixed the overlapping annotations bug; the AI now detects if an area is already redacted.
+- **Deep Clean**: Manual removal now clears all overlapping redaction layers at the same point.
+- **HighDPI Fix**: Logo and icons are now sharp on 4K/Retina monitors thanks to `ctk.CTkImage`.
+- **Mutual Exclusivity**: Fixed a conflict between lists; a word can no longer be in both the Blocklist and Allowlist at the same time.
+- **AttributeError**: Fixed a crash on mouse release when the initial click occurred outside the canvas.
 
-### Variato
+### Changed
 
-- Ottimizzata la pulizia del testo estratto (rimozione punteggiatura e normalizzazione spazi) per migliorare il match dei dizionari.
+- Optimized cleanup of extracted text (punctuation removal and whitespace normalization) to improve dictionary matching.
 
 ## [1.3.0] - 2026-04-21
 
 ### Added
 
-- **AI Engine Integration**: Implementazione di Microsoft Presidio e spaCy per il riconoscimento automatico di entità sensibili (PERSON, LOCATION, IBAN, ecc.).
-- **Multilingual Support**: Introdotta la possibilità di selezionare il modello linguistico (EN, IT o entrambi) per la scansione.
-- **Smart Dictionaries**: Nuova gestione filtri con **Blocklist** (termini da censurare sempre) e **Allowlist** (termini da ignorare).
-- **Interactive Review System**: Possibilità di rimuovere una censura pianificata cliccandoci sopra direttamente nel canvas.
-- **Clear All**: Pulsante per eliminare tutte le annotazioni di censura pianificate in un colpo solo.
-- **Child Window Icons**: Le finestre "About" e "Dictionary" ora ereditano correttamente l'icona scudo dall'applicazione principale.
+- **AI Engine Integration**: Implemented Microsoft Presidio and spaCy for automatic recognition of sensitive entities (PERSON, LOCATION, IBAN, etc.).
+- **Multilingual Support**: Introduced the ability to select the language model (EN, IT, or both) for scanning.
+- **Smart Dictionaries**: New filter management with **Blocklist** (terms to always redact) and **Allowlist** (terms to always ignore).
+- **Interactive Review System**: Ability to remove a planned redaction by clicking directly on it in the canvas.
+- **Clear All**: Button to delete all planned redaction annotations at once.
+- **Child Window Icons**: The "About" and "Dictionary" windows now correctly inherit the shield icon from the main application.
 
 ### Changed
 
-- **Deferred Redaction**: La censura è ora un processo "differito": viene pianificata graficamente e applicata in modo distruttivo solo durante l'Export.
-- **Model Optimization**: Passaggio ai modelli spaCy `_md` (medium) per ridurre il peso dell'eseguibile mantenendo alta precisione.
-- **Build Automation**: Aggiornamento del workflow GitHub Actions per includere le dipendenze NLP e i modelli linguistici nelle release.
+- **Deferred Redaction**: Redaction is now a "deferred" process: it is planned graphically and applied destructively only during Export.
+- **Model Optimization**: Switched to `_md` (medium) spaCy models to reduce executable size while keeping high accuracy.
+- **Build Automation**: Updated the GitHub Actions workflow to include NLP dependencies and language models in releases.
 
 ### Fixed
 
-- **Unicode/Emoji Support**: Risolto il crash durante l'estrazione della versione causato dalla presenza di emoji nel codice sorgente.
-- **Linux Environment Variables**: Corretto il passaggio della variabile di versione negli script di packaging per Ubuntu.
+- **Unicode/Emoji Support**: Fixed a crash during version extraction caused by emoji in the source code.
+- **Linux Environment Variables**: Fixed the passing of the version variable in Ubuntu packaging scripts.
 
 ## [1.2.5] - 2026-04-20
 
 ### Fixed
 
-- Aggiunta la distruzione mirata dei link prima della pulizia del *Garbage Collector*. Vengono rimossi i link (mailto:) relativi agli indirizzi email censurati.
+- Added targeted destruction of links before Garbage Collector cleanup. Removes `mailto:` links tied to redacted email addresses.
 
 ## [1.2.0] - 2026-04-20
 
 ### Added
 
-- Finestra "About" informativa con centratura dinamica rispetto alla finestra principale.
-- Icona scudo centrata millimetricamente tramite coordinate assolute.
-- Clipping delle coordinate per impedire crash durante la selezione manuale fuori dai bordi.
+- Informational "About" window with dynamic centering relative to the main window.
+- Shield icon centered precisely using absolute coordinates.
+- Coordinate clipping to prevent crashes during manual selection outside the canvas bounds.
 
 ### Fixed
 
-- Corretto il bug del "MouseWheel hijacking": lo scrolling è ora attivo solo quando il cursore è sopra il Canvas del PDF.
-- Inizializzazione delle variabili grafiche per evitare errori al ridimensionamento della finestra a documento vuoto.
+- Fixed the "MouseWheel hijacking" bug: scrolling is now active only when the cursor is over the PDF Canvas.
+- Initialized graphical variables to avoid errors when resizing the window on an empty document.
 
 ### Changed
 
-- Ottimizzazione del layout della toolbar per migliorare la leggibilità su monitor piccoli.
+- Optimized toolbar layout to improve readability on small monitors.
 
 ## [1.1.0] - 2026-04-18
 
 ### Added
 
-- Script `PDF_Checker.py` per l'analisi forense post-processamento.
-- Funzionalità di Garbage Collection livello 4 e pulizia metadati profonda durante il salvataggio.
+- Added `PDF_Checker.py` script for post-processing forensic analysis.
+- Added level-4 Garbage Collection and deep metadata cleanup during save.
 
 ## [1.0.0] - 2026-04-15
 
 ### Added
 
-- Rilascio iniziale di NullifyPDF con supporto per anonimizzazione automatica (Regex) e manuale.
-- Script di setup cross-platform `setup_env.py`.
+- Initial release of NullifyPDF with support for automatic (Regex) and manual anonymization.
+- Cross-platform setup script `setup_env.py`.

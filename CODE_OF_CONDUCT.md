@@ -146,5 +146,5 @@ We are committed to:
 
 ---
 
-*Last updated: 2026-06-06*  
+*Last updated: 2026-06-07*  
 *← [Contributing](./CONTRIBUTING.md) | [Security →](./SECURITY.md)*

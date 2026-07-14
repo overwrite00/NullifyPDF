@@ -1,6 +1,6 @@
 # 🔒 NullifyPDF — AI Forensic Edition
 
-![GitHub Release](https://img.shields.io/github/v/release/overwrite00/NullifyPDF?style=flat-square&color=1fb2e0)
+![GitHub Release](https://img.shields.io/github/v/release/overwrite00/NullifyPDF?include_prereleases&style=flat-square&color=1fb2e0&label=latest%20beta)
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/overwrite00/NullifyPDF/release.yml?style=flat-square&label=build)
 ![GitHub License](https://img.shields.io/github/license/overwrite00/NullifyPDF?style=flat-square&color=blue)
 ![Python Version](https://img.shields.io/badge/python-3.13-blue?style=flat-square&logo=python)
@@ -80,9 +80,9 @@ To keep NullifyPDF lightweight, 100% offline, and secure, be aware of these tech
 
 Download the latest pre-compiled executable from [Releases](https://github.com/overwrite00/NullifyPDF/releases):
 
-- **Windows:** `NullifyPDF_v2.0.7_Windows.exe`
-- **macOS:** `NullifyPDF_v2.0.7_macOS.app`
-- **Linux:** `nullifypdf_2.0.7_amd64.deb` or `.rpm`
+- **Windows:** `NullifyPDF_vX.Y.Z_Windows.exe`
+- **macOS:** `NullifyPDF_vX.Y.Z_macOS.app`
+- **Linux:** `nullifypdf_X.Y.Z_amd64.deb` or `.rpm`
 
 No installation needed on Windows/macOS — just run. Linux users: `sudo dpkg -i nullifypdf_*.deb`
 
@@ -172,7 +172,7 @@ python build_local.py
 - Cleans temporary directories
 - Auto-detects your OS
 - Reads version dynamically from code
-- Generates named executable: `NullifyPDF_v2.0.7_Windows.exe`
+- Generates named executable: `NullifyPDF_vX.Y.Z_Windows.exe`
 
 **Linux bonus:** On Ubuntu/Fedora, automatically builds `.deb` and `.rpm` packages in `dist/`
 
@@ -206,6 +206,7 @@ pytest tests/ -v
 | [USER_GUIDE.md](./USER_GUIDE.md)           | Step-by-step usage instructions        |
 | [CONTRIBUTING.md](./CONTRIBUTING.md)       | How to contribute code & report issues |
 | [ARCHITECTURE.md](./ARCHITECTURE.md)       | System design & technical overview     |
+| [DEVELOPMENT.md](./DEVELOPMENT.md)         | Local dev setup, testing & builds      |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | Common issues & solutions              |
 | [CHANGELOG.md](./CHANGELOG.md)             | Release history & updates              |
 
@@ -253,5 +254,5 @@ Want to help improve NullifyPDF? See [CONTRIBUTING.md](./CONTRIBUTING.md) for gu
 
 ---
 
-*Last updated: 2026-06-06*  
-*← [README_IT](./README_IT.md) | [User Guide →](./USER_GUIDE.md)*
+*Last updated: 2026-07-14*  
+*[User Guide →](./USER_GUIDE.md)*
