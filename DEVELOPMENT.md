@@ -231,7 +231,7 @@ Opens `htmlcov/index.html` in browser.
 python build_local.py
 ```
 
-**Output:** `dist/NullifyPDF_v2.0.5_Windows.exe` (on Windows)
+**Output:** `dist/NullifyPDF_vX.Y.Z_Windows.exe` (on Windows)
 
 ### What It Does
 
@@ -270,7 +270,7 @@ sys.setrecursionlimit(5000)
 <summary><strong>Build succeeds but executable won't run</strong></summary>
 
 1. Check antivirus isn't blocking
-2. Run in debug mode: `NullifyPDF_v2.0.5_Windows.exe` from PowerShell
+2. Run in debug mode: `NullifyPDF_vX.Y.Z_Windows.exe` from PowerShell
 3. Check `.stdout` file if created
 4. Report on GitHub
 

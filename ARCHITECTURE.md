@@ -483,7 +483,7 @@ python3.13 NullifyPDF.py
 2. Detect OS (Windows/macOS/Linux)
 3. Read version from `NullifyPDF.py` (`__version__`)
 4. Run PyInstaller with OS-specific settings
-5. Rename executable: `NullifyPDF_v2.0.5_Windows.exe`
+5. Rename executable: `NullifyPDF_vX.Y.Z_Windows.exe`
 
 **Output Artifacts:**
 
