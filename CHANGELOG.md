@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.0.7] - 2026-07-14
+## [2.0.7] - 2026-07-21
+
+### ✨ Added
+
+- **Beta Release Pipeline**: New two-stage release process. Pushing a `vX.Y.Z-beta.N` tag builds and publishes a prerelease on all platforms for testing; promoting to stable (pushing `vX.Y.Z`) reuses the already-verified beta artifacts and republishes them as the stable release without rebuilding.
 
 ### 🔧 Internals
 
@@ -15,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated CI/CD workflows (`test_build.yml`, `beta-release.yml`) to build with Python 3.13.
 - Updated all documentation (README, DEVELOPMENT, ARCHITECTURE, CONTRIBUTING, TROUBLESHOOTING, USER_GUIDE) and `setup_env.py` to reflect the new requirement.
 - Verified the entire test suite (11/11) and a full build (PyInstaller) on Python 3.13 in an isolated environment before merging.
+- Bumped `actions/setup-python` from v6 to v7 in CI workflows (no behavioral impact on this project).
 
 ## [2.0.6] - 2026-07-06
 
