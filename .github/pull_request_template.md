@@ -27,7 +27,8 @@ Describe what testing you've done:
 - [ ] Tested on macOS
 - [ ] Tested on Linux
 - [ ] All tests pass locally: `pytest tests/ -v`
-- [ ] Build succeeds locally: `python build_local.py`
+- [ ] Build succeeds locally: `python build_local.py --lite`
+- [ ] Full OCR build checked when packaging/OCR changes: `python build_local.py --full`
 
 **Manual Testing Steps:**
 1. Load PDF: [describe what PDF you used]
@@ -70,7 +71,8 @@ Any additional context that reviewers should know?
 Before marking as ready, please ensure:
 
 - [ ] Tests pass: `pytest tests/ -v`
-- [ ] Build passes: `python build_local.py`
+- [ ] Build passes: `python build_local.py --lite`
+- [ ] Full OCR build passes when packaging/OCR changes: `python build_local.py --full`
 - [ ] Code is clean and follows style guide
 - [ ] All checkboxes above are complete
 - [ ] You've tested your changes locally

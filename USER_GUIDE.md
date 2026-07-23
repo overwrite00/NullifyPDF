@@ -22,12 +22,12 @@ Your step-by-step guide to redacting sensitive data from PDFs safely and securel
 
 ## Step 1️⃣ — Load Your PDF
 
-1. Click the blue **"Open PDF"** button in the top left
+1. Click the blue **"Apri PDF"** button in the top left
 2. Select a PDF file from your computer
 3. The document appears in the center. Scroll with mouse or use arrow buttons (top right)
 
 > [!NOTE]
-> Supported formats: PDF (unencrypted, uncompressed text)
+> Supported format: unencrypted PDF. Digital text is scanned directly; scanned pages require OCR.
 
 ---
 
@@ -98,29 +98,28 @@ Make small text larger:
 
 Remove logos, signatures, or scanned photos:
 
-1. **Enable** the toggle: **"Blindfold Mode"** (sidebar)
+1. **Enable** the toggle: **"Oscura Immagini"** (sidebar)
 2. Click **"Auto Redact (AI)"** again
 3. All images replaced with gray placeholder: `[ IMAGE REMOVED ]`
 
 > [!NOTE]
-> Use this for scanned documents where text is embedded in images (no OCR available).
+> For scanned documents, enable **OCR PDF scansionati** before running the AI scan. Full builds include EN/IT OCR data; Lite builds require local Tesseract tessdata.
 
 ---
 
-## Step 6️⃣ — Export the Secure PDF
+## Step 6️⃣ — Export the Privacy PDF
 
 When satisfied with redactions:
 
-1. Click **"Export Secure PDF"** button
-2. Choose filename and location
-3. The new PDF is now **forensically sanitized**:
-   - Black boxes are **binary-level destroyed** (not recoverable)
-   - Metadata removed
-   - Hidden links destroyed
-   - Interactive forms flattened
+1. Click **"Esporta Privacy"**
+2. Choose the export mode:
+   - **Anonimizzazione irreversibile** removes selected personal data permanently
+   - **Pseudonimizzazione reversibile** replaces selected personal data with placeholders and creates a separate encrypted restore map
+3. Choose filename and location
+4. Review the exported PDF before sharing it
 
 > [!CAUTION]
-> **Export is destructive and permanent.** Keep a backup of the original PDF.
+> **Irreversible anonymization cannot be undone from the exported PDF.** Keep a backup of the original PDF. For pseudonymization, store the encrypted restore map separately from the PDF.
 
 ---
 
@@ -165,11 +164,11 @@ admin@example.com
 
 </details>
 
-### Mutual Exclusivity
+### Blocklist and Allowlist
 
-⚠️ **A word cannot be in BOTH lists simultaneously.**
-
-If you add a word to Allowlist that's already in Blocklist, it's removed from Blocklist automatically.
+The manual redaction workflow keeps clicked/drawn terms mutually exclusive.
+When editing dictionary files or the dictionary dialog directly, review both
+lists and avoid adding the same term to both.
 
 ---
 
@@ -228,30 +227,30 @@ python3.13 NullifyPDF.py
 
 **Effect:** Debug logs include full stack traces. Useful when reporting bugs.
 
-### Log Rotation
+### Log File
 
-- **Max file size:** 5 MB
-- **Backup copies:** 3 old logs auto-deleted
 - **Encoding:** UTF-8
+- **Location:** `~/.nullifypdf/logs/nullifypdf.log`
+- **Rotation:** not currently implemented; remove old logs manually if needed
 
 ---
 
 ## ❓ Common Questions
 
 ### Q: Why doesn't AI detect text in my scanned PDF?
-**A:** NullifyPDF analyzes only digital text, not images. Use **Blindfold Mode** to hide entire image blocks.
+**A:** Enable **OCR PDF scansionati** before running the AI scan. Full builds include EN/IT OCR data; Lite builds need local Tesseract `tessdata`.
 
 ### Q: Can I password-protect the exported PDF?
 **A:** Not built-in. Use a PDF editor after export for password protection.
 
-### Q: How do I know redactions are truly destroyed?
-**A:** NullifyPDF performs binary-level destruction. See [SECURITY.md](./SECURITY.md) for technical details.
+### Q: How do I know redactions are applied?
+**A:** Export applies PDF redactions and removes selected metadata. Review the exported file before sharing, especially for high-risk documents.
 
 ### Q: Can I undo changes after export?
-**A:** **No.** Export is permanent and destructive. Always keep the original.
+**A:** Irreversible anonymization cannot be undone from the exported PDF. Pseudonymization can be restored only with the encrypted restore map and its password.
 
 ### Q: Does NullifyPDF send data to the cloud?
-**A:** **No.** 100% local processing. No network calls except GitHub release checks.
+**A:** **No.** PDF processing is local. Full builds may download OCR data during build time, not while processing your PDFs.
 
 ---
 
@@ -264,5 +263,5 @@ python3.13 NullifyPDF.py
 
 ---
 
-*Last updated: 2026-07-14*  
+*Last updated: 2026-07-23*  
 *← [Back to README](./README.md) | [Troubleshooting →](./TROUBLESHOOTING.md)*

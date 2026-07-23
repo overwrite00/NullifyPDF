@@ -52,7 +52,6 @@ This automatically:
 - ✅ Creates `.venv/` virtual environment
 - ✅ Installs dependencies
 - ✅ Downloads spaCy models (EN + IT)
-- ✅ Runs smoke tests
 
 ### 4️⃣ Activate Virtual Environment
 
@@ -105,20 +104,25 @@ If the GUI opens → **You're ready to develop!** 🎉
 
 ```
 NullifyPDF/
-├── NullifyPDF.py              ← Main application (≈2500 lines)
-├── PDF_Checker.py             ← Verification utility
-├── setup_env.py               ← Environment setup script
-├── build_local.py             ← Build executable script
-├── requirements.txt           ← Python dependencies
-├── tests/
-│   ├── test_pdf_manager.py    ← PDFListManager tests
-│   ├── test_validation.py     ← Input validation tests
-│   └── ...
-├── images/
-│   └── NullifyPDF.png         ← App logo
-└── .github/
-    └── workflows/
-        └── release.yml        ← CI/CD automation
+|-- NullifyPDF.py              # Main PySide6 application
+|-- privacy_core.py            # Privacy modes and encrypted restore maps
+|-- PDF_Checker.py             # Heuristic verification utility
+|-- setup_env.py               # Environment setup script
+|-- build_local.py             # Lite/Full PyInstaller build script
+|-- requirements.txt           # Python dependencies
+|-- scripts/
+|   `-- download_ocr_data.py   # EN/IT OCR data downloader for Full builds
+|-- tests/
+|   |-- test_validation.py
+|   |-- test_privacy_core.py
+|   `-- test_build_config.py
+|-- images/
+|   `-- NullifyPDF.png
+`-- .github/
+    `-- workflows/
+        |-- test_build.yml
+        |-- beta-release.yml
+        `-- release.yml
 ```
 
 ---
@@ -129,11 +133,12 @@ NullifyPDF/
 
 | Package               | Version | Purpose                      |
 | --------------------- | ------- | ---------------------------- |
-| **pyside6**           | ^6.x    | GUI framework (Qt6 bindings) |
-| **pymupdf**           | ^1.24.x | PDF manipulation             |
-| **presidio-analyzer** | ^2.2.x  | PII detection (regex-based)  |
-| **spacy**             | ^3.7.x  | NLP for entity recognition   |
-| **pytest**            | ^8.x    | Testing framework            |
+| **PySide6**           | 6.11.1  | GUI framework (Qt6 bindings) |
+| **PyMuPDF**           | 1.28.0  | PDF manipulation and OCR bridge |
+| **presidio-analyzer** | 2.2.363 | PII detection                |
+| **spaCy**             | 3.8.13  | NLP for entity recognition   |
+| **cryptography**      | 45.0.7  | Encrypted restore maps       |
+| **pytest**            | 9.1.1   | Testing framework            |
 
 ### Language Models (Auto-Downloaded)
 
@@ -153,27 +158,28 @@ These are downloaded automatically by `setup_env.py`.
 **Class Hierarchy:**
 
 ```python
-NullifyPDFApp(QMainWindow)
-├── PDFListManager          # Manages blocklist/allowlist
-├── AIWorker(QObject)       # NLP scanning in thread
-├── PDFCanvas(QGraphicsView) # PDF rendering
-└── UI Components
-    ├── Sidebar
-    ├── Toolbar
-    ├── Progress bar
-    ├── Dialogs
+NullifyPDF(QMainWindow)
+|-- PDFListManager          # Manages blocklist/allowlist
+|-- AIWorker(QObject)       # NLP/OCR scanning in thread
+|-- PDFView(QGraphicsView)  # PDF rendering and rectangle drawing
+|-- privacy_core.py         # Privacy modes and encrypted restore maps
+`-- UI Components
+    |-- Sidebar
+    |-- Toolbar
+    |-- Progress bar
+    `-- Dialogs
 ```
 
 **Key Methods:**
 
 ```python
-class NullifyPDFApp:
+class NullifyPDF:
     def __init__(self)                  # Initialize GUI
-    def load_pdf(self, path: str)       # Load PDF file
-    def on_auto_redact(self)            # Start AI scan
-    def handle_ai_results(self, data)   # Receive AI results
-    def on_export_pdf(self)             # Export with redactions
-    def add_redaction_box(self, rect)   # Draw on canvas
+    def load_path(self, path: str)      # Load PDF file
+    def cmd_auto_ai(self)               # Start AI/OCR scan
+    def apply_ai_to_page(self, i, data) # Receive AI results
+    def cmd_export(self)                # Export privacy PDF
+    def user_draw_rect(self, rect)      # Draw manual redaction
 ```
 
 ### Threading Model
@@ -204,7 +210,7 @@ pytest tests/ -v
 ### Run Specific Test
 
 ```bash
-pytest tests/test_pdf_manager.py::test_load_blocklist -v
+pytest tests/test_validation.py::TestPDFListManager::test_save_and_load_blocklist -v
 ```
 
 ### Test Coverage
@@ -218,7 +224,9 @@ Opens `htmlcov/index.html` in browser.
 ### What's Tested
 
 - ✅ **PDFListManager** — File I/O, persistence
-- ✅ **Input Validation** — Path handling, type checking
+- ✅ **OCR Config** — Tesseract language selection and tessdata discovery
+- ✅ **Privacy Core** — Placeholder mapping and encrypted restore maps
+- ✅ **Build Config** — Lite/Full build variant behavior
 - ✅ **Resource Paths** — PyInstaller compatibility
 
 ---
@@ -228,10 +236,11 @@ Opens `htmlcov/index.html` in browser.
 ### Quick Build
 
 ```bash
-python build_local.py
+python build_local.py --lite
+python build_local.py --full
 ```
 
-**Output:** `dist/NullifyPDF_vX.Y.Z_Windows.exe` (on Windows)
+**Output:** `dist/NullifyPDF_vX.Y.Z_Windows_Lite.exe` or `dist/NullifyPDF_vX.Y.Z_Windows_Full.exe` (on Windows)
 
 ### What It Does
 
@@ -239,15 +248,15 @@ python build_local.py
 2. Detects your OS (Windows/macOS/Linux)
 3. Reads version from `NullifyPDF.py` (`__version__`)
 4. Compiles with PyInstaller
-5. Renames with version: `NullifyPDF_v{VERSION}_{OS}.exe`
+5. Renames with version and variant: `NullifyPDF_v{VERSION}_{OS}_{Lite|Full}.exe`
 
 ### Distribution Artifacts
 
 | OS          | Output                            |
 | ----------- | --------------------------------- |
-| **Windows** | `.exe` executable                 |
-| **macOS**   | `.app` bundle                     |
-| **Linux**   | Binary + `.deb` + `.rpm` packages |
+| **Windows** | Lite/Full `.exe` executables      |
+| **macOS**   | Lite/Full `.app` bundle ZIPs      |
+| **Linux**   | Lite/Full binary + `.deb` + `.rpm` packages |
 
 ### Troubleshooting Build Issues
 
@@ -270,7 +279,7 @@ sys.setrecursionlimit(5000)
 <summary><strong>Build succeeds but executable won't run</strong></summary>
 
 1. Check antivirus isn't blocking
-2. Run in debug mode: `NullifyPDF_vX.Y.Z_Windows.exe` from PowerShell
+2. Run in debug mode: `NullifyPDF_vX.Y.Z_Windows_Lite.exe` or `NullifyPDF_vX.Y.Z_Windows_Full.exe` from PowerShell
 3. Check `.stdout` file if created
 4. Report on GitHub
 
@@ -296,7 +305,7 @@ git checkout -b feature/my-feature
 
 # 4. Test
 pytest tests/ -v
-python build_local.py
+python build_local.py --lite
 
 # 5. Commit with clear message
 git commit -m "feat(ai): add IBAN detection"
@@ -318,7 +327,7 @@ Optional longer explanation
 **Examples:**
 ```bash
 feat(ai): add cryptocurrency address detection
-fix(export): reduce memory usage in forensic scrubbing
+fix(export): reduce memory usage in privacy export
 docs: update installation guide
 perf(allowlist): implement O(1) fast-path lookup
 ```
@@ -423,23 +432,24 @@ isort NullifyPDF.py
 
 ## 📚 Key Files to Know
 
-| File               | Purpose                 | Lines |
-| ------------------ | ----------------------- | ----- |
-| `NullifyPDF.py`    | Main app, GUI, logic    | 2500+ |
-| `setup_env.py`     | Environment setup       | 150   |
-| `build_local.py`   | PyInstaller build       | 200   |
-| `PDF_Checker.py`   | Post-processing utility | 300+  |
-| `requirements.txt` | Dependencies            | 10    |
-| `tests/`           | Unit tests              | 500+  |
+| File               | Purpose                 |
+| ------------------ | ----------------------- |
+| `NullifyPDF.py`    | Main app, GUI, OCR, export logic |
+| `privacy_core.py`  | Placeholder and restore-map logic |
+| `setup_env.py`     | Environment setup |
+| `build_local.py`   | PyInstaller Lite/Full build |
+| `PDF_Checker.py`   | Post-processing utility |
+| `requirements.txt` | Dependencies |
+| `tests/`           | Unit and smoke tests |
 
 ### Quick Edit Locations
 
 | Feature             | File            | Method                |
 | ------------------- | --------------- | --------------------- |
-| Load PDF            | `NullifyPDF.py` | `load_pdf()`          |
-| Auto Redact         | `NullifyPDF.py` | `on_auto_redact()`    |
+| Load PDF            | `NullifyPDF.py` | `load_path()`         |
+| Auto Redact         | `NullifyPDF.py` | `cmd_auto_ai()`       |
 | AI Processing       | `NullifyPDF.py` | `AIWorker.run_scan()` |
-| Export              | `NullifyPDF.py` | `on_export_pdf()`     |
+| Export              | `NullifyPDF.py` | `cmd_export()`        |
 | Blocklist/Allowlist | `NullifyPDF.py` | `PDFListManager`      |
 
 ---
@@ -467,8 +477,8 @@ Never hardcode API keys or passwords.
 
 ### Resource Limits
 
-- Cap PDF page count for reasonable memory usage
-- Timeout long-running operations
+- Avoid unbounded memory growth on large PDFs
+- Keep long-running work off the UI thread
 - Clean up temp files
 
 ---
@@ -494,7 +504,7 @@ Never hardcode API keys or passwords.
 2. Edit code following code standards
 3. Add tests: `pytest tests/test_my_feature.py`
 4. Run full test suite: `pytest tests/ -v`
-5. Build locally: `python build_local.py`
+5. Build locally: `python build_local.py --lite`
 6. Commit and push
 
 ### Q: How do I test on different OS?
@@ -550,5 +560,5 @@ Ready to contribute? See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
 
 ---
 
-*Last updated: 2026-07-14*  
+*Last updated: 2026-07-23*  
 *← [Troubleshooting](./TROUBLESHOOTING.md) | [Back to README →](./README.md)*

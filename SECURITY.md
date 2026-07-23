@@ -1,9 +1,9 @@
 # 🔒 Security — NullifyPDF
 
-Information about NullifyPDF's security model, privacy guarantees, and how to report security vulnerabilities.
+Information about NullifyPDF's security model, privacy boundaries, and how to report security vulnerabilities.
 
 > [!IMPORTANT]
-> NullifyPDF is designed for maximum privacy. This document explains how we achieve it and what to do if you discover a vulnerability.
+> NullifyPDF is designed for local-first privacy workflows. This document explains the security boundaries and what to do if you discover a vulnerability.
 
 ---
 
@@ -19,13 +19,13 @@ NullifyPDF follows a **privacy-first architecture**:
 | **No Cloud**                | No file uploads, no network transmission          |
 | **No Telemetry**            | Zero user tracking or analytics                   |
 | **Open Source**             | Full code transparency, auditable by anyone       |
-| **Cryptographic Scrubbing** | Binary-level data destruction (not just covering) |
+| **Privacy Export**          | Irreversible redaction or encrypted reversible pseudonymization |
 
 ### What NullifyPDF Does NOT Do
 
-❌ **No Internet Connections** (except GitHub release checks)  
+❌ **No Cloud Uploads During PDF Processing**  
 ❌ **No Data Collection** (no logs sent anywhere)  
-❌ **No Third-party APIs** (everything local)  
+❌ **No Third-party Processing APIs** (analysis runs locally)  
 ❌ **No User Accounts** (no registration required)  
 ❌ **No Tracking** (no cookies, no analytics)  
 
@@ -37,10 +37,10 @@ NullifyPDF follows a **privacy-first architecture**:
 
 When you export a PDF with redactions:
 
-1. ✅ **Metadata Stripped** — Creation date, author, embedded text removed
-2. ✅ **Links Destroyed** — Hyperlinks and form fields eliminated
-3. ✅ **Binary Scrubbing** — Text beneath redactions overwritten at binary level
-4. ✅ **Forensically Sound** — Redacted data is unrecoverable
+1. ✅ **Metadata Stripped** — Creation date, author, and document metadata removed
+2. ✅ **Links Removed When Redacted** — Links overlapping redaction areas are deleted
+3. ✅ **Redactions Applied** — Selected text/image areas are removed from the exported PDF
+4. ✅ **Pseudonymization Maps Encrypted** — Restore maps are stored separately and encrypted with a user password
 
 ### Temporary Files
 
@@ -65,9 +65,9 @@ During export, NullifyPDF uses **disk-backed temporary files**:
 ### File Type Verification
 
 - ✅ PDF files only (blocked: `.exe`, `.zip`, etc.)
-- ✅ File size limits to prevent DOS attacks
+- ✅ Password-protected PDFs are blocked before processing
 - ✅ Encryption detection (blocks password-protected PDFs)
-- ✅ Path traversal protection (prevents `../../../etc/passwd` exploits)
+- ✅ Extension and existence checks before opening PDFs
 
 ### User Input Validation
 
@@ -129,7 +129,7 @@ We follow responsible disclosure principles:
 2. **Malware on Your Computer** — If your machine is compromised
 3. **Unencrypted Storage** — Save your PDF to an encrypted drive if sensitive
 4. **Physical Access** — If someone accesses your hard drive directly
-5. **Forensic Recovery** — If sophisticated attackers do disk forensics
+5. **Residual PDF Artifacts** — Complex PDFs may contain structures not covered by automated checks
 
 ### What You Can Do
 
@@ -171,9 +171,9 @@ bandit NullifyPDF.py
 
 Security-relevant tests cover:
 
-- Input validation (path traversal, injection)
+- Input validation smoke tests
 - Resource cleanup (file handles, memory)
-- Permission handling (file mode, ownership)
+- Privacy-core and build-configuration tests
 
 Run tests:
 ```bash
@@ -201,12 +201,8 @@ Your redaction preferences (blocklist/allowlist) are stored locally:
 
 ### File Permissions
 
-On Linux/macOS, directory permissions default to:
-```
-drwx------  user  group  .nullifypdf/
-```
-
-Only your user can read/write. On Windows, standard user ACLs apply.
+The application relies on the operating system's standard user permissions for
+`~/.nullifypdf/`. Store sensitive files on encrypted storage when required.
 
 ---
 
@@ -222,6 +218,7 @@ NullifyPDF uses trusted, actively-maintained libraries:
 | **pymupdf**           | PDF manipulation | ✅ Actively maintained     |
 | **presidio-analyzer** | PII detection    | ✅ Maintained by Microsoft |
 | **spacy**             | NLP engine       | ✅ Actively maintained     |
+| **cryptography**      | Restore-map encryption | ✅ Actively maintained |
 
 ### Vulnerability Scanning
 
@@ -240,7 +237,7 @@ NullifyPDF is provided **as-is** without warranty. While we take security seriou
 - **No Guarantee of Unrecoverability** — For highly sensitive data, consult legal/security experts
 - **No Liability** — Use at your own risk
 - **Not a Legal Tool** — Consult lawyers for document redaction in legal cases
-- **Forensic Limitations** — Determined attackers with forensic tools may recover data
+- **Residual Risk** — For highly sensitive or legally critical documents, perform independent review and validation
 
 For mission-critical or legal redactions, consider:
 - Professional redaction services
@@ -282,5 +279,5 @@ For **security vulnerabilities only**:
 
 ---
 
-*Last updated: 2026-06-07*  
+*Last updated: 2026-07-23*  
 *← [Contributing](./CONTRIBUTING.md) | [Back to README →](./README.md)*

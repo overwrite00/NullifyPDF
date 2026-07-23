@@ -1,4 +1,4 @@
-# 🔒 NullifyPDF — AI Forensic Edition
+# NullifyPDF - AI Privacy Edition
 
 ![GitHub Release](https://img.shields.io/github/v/release/overwrite00/NullifyPDF?style=flat-square&color=1fb2e0&label=stable)
 ![GitHub Release (beta)](https://img.shields.io/github/v/release/overwrite00/NullifyPDF?include_prereleases&style=flat-square&color=orange&label=beta)
@@ -10,7 +10,7 @@
   <img src="images/NullifyPDF.png" alt="NullifyPDF Logo" width="500">
 </p>
 
-> 🔐 **NullifyPDF** is a professional tool for forensic PDF anonymization. Designed for absolute privacy, it operates entirely locally using artificial intelligence to identify and permanently destroy sensitive data without ever uploading files to the cloud.
+> **NullifyPDF** is a local-first PDF privacy tool. It helps detect personal data, redact it irreversibly, or replace it with reversible placeholders before a PDF is shared with third parties or uploaded to AI systems.
 
 > [!TIP]
 > First time using NullifyPDF? Start with our [**User Guide**](./USER_GUIDE.md) — takes 5 minutes.
@@ -19,14 +19,14 @@
 
 ## 📋 Quick Overview
 
-NullifyPDF goes beyond simple text covering. It uses **Natural Language Processing (NLP)** engines to understand context and identify entities like *names*, *addresses*, *email addresses*, *IBANs*, and *credit card numbers*. Unlike common PDF editors, this tool performs **forensic scrubbing**, destroying metadata, hyperlinks, and hidden vector layers to ensure censorship is irreversible.
+NullifyPDF goes beyond simple text covering. It uses **Natural Language Processing (NLP)** engines to identify entities like *names*, *addresses*, *email addresses*, *IBANs*, and *credit card numbers*. At export, the user chooses irreversible anonymization or reversible pseudonymization with an encrypted restore map.
 
 | 🎯 Feature            | ✨ Benefit                             |
 | -------------------- | ------------------------------------- |
 | 🧠 **AI-Powered**     | Bilingual (EN/IT) automatic detection |
-| 🔐 **100% Local**     | No cloud uploads, complete privacy    |
-| ⚡ **Real-time**      | Instant scanning with live preview    |
-| 🛡️ **Forensic-Grade** | Binary-level data destruction         |
+| 🔐 **Local-first**    | No cloud uploads during PDF processing |
+| ⚡ **Responsive UI**  | Background scanning with live preview |
+| 🛡️ **Privacy Export** | Irreversible redaction or reversible placeholders |
 
 ---
 
@@ -34,12 +34,13 @@ NullifyPDF goes beyond simple text covering. It uses **Natural Language Processi
 
 - 🧠 **AI-Powered Redaction** — Automatic bilingual (EN/IT) detection of PII: names, locations, emails, phones, IBANs, credit cards, crypto addresses
 - 🗄️ **Fluid UI & Thread-Safe** — PySide6 modern dark-mode interface with zero UI freezing. Text extraction in worker thread with QMutex serialization
-- 📖 **Intelligent Persistent Dictionaries** — Blocklist and Allowlist synchronized to disk (`~/.nullifypdf`) with mutual exclusivity and anti-stacking logic. O(1) fast-path matching
-- 🛡️ **Forensic Scrubbing** — Not just black boxes. Binary-level destruction of metadata, hidden links, and flattened interactive forms (AcroForms) at export
+- 📖 **Persistent Dictionaries** — Blocklist and Allowlist synchronized to disk (`~/.nullifypdf`) with O(1) fast-path matching
+- 🛡️ **Privacy Export Modes** — Choose irreversible anonymization or reversible pseudonymization with a separately encrypted restore map
+- 🔎 **OCR Support** — Full builds bundle EN/IT Tesseract language data for scanned PDFs
 - 🖼️ **Blindfold Mode** — One-click image/logo censoring with professional placeholder: `[ IMAGE REMOVED ]`
-- 📦 **Native Cross-Platform** — Automated build scripts generate `.exe` (Windows), `.app` bundles (macOS), and `.deb`/`.rpm` packages (Linux)
+- 📦 **Native Cross-Platform** — Automated build scripts generate Windows `.exe`, macOS ZIP bundles, and Linux `.deb`/`.rpm` packages
 - 🎯 **Drag & Drop Support** — Native file drag-and-drop on main window
-- 📊 **Logging & Diagnostics** — Rotating file-based logging (`~/.nullifypdf/logs/`) with debug mode for advanced troubleshooting
+- 📊 **Logging & Diagnostics** — Local file-based logging (`~/.nullifypdf/logs/`) with debug mode for advanced troubleshooting
 
 ---
 
@@ -49,10 +50,10 @@ To keep NullifyPDF lightweight, 100% offline, and secure, be aware of these tech
 
 | ❌ Limitation                       | 💡 Workaround                                                                                            |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **No Built-in OCR**                | AI reads only digital text, not scanned images. Use Blindfold Mode to remove photo blocks entirely.     |
+| **OCR availability**              | Full builds include EN/IT OCR data. Lite builds require local Tesseract tessdata for scanned PDFs.      |
 | **Handwritten Text**               | NLP models cannot analyze non-digitized handwriting.                                                    |
 | **Password-Protected PDFs**        | Encrypted documents are blocked at load. Decrypt before importing.                                      |
-| **Digital Signatures Invalidated** | Forensic scrubbing destroys binary objects; cryptographic signatures (PAdES, notarized) become invalid. |
+| **Digital Signatures Invalidated** | Privacy export changes the PDF; cryptographic signatures (PAdES, notarized) become invalid.            |
 
 > [!WARNING]
 > Digital signatures will be invalidated after redaction. Save unredacted originals separately for formal records.
@@ -81,11 +82,14 @@ To keep NullifyPDF lightweight, 100% offline, and secure, be aware of these tech
 
 Download the latest pre-compiled executable from [Releases](https://github.com/overwrite00/NullifyPDF/releases):
 
-- **Windows:** `NullifyPDF_vX.Y.Z_Windows.exe`
-- **macOS:** `NullifyPDF_vX.Y.Z_macOS.app`
-- **Linux:** `nullifypdf_X.Y.Z_amd64.deb` or `.rpm`
+- **Windows Lite:** `NullifyPDF_vX.Y.Z_Windows_Lite.exe`
+- **Windows Full OCR:** `NullifyPDF_vX.Y.Z_Windows_Full.exe`
+- **macOS Lite:** `NullifyPDF_vX.Y.Z_macOS_Lite.zip`
+- **macOS Full OCR:** `NullifyPDF_vX.Y.Z_macOS_Full.zip`
+- **Ubuntu Lite/Full:** `NullifyPDF_vX.Y.Z_Ubuntu_Lite.deb` or `NullifyPDF_vX.Y.Z_Ubuntu_Full.deb`
+- **Fedora Lite/Full:** `NullifyPDF_vX.Y.Z_Fedora_Lite.rpm` or `NullifyPDF_vX.Y.Z_Fedora_Full.rpm`
 
-No installation needed on Windows/macOS — just run. Linux users: `sudo dpkg -i nullifypdf_*.deb`
+No installation needed on Windows/macOS - just run or unzip. Linux users can install the `.deb` or `.rpm` package.
 
 </details>
 
@@ -152,7 +156,6 @@ python setup_env.py
 - Creates `.venv` with Python 3.13
 - Installs `requirements.txt` dependencies
 - Downloads spaCy models (English, Italian, both)
-- Runs smoke tests to verify installation
 
 **Automatic OS detection:**
 - Windows: Uses `py -3.13` launcher
@@ -166,14 +169,15 @@ python setup_env.py
 Compiles standalone executable with PyInstaller.
 
 ```bash
-python build_local.py
+python build_local.py --lite
+python build_local.py --full
 ```
 
 **Features:**
 - Cleans temporary directories
 - Auto-detects your OS
 - Reads version dynamically from code
-- Generates named executable: `NullifyPDF_vX.Y.Z_Windows.exe`
+- Generates named executables such as `NullifyPDF_vX.Y.Z_Windows_Lite.exe` or `NullifyPDF_vX.Y.Z_Windows_Full.exe`
 
 **Linux bonus:** On Ubuntu/Fedora, automatically builds `.deb` and `.rpm` packages in `dist/`
 
@@ -182,7 +186,7 @@ python build_local.py
 <details>
 <summary><strong>✓ Running Tests</strong></summary>
 
-Verify critical fixes with smoke tests:
+Verify core behavior with smoke tests:
 
 ```bash
 # Activate venv first
@@ -193,8 +197,10 @@ pytest tests/ -v
 
 **Test coverage:**
 - PDFListManager (blocklist/allowlist persistence)
-- Input validation (path, range, language selection)
 - Resource path resolution
+- OCR configuration helpers
+- Privacy placeholder and encrypted restore-map primitives
+- Build variant configuration
 
 </details>
 
@@ -208,6 +214,7 @@ pytest tests/ -v
 | [CONTRIBUTING.md](./CONTRIBUTING.md)       | How to contribute code & report issues |
 | [ARCHITECTURE.md](./ARCHITECTURE.md)       | System design & technical overview     |
 | [DEVELOPMENT.md](./DEVELOPMENT.md)         | Local dev setup, testing & builds      |
+| [OCR_SETUP.md](./OCR_SETUP.md)             | OCR data setup and Lite/Full build notes |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | Common issues & solutions              |
 | [CHANGELOG.md](./CHANGELOG.md)             | Release history & updates              |
 
@@ -216,12 +223,12 @@ pytest tests/ -v
 ## 🔒 Security & Privacy
 
 ✅ **100% Local Processing** — All analysis happens on your machine  
-✅ **No Network Calls** — Except GitHub release checks  
+✅ **No Cloud Uploads** — PDF processing stays local  
 ✅ **Open Source** — Full code transparency  
 ✅ **No Telemetry** — Zero user tracking  
 
 > [!IMPORTANT]
-> NullifyPDF performs binary-level data destruction. Always keep backups of original documents.
+> Irreversible anonymization cannot be undone from the exported PDF. Always keep backups of original documents. Pseudonymization requires the encrypted restore map and its password.
 
 See [SECURITY.md](./SECURITY.md) for responsible disclosure and privacy details.
 
@@ -236,6 +243,7 @@ See [SECURITY.md](./SECURITY.md) for responsible disclosure and privacy details.
 | **PyMuPDF (fitz)**     | High-performance PDF manipulation                   |
 | **Microsoft Presidio** | PII (Personally Identifiable Information) detection |
 | **spaCy**              | NLP for entity recognition (bilingual EN/IT)        |
+| **cryptography**       | Encrypted pseudonymization restore maps             |
 
 ---
 
@@ -255,5 +263,5 @@ Want to help improve NullifyPDF? See [CONTRIBUTING.md](./CONTRIBUTING.md) for gu
 
 ---
 
-*Last updated: 2026-07-14*  
+*Last updated: 2026-07-23*  
 *[User Guide →](./USER_GUIDE.md)*
