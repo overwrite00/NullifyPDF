@@ -73,8 +73,8 @@ jobs:
           files: stable-assets/*
           prerelease: false
           body: |
-            Release Stabile NullifyPDF.
-            Promossa dalla beta `${{ steps.beta.outputs.tag }}` (build gia' verificata, nessuna ricompilazione).
-            Include varianti Lite e Full OCR per Windows, macOS e Linux.
+            NullifyPDF stable release.
+            Promoted from beta `${{ steps.beta.outputs.tag }}` (already verified build, no rebuild).
+            Includes Lite and Full OCR variants for Windows, macOS, and Linux.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

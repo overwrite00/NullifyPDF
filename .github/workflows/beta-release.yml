@@ -95,6 +95,6 @@ jobs:
             all-builds/NullifyPDF_v*_macOS_*.zip
             all-builds/NullifyPDF_v*_Ubuntu_*.deb
             all-builds/NullifyPDF_v*_Fedora_*.rpm
-          body: "Beta release NullifyPDF (build da develop). Include varianti Lite e Full OCR. Non usare in produzione. Se supera i test, questa build verra' promossa a stable senza ricompilazione."
+          body: "NullifyPDF beta release (build from develop). Includes Lite and Full OCR variants. Do not use in production. If validation succeeds, this build will be promoted to stable without rebuilding."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
