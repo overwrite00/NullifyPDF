@@ -57,7 +57,7 @@ from privacy_core import (
 )
 
 __version__ = "2.1.0"
-__version_prerelease__ = "beta.1"
+__version_prerelease__ = "beta.2"
 APP_VERSION = (
     f"{__version__}-{__version_prerelease__}"
     if __version_prerelease__

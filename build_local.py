@@ -163,7 +163,7 @@ def build_rpm(
         version: Application version used for the RPM package metadata
             (must not contain hyphens, which the RPM Version tag disallows).
         file_version: Version string used for the output artifact filename
-            (may include a beta suffix, e.g. "2.1.0-beta.1").
+            (may include a beta suffix, e.g. "2.1.0-beta.2").
         executable_name: Name of compiled executable.
     """
     print("\n[INFO] Creazione pacchetto RPM per Fedora/RHEL...")
@@ -249,7 +249,7 @@ def build_deb(
     Args:
         version: Application version used for the DEB package metadata.
         file_version: Version string used for the output artifact filename
-            (may include a beta suffix, e.g. "2.1.0-beta.1").
+            (may include a beta suffix, e.g. "2.1.0-beta.2").
         executable_name: Name of compiled executable.
     """
     print("\n[INFO] Creazione pacchetto DEB per Ubuntu/Debian...")

@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.1.0-beta.1] - 2026-07-23
+## [2.1.0-beta.2] - 2026-07-23
 
-Prima beta pubblica della linea 2.1.0, focalizzata su privacy export avanzato, OCR completo per PDF scansionati e nuove varianti di release Lite/Full.
+First public beta of the 2.1.0 line, focused on advanced privacy export, full OCR support for scanned PDFs, and new Lite/Full release variants.
 
 ### ✨ Added
 
