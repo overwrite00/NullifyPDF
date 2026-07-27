@@ -9,8 +9,8 @@ PySide6==6.11.1
 PyMuPDF==1.28.0
 
 # NLP & Security Analysis
-presidio-analyzer==2.2.363
-spacy==3.8.13  # Mantenuto in 3.8.13 per compatibilità con presidio-analyzer 2.2.363
+presidio-analyzer==2.2.364
+spacy==3.8.14  # Mantenuto in 3.8.13 per compatibilità con presidio-analyzer 2.2.363
 cryptography==45.0.7
 # spaCy language models (pinned to exact versions for reproducibility)
 # IMPORTANT: model minor version MUST match the spaCy core minor version
