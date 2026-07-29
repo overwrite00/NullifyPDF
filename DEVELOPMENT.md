@@ -135,9 +135,9 @@ NullifyPDF/
 | --------------------- | ------- | ---------------------------- |
 | **PySide6**           | 6.11.1  | GUI framework (Qt6 bindings) |
 | **PyMuPDF**           | 1.28.0  | PDF manipulation and OCR bridge |
-| **presidio-analyzer** | 2.2.363 | PII detection                |
-| **spaCy**             | 3.8.13  | NLP for entity recognition   |
-| **cryptography**      | 45.0.7  | Encrypted restore maps       |
+| **presidio-analyzer** | 2.2.364 | PII detection                |
+| **spaCy**             | 3.8.14  | NLP for entity recognition   |
+| **cryptography**      | 49.0.0  | Encrypted restore maps       |
 | **pytest**            | 9.1.1   | Testing framework            |
 
 ### Language Models (Auto-Downloaded)
@@ -560,5 +560,5 @@ Ready to contribute? See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
 
 ---
 
-*Last updated: 2026-07-23*  
+*Last updated: 2026-07-29*  
 *← [Troubleshooting](./TROUBLESHOOTING.md) | [Back to README →](./README.md)*
