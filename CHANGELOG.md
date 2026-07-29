@@ -7,9 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.1.0-beta.2] - 2026-07-23
-
-First public beta of the 2.1.0 line, focused on advanced privacy export, full OCR support for scanned PDFs, and new Lite/Full release variants.
+Work in progress toward the 2.1.0 line, focused on advanced privacy export, full OCR support for scanned PDFs, and new Lite/Full release variants. Beta iterations are validated via prerelease tags but are not listed individually here; only the final stable release will get its own heading below.
 
 ### ✨ Added
 
@@ -25,12 +23,14 @@ First public beta of the 2.1.0 line, focused on advanced privacy export, full OC
 - **Separated Re-identification Data**: Restore maps are never embedded into exported PDFs and are encrypted with Fernet using a PBKDF2-HMAC-SHA256 derived key.
 - **Safer Export Metadata Handling**: Privacy export now clears document metadata and removes common residual structures such as widgets and overlapping links in redacted areas.
 - **Safer UI Logging**: Log messages shown in the UI are HTML-escaped before rendering.
+- **cryptography 49.0.0**: Updated from 45.0.7, resolving 4 known advisories (2 high, 1 medium, 1 low) including a vulnerable bundled OpenSSL and a missing subgroup validation for SECT curves.
 
 ### 🔧 Internals
 
 - **Expanded Test Coverage**: Added dedicated tests for privacy primitives, build variant behavior, OCR helper resolution, and prerelease version handling.
 - **Documentation Refresh**: Updated README, ARCHITECTURE, USER_GUIDE, SECURITY, TROUBLESHOOTING, CONTRIBUTING, DEVELOPMENT, and added `OCR_SETUP.md` for the new privacy and OCR workflows.
 - **Release Automation Updates**: GitHub workflows now build Lite/Full variants across supported operating systems and support the beta-to-stable promotion flow.
+- **presidio-analyzer 2.2.364 / spacy 3.8.14**: presidio-analyzer now only excludes spacy 3.8.14 on Python >= 3.14, so spacy 3.8.14 (model-download bugfix) can be used on our Python 3.13 target.
 
 ## [2.0.7] - 2026-07-21
 
