@@ -13,7 +13,12 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
-from NullifyPDF import PDFListManager, resource_path
+from NullifyPDF import (
+    PDFListManager,
+    find_tessdata_dir,
+    ocr_language_for_choice,
+    resource_path,
+)
 
 
 class TestPDFListManager:
@@ -84,6 +89,26 @@ class TestResourcePath:
         """resource_path should never return empty string."""
         result = resource_path("images/test.png")
         assert len(result) > 0
+
+
+class TestOcrConfiguration:
+    """Test OCR configuration helpers."""
+
+    def test_ocr_language_without_tessdata_uses_requested_languages(self):
+        assert ocr_language_for_choice("EN", None) == "eng"
+        assert ocr_language_for_choice("IT", None) == "ita"
+        assert ocr_language_for_choice("BOTH", None) == "eng+ita"
+
+    def test_ocr_language_filters_to_installed_languages(self, tmp_path):
+        (tmp_path / "eng.traineddata").write_text("placeholder", encoding="utf-8")
+
+        assert ocr_language_for_choice("BOTH", str(tmp_path)) == "eng"
+
+    def test_find_tessdata_dir_reads_environment(self, tmp_path, monkeypatch):
+        (tmp_path / "ita.traineddata").write_text("placeholder", encoding="utf-8")
+        monkeypatch.setenv("TESSDATA_PREFIX", str(tmp_path))
+
+        assert find_tessdata_dir() == str(tmp_path)
 
 
 @pytest.mark.parametrize("invalid_input", [None, "", 123, []])

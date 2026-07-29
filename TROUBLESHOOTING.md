@@ -58,7 +58,7 @@ If log isn't updating:
 ## 🔴 Export Fails or Crashes
 
 ### Symptom
-Clicking "Export Secure PDF" causes error or app crash.
+Clicking "Esporta Privacy" causes error or app crash.
 
 ### Root Cause
 - Insufficient disk space
@@ -150,7 +150,7 @@ Names, emails, or other PII should be detected but aren't highlighted.
 
 ### Root Cause
 - Wrong language selected
-- Text is in an image (not searchable)
+- Text is in an image and OCR is disabled or not configured
 - Unusual formatting
 - Text is handwritten
 
@@ -177,21 +177,24 @@ Try copying text from the PDF:
 3. Paste in text editor
 
 If you can copy text → it's digital text → AI should detect it  
-If you can't copy → it's an image → use **Blindfold Mode** to hide image blocks
+If you can't copy → it's an image → enable **OCR PDF scansionati**
 
-**Check 3 — Enable Blindfold Mode**
+**Check 3 — Enable OCR**
 
 For scanned PDFs:
-1. Toggle **"Blindfold Mode"** in sidebar
-2. Run **"Auto Redact"** again
-3. All images replaced with placeholder
+1. Enable **"OCR PDF scansionati"** in the sidebar
+2. Make sure you use a Full build or have local Tesseract `tessdata`
+3. Run **"Auto Redact (AI)"** again
+
+Use image redaction only when you intentionally want to remove whole images or
+scanned photo blocks.
 
 **Check 4 — Manual Redaction**
 
 If AI still misses something:
 1. Click and drag mouse over the text
 2. A redaction box appears
-3. Export — it will be destroyed
+3. Export with irreversible anonymization or pseudonymization, depending on the selected privacy mode
 
 ### Allowlist Issue?
 
@@ -452,10 +455,11 @@ The more details, the faster we can fix it! 🚀
 
 - 📖 **User Guide:** [USER_GUIDE.md](./USER_GUIDE.md)
 - 🏗️ **Architecture:** [ARCHITECTURE.md](./ARCHITECTURE.md)
+- 🔎 **OCR Setup:** [OCR_SETUP.md](./OCR_SETUP.md)
 - 🤝 **Contributing:** [CONTRIBUTING.md](./CONTRIBUTING.md)
 - 🔒 **Security:** [SECURITY.md](./SECURITY.md)
 
 ---
 
-*Last updated: 2026-07-14*  
+*Last updated: 2026-07-23*  
 *← [User Guide](./USER_GUIDE.md) | [Development →](./DEVELOPMENT.md)*

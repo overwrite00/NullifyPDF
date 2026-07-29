@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0-beta.2] - 2026-07-23
+
+First public beta of the 2.1.0 line, focused on advanced privacy export, full OCR support for scanned PDFs, and new Lite/Full release variants.
+
+### ✨ Added
+
+- **Privacy Export Modes**: The export flow now lets the user choose between irreversible anonymization and reversible pseudonymization before writing the output PDF.
+- **Encrypted Restore Maps**: Pseudonymized exports can generate a separate encrypted `.nullifypdf-map` file with placeholders, original values, entity types, page numbers, and document hashes.
+- **OCR for Scanned PDFs**: Added OCR-assisted entity detection for scanned or image-only PDFs using PyMuPDF OCR and Tesseract language data resolution.
+- **Lite/Full Release Variants**: Build and release pipelines now produce Lite artifacts and Full artifacts with bundled EN/IT OCR data.
+- **Automatic OCR Data Download for Full Builds**: Local Full builds download missing `eng.traineddata` and `ita.traineddata` automatically with a clear message.
+- **Privacy Core Module**: Added `privacy_core.py` to centralize placeholder generation and encrypted restore-payload handling.
+
+### 🔒 Security
+
+- **Separated Re-identification Data**: Restore maps are never embedded into exported PDFs and are encrypted with Fernet using a PBKDF2-HMAC-SHA256 derived key.
+- **Safer Export Metadata Handling**: Privacy export now clears document metadata and removes common residual structures such as widgets and overlapping links in redacted areas.
+- **Safer UI Logging**: Log messages shown in the UI are HTML-escaped before rendering.
+
+### 🔧 Internals
+
+- **Expanded Test Coverage**: Added dedicated tests for privacy primitives, build variant behavior, OCR helper resolution, and prerelease version handling.
+- **Documentation Refresh**: Updated README, ARCHITECTURE, USER_GUIDE, SECURITY, TROUBLESHOOTING, CONTRIBUTING, DEVELOPMENT, and added `OCR_SETUP.md` for the new privacy and OCR workflows.
+- **Release Automation Updates**: GitHub workflows now build Lite/Full variants across supported operating systems and support the beta-to-stable promotion flow.
+
 ## [2.0.7] - 2026-07-21
 
 ### ✨ Added
@@ -45,7 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Complete Type Hints**: Added type hints to 100% of functions and methods to improve static analysis and IDE support.
 - **Google-Style Docstrings**: Introduced full documentation with Args, Returns, Raises for easier maintenance.
-- **File-based Logging**: Added file logging (`~/.nullifypdf/logs/nullifypdf.log`) with automatic rotation and debug mode support via `NULLIFYPDF_DEBUG=true`.
+- **File-based Logging**: Added file logging (`~/.nullifypdf/logs/nullifypdf.log`) with debug mode support via `NULLIFYPDF_DEBUG=true`.
 - **Input Validation**: Added explicit validation for paths, page ranges, and language choices to avoid crashes on malformed input.
 
 ### 🐛 Fixed (Bug Fixes)
@@ -61,7 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚡ Optimized (Performance)
 
-- **Memory Doubling in Export**: Implemented a disk-backed temp file with lazy-parsing via PyMuPDF to reduce peak RAM from 2x to 1x document size during forensic scrubbing.
+- **Memory Doubling in Export**: Implemented a disk-backed temp file with lazy-parsing via PyMuPDF to reduce peak RAM from 2x to 1x document size during privacy export.
 - **Regex Recompilation**: Precompiled regex patterns outside loops in `AIWorker.run_scan()` for a 10-100x speedup on large allowlists.
 - **Allowlist Fast-path**: Added an O(1) exact-match check against a set before the regex `any()` scan, short-circuiting 90% of common cases.
 - **AI Scan Responsiveness**: Moved `get_text()` off the UI thread into the `AIWorker` thread pool with QMutex serialization to avoid UI freezing on large PDFs.

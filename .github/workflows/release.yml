@@ -51,10 +51,10 @@ jobs:
         run: |
           mkdir -p stable-assets
           gh release download "${{ steps.beta.outputs.tag }}" --repo "${{ github.repository }}" --dir stable-assets \
-            --pattern "NullifyPDF_v*_Windows.exe" \
-            --pattern "NullifyPDF_v*_macOS.zip" \
-            --pattern "NullifyPDF_v*_Ubuntu.deb" \
-            --pattern "NullifyPDF_v*_Fedora.rpm"
+            --pattern "NullifyPDF_v*_Windows_*.exe" \
+            --pattern "NullifyPDF_v*_macOS_*.zip" \
+            --pattern "NullifyPDF_v*_Ubuntu_*.deb" \
+            --pattern "NullifyPDF_v*_Fedora_*.rpm"
 
       - name: Strip beta suffix from filenames
         run: |
@@ -73,8 +73,8 @@ jobs:
           files: stable-assets/*
           prerelease: false
           body: |
-            Release Stabile NullifyPDF.
-            Promossa dalla beta `${{ steps.beta.outputs.tag }}` (build gia' verificata, nessuna ricompilazione).
-            Include App Bundle macOS (ZIP), EXE per Windows e pacchetti nativi Linux.
+            NullifyPDF stable release.
+            Promoted from beta `${{ steps.beta.outputs.tag }}` (already verified build, no rebuild).
+            Includes Lite and Full OCR variants for Windows, macOS, and Linux.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

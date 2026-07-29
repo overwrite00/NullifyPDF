@@ -22,6 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-22.04, macos-latest]
+        variant: [lite, full]
 
     steps:
       - name: Checkout Code
@@ -57,18 +58,20 @@ jobs:
           echo "NULLIFYPDF_BETA_SUFFIX=${TAG#*-}" >> "$GITHUB_ENV"
 
       - name: Build
+        env:
+          NULLIFYPDF_BUILD_VARIANT: ${{ matrix.variant }}
         run: python build_local.py
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: beta-build-${{ runner.os }}
+          name: beta-build-${{ runner.os }}-${{ matrix.variant }}
           retention-days: 5
           path: |
-            dist/NullifyPDF_v*_Windows.exe
-            dist/NullifyPDF_v*_macOS.zip
-            dist/NullifyPDF_v*_Ubuntu.deb
-            dist/NullifyPDF_v*_Fedora.rpm
+            dist/NullifyPDF_v*_Windows_*.exe
+            dist/NullifyPDF_v*_macOS_*.zip
+            dist/NullifyPDF_v*_Ubuntu_*.deb
+            dist/NullifyPDF_v*_Fedora_*.rpm
 
   create_beta_release:
     name: Create GitHub Beta Release
@@ -88,10 +91,10 @@ jobs:
         with:
           prerelease: true
           files: |
-            all-builds/NullifyPDF_v*_Windows.exe
-            all-builds/NullifyPDF_v*_macOS.zip
-            all-builds/NullifyPDF_v*_Ubuntu.deb
-            all-builds/NullifyPDF_v*_Fedora.rpm
-          body: "Beta release NullifyPDF (build da develop). Non usare in produzione. Se supera i test, questa build verra' promossa a stable senza ricompilazione."
+            all-builds/NullifyPDF_v*_Windows_*.exe
+            all-builds/NullifyPDF_v*_macOS_*.zip
+            all-builds/NullifyPDF_v*_Ubuntu_*.deb
+            all-builds/NullifyPDF_v*_Fedora_*.rpm
+          body: "NullifyPDF beta release (build from develop). Includes Lite and Full OCR variants. Do not use in production. If validation succeeds, this build will be promoted to stable without rebuilding."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

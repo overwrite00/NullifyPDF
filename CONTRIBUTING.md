@@ -57,7 +57,7 @@ source .venv/bin/activate  # or .venv\Scripts\Activate.ps1 on Windows
 pytest tests/ -v
 
 # Build to verify compilation
-python build_local.py
+python build_local.py --lite
 ```
 
 ### 5️⃣ Commit with Clear Messages
@@ -88,8 +88,8 @@ Then open Pull Request on GitHub with description from template.
 ### ❌ Not Currently Accepting
 
 ❌ **Major Architecture Changes** — Discuss first via issue  
-❌ **New Dependencies** — Heavy libraries (keep slim & local)  
-❌ **OCR Implementation** — Out of scope (use Blindfold Mode instead)  
+❌ **New Heavy Dependencies** — Discuss first; keep the app local and maintainable  
+✅ **OCR Improvements** — In scope when they stay local/offline and preserve the Lite/Full build split  
 ❌ **Cloud Features** — Must remain 100% local  
 
 > [!TIP]
@@ -197,7 +197,7 @@ Body with more details (optional)
 git commit -m "feat(ai): add IBAN detection to Presidio pipeline"
 
 # Bug fix
-git commit -m "fix(export): resolve memory doubling in forensic scrubbing"
+git commit -m "fix(export): reduce memory usage in privacy export"
 
 # Documentation
 git commit -m "docs: update installation guide for Python 3.13"
@@ -219,7 +219,7 @@ thread when scanning large PDFs concurrently."
 ### Before Opening PR
 
 1. ✅ Run tests: `pytest tests/ -v`
-2. ✅ Build locally: `python build_local.py`
+2. ✅ Build locally: `python build_local.py --lite` and, when OCR packaging changes, `python build_local.py --full`
 3. ✅ Update CHANGELOG.md with your changes
 4. ✅ Self-review your code (would you understand this in 6 months?)
 5. ✅ Check links in documentation
@@ -378,5 +378,5 @@ Every contribution — code, docs, bug reports, ideas — helps make NullifyPDF 
 
 ---
 
-*Last updated: 2026-07-14*  
+*Last updated: 2026-07-23*  
 *← [Back to README](./README.md) | [Architecture →](./ARCHITECTURE.md)*

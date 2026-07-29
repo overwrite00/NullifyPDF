@@ -22,6 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-22.04, macos-latest]
+        variant: [lite, full]
 
     steps:
       - name: Checkout Code
@@ -50,15 +51,17 @@ jobs:
         run: mypy NullifyPDF.py --ignore-missing-imports --no-error-summary 2>&1 | head -50 || true
 
       - name: Build
+        env:
+          NULLIFYPDF_BUILD_VARIANT: ${{ matrix.variant }}
         run: python build_local.py
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: test-build-${{ runner.os }}
+          name: test-build-${{ runner.os }}-${{ matrix.variant }}
           path: |
-            dist/NullifyPDF_v*_Windows.exe
-            dist/NullifyPDF_v*_macOS.zip
-            dist/NullifyPDF_v*_Ubuntu.deb
-            dist/NullifyPDF_v*_Fedora.rpm
+            dist/NullifyPDF_v*_Windows_*.exe
+            dist/NullifyPDF_v*_macOS_*.zip
+            dist/NullifyPDF_v*_Ubuntu_*.deb
+            dist/NullifyPDF_v*_Fedora_*.rpm
           retention-days: 3

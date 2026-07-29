@@ -5,6 +5,11 @@ __pycache__/
 *$py.class
 *.so
 .Python
+.pytest_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
 build/
 develop-eggs/
 dist/
@@ -64,3 +69,14 @@ desktop.ini
 
 # Log del checker forense
 *.log
+
+# File generati da export privacy / pseudonimizzazione
+*.nullifypdf.tmp
+*.nullifypdf-map
+
+# OCR data is downloaded for Full builds, not stored in git.
+ocr/tessdata/*.traineddata
+
+# Packaging temp directories
+rpm_build_tmp/
+deb_build_tmp/
