@@ -10,8 +10,8 @@ PyMuPDF==1.28.0
 
 # NLP & Security Analysis
 presidio-analyzer==2.2.364
-spacy==3.8.14  # Mantenuto in 3.8.13 per compatibilità con presidio-analyzer 2.2.363
-cryptography==45.0.7
+spacy==3.8.14  # presidio-analyzer 2.2.364 excludes spacy==3.8.14 only for python_version>=3.14; safe on our Python 3.13 target
+cryptography==49.0.0
 # spaCy language models (pinned to exact versions for reproducibility)
 # IMPORTANT: model minor version MUST match the spaCy core minor version
 # (spaCy 3.8.x <-> models 3.8.x). The models declare spacy>=3.8.0,<3.9.0.
