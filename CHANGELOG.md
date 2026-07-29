@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.1.0] - 2026-07-29
 
-Focused on advanced privacy export, full OCR support for scanned PDFs, and new Lite/Full release variants. Validated through the 2.1.0-beta.1/beta.2 prereleases before this stable release; only the final stable version gets its own heading here.
+Focused on advanced privacy export, full OCR support for scanned PDFs, and new Lite/Full release variants. Validated through the 2.1.0-beta.1/beta.2/beta.3 prereleases before this stable release, promoted from `v2.1.0-beta.3` without rebuilding; only the final stable version gets its own heading here.
 
 ### ✨ Added
 
