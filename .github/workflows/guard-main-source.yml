@@ -1,0 +1,33 @@
+name: Guard Main Source Branch
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  check-source-branch:
+    name: Only allow PRs into main from develop
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify head branch is develop
+        run: |
+          HEAD_REPO="${{ github.event.pull_request.head.repo.full_name }}"
+          BASE_REPO="${{ github.repository }}"
+          HEAD_REF="${{ github.event.pull_request.head.ref }}"
+
+          if [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+            echo "::error::PRs into main must come from this repository's develop branch, not a fork ($HEAD_REPO)."
+            exit 1
+          fi
+
+          if [ "$HEAD_REF" != "develop" ]; then
+            echo "::error::PRs into main are only allowed from the develop branch (got '$HEAD_REF'). Merge into develop first, then open the release PR from develop."
+            exit 1
+          fi
+
+          echo "[OK] PR into main originates from develop."

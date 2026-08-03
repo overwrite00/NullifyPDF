@@ -1,0 +1,28 @@
+lang:python:
+  - changed-files:
+      - any-glob-to-any-file: "**/*.py"
+
+type:docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+          - "docs/**"
+
+type:ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/**"
+          - ".github/dependabot.yml"
+
+scope:core:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "NullifyPDF.py"
+          - "privacy_core.py"
+          - "build_local.py"
+          - "setup_env.py"
+
+scope:deps:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "requirements.txt"

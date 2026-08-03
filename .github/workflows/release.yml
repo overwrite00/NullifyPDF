@@ -24,6 +24,28 @@ jobs:
     name: Promote latest beta artifacts to stable
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Verify CHANGELOG has an entry for this version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+
+          if ! grep -qE "^## \[$VERSION\] - [0-9]{4}-[0-9]{2}-[0-9]{2}" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [$VERSION] - YYYY-MM-DD' heading. On develop, move the [Unreleased] content under this heading before tagging the stable release."
+            exit 1
+          fi
+
+          UNRELEASED_BODY=$(awk '/^## \[Unreleased\]/{flag=1;next}/^## \[/{flag=0}flag' CHANGELOG.md | sed '/^[[:space:]]*$/d')
+          if [ -n "$UNRELEASED_BODY" ]; then
+            echo "::error::CHANGELOG.md still has content under [Unreleased] that hasn't been moved to [$VERSION]. Update it on develop first."
+            exit 1
+          fi
+
+          echo "[OK] CHANGELOG.md has a clean [$VERSION] entry and an empty [Unreleased] section."
+
       - name: Resolve target beta release
         id: beta
         env:

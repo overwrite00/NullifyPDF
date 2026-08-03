@@ -4,7 +4,7 @@ on:
   issues:
     types: [opened, reopened]
   pull_request:
-    types: [opened, closed, reopened]
+    types: [opened, closed, reopened, synchronize]
 
 permissions:
   issues: write
@@ -22,6 +22,8 @@ jobs:
 
     steps:
       - name: "Assign and Add to Project"
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           REPO="${{ github.repository }}"
           TOKEN="${{ secrets.GH_PROJECT_TOKEN }}"
@@ -82,6 +84,28 @@ jobs:
               "https://api.github.com/repos/$REPO/issues/$PR_NUM" > /dev/null
             echo "    Assigned"
 
+            # Etichetta in base al prefisso conventional-commit del titolo
+            TYPE_LABEL=""
+            case "$PR_TITLE" in
+              feat:*|feat\(*) TYPE_LABEL="type:feature" ;;
+              fix:*|fix\(*) TYPE_LABEL="type:bug" ;;
+              docs:*|docs\(*) TYPE_LABEL="type:docs" ;;
+              chore:*|chore\(*) TYPE_LABEL="type:chore" ;;
+              ci:*|ci\(*) TYPE_LABEL="type:ci" ;;
+              refactor:*|refactor\(*) TYPE_LABEL="type:chore" ;;
+              perf:*|perf\(*) TYPE_LABEL="type:chore" ;;
+              test:*|test\(*) TYPE_LABEL="type:chore" ;;
+            esac
+            if [ -n "$TYPE_LABEL" ]; then
+              echo "  - Applying label $TYPE_LABEL..."
+              curl -s -X POST \
+                -H "Authorization: token $TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                -d "{\"labels\":[\"$TYPE_LABEL\"]}" \
+                "https://api.github.com/repos/$REPO/issues/$PR_NUM/labels" > /dev/null
+              echo "    Labeled"
+            fi
+
             # Aggiungi al Project (solo se opened o reopened)
             if [ "$PR_ACTION" = "opened" ] || [ "$PR_ACTION" = "reopened" ]; then
               echo "  - Adding to Project..."
@@ -124,6 +148,14 @@ jobs:
               fi
             fi
           fi
+
+      - name: "Label by Changed Files"
+        if: github.event_name == 'pull_request'
+        uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/labeler.yml
+          sync-labels: false
 
       - name: "Workflow Summary"
         if: always()

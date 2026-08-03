@@ -2,7 +2,7 @@
 name: ✨ Feature Request
 description: Suggest an idea for NullifyPDF
 title: "[FEATURE] "
-labels: ["enhancement"]
+labels: ["type:feature"]
 assignees: []
 ---
 
