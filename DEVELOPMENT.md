@@ -137,7 +137,7 @@ NullifyPDF/
 | **PyMuPDF**           | 1.28.2  | PDF manipulation and OCR bridge |
 | **presidio-analyzer** | 2.2.364 | PII detection                |
 | **spaCy**             | 3.8.16  | NLP for entity recognition   |
-| **cryptography**      | 50.0.0  | Encrypted restore maps       |
+| **cryptography**      | 50.0.1  | Encrypted restore maps       |
 | **pytest**            | 9.1.1   | Testing framework            |
 
 ### Language Models (Auto-Downloaded)

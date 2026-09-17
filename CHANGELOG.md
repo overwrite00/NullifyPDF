@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔒 Security
 
-- **cryptography 50.0.0**: Updated from 49.0.0, resolving [CVE-2026-69247](https://github.com/pyca/cryptography/security/advisories/GHSA-g6cj-pr64-35w5) (high severity), a Bleichenbacher-style timing/error oracle in PKCS7 decryption. Not directly exercised by `privacy_core.py` (which only uses `Fernet`/`hashes`/`PBKDF2HMAC`), but updated as a precaution since it closes an open Dependabot security alert.
+- **cryptography 50.0.0**: Updated from 49.0.0, resolving [CVE-2026-69247](https://github.com/pyca/cryptography/security/advisories/GHSA-g6cj-pr64-35w5) (high severity), a Bleichenbacher-style timing/error oracle in PKCS7 decryption. Not directly exercised by `privacy_core.py` (which only uses `Fernet`/`hashes`/`PBKDF2HMAC`), but updated as a precaution since it closes an open Dependabot security alert. Followed up by a 50.0.1 patch that only rebuilds the wheels against OpenSSL 4.0.2 (no further security-relevant change).
 
 ### 🔧 Internals
 
-- **PySide6 6.11.2**, **PyMuPDF 1.28.2** (still ships `cp310-abi3` wheels, so the Python 3.13 compatibility story is unaffected), **spaCy 3.8.16**, **pyinstaller 6.22.2**: routine minor/patch dependency updates.
+- **PySide6 6.11.2**, **PyMuPDF 1.28.2** (still ships `cp310-abi3` wheels, so the Python 3.13 compatibility story is unaffected), **spaCy 3.8.16**, **pyinstaller 6.22.3**: routine minor/patch dependency updates.
 - **actions/labeler v5 -> v7**: CI-only bump; the `changed-files`/`any-glob-to-any-file` config schema in `.github/labeler.yml` is unchanged across these versions.
 - Dropped a stale `requirements.txt` comment on the `spacy` line that no longer matched the pinned version.
 
