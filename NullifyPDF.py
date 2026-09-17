@@ -13,7 +13,7 @@ import hashlib
 import html
 import importlib.util
 import json
-from typing import Optional, List, Set, Dict, Any, Tuple
+from typing import Optional, List, Set, Dict, Any, Tuple, TypedDict, NotRequired
 import fitz
 from PySide6.QtWidgets import (
     QApplication,
@@ -65,6 +65,13 @@ APP_VERSION = (
 )
 
 
+class DetectionDict(TypedDict):
+    text: str
+    entity_type: str
+    rects: List[Tuple[float, float, float, float]]
+    source: NotRequired[str]
+
+
 def setup_logging() -> logging.Logger:
     """Configure file-based logging.
 
@@ -111,7 +118,7 @@ def resource_path(relative_path: str) -> str:
         str: Absolute path to resource.
     """
     try:
-        base_path = sys._MEIPASS
+        base_path = getattr(sys, "_MEIPASS")
     except Exception:
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
@@ -455,7 +462,7 @@ class AIWorker(QObject):
                         f_reg.search(clean) or clean_pattern.search(a_str)
                         for a_str, f_reg in compiled_allowlist
                     ):
-                        detection = {
+                        detection: DetectionDict = {
                             "text": m,
                             "entity_type": entity_type,
                             "rects": [],
@@ -523,13 +530,13 @@ class PDFView(QGraphicsView):
             parent: Parent widget.
         """
         super().__init__(scene, parent)
-        self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
+        self.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)
         self.start_pos: Optional[QPointF] = None
         self.temp_rect: Optional[QGraphicsRectItem] = None
 
     def mousePressEvent(self, event: Any) -> None:
         """Handle mouse press: start selection rectangle on left-click."""
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             sp = self.mapToScene(event.position())
             self.start_pos = sp
             self.point_clicked.emit(sp)
@@ -547,7 +554,7 @@ class PDFView(QGraphicsView):
 
     def mouseReleaseEvent(self, event: Any) -> None:
         """Finalize selection rectangle and emit rect_drawn if large enough."""
-        if event.button() == Qt.LeftButton and self.temp_rect:
+        if event.button() == Qt.MouseButton.LeftButton and self.temp_rect:
             rect = self.temp_rect.rect()
             self.scene().removeItem(self.temp_rect)
             self.temp_rect = None
@@ -557,7 +564,7 @@ class PDFView(QGraphicsView):
         super().mouseReleaseEvent(event)
 
     def wheelEvent(self, event: Any) -> None:
-        if event.modifiers() == Qt.ControlModifier:
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             self.zoom_req.emit(1 if event.angleDelta().y() > 0 else -1)
             event.accept()
         else:
@@ -777,7 +784,7 @@ class NullifyPDF(QMainWindow):
         btn_prev.clicked.connect(lambda: self.move_page(-1))
         self.le_page = QLineEdit("0")
         self.le_page.setFixedWidth(40)
-        self.le_page.setAlignment(Qt.AlignCenter)
+        self.le_page.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.le_page.returnPressed.connect(self.jump_page)
         self.lbl_tot = QLabel("/ 0")
         btn_next = QPushButton(">")
@@ -916,7 +923,7 @@ class NullifyPDF(QMainWindow):
                 "Serve OCR prima della rilevazione automatica dei dati personali."
             )
 
-    def render(self) -> None:
+    def render_page(self) -> None:
         """Render current PDF page to display."""
         if not self.doc:
             return
@@ -929,7 +936,7 @@ class NullifyPDF(QMainWindow):
         # QImage does NOT copy `pix.samples`; if `pix` is garbage-collected before
         # the image is used the buffer is freed (UB / crash). Force a deep copy.
         img = QImage(
-            pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888
+            pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888
         ).copy()
         self.scene.clear()
         self.scene.addPixmap(QPixmap.fromImage(img))
@@ -945,7 +952,7 @@ class NullifyPDF(QMainWindow):
         """
         self.scale = max(0.5, min(4.0, self.scale + (0.25 * d)))
         self.lbl_zoom.setText(f"{int(self.scale * 100)}%")
-        self.render()
+        self.render_page()
 
     def move_page(self, d: int) -> None:
         """Move to adjacent page.
@@ -955,7 +962,7 @@ class NullifyPDF(QMainWindow):
         """
         if self.doc and 0 <= self.page_num + d < len(self.doc):
             self.page_num += d
-            self.render()
+            self.render_page()
 
     def jump_page(self) -> None:
         """Jump to the page number entered in the page selector."""
@@ -966,7 +973,7 @@ class NullifyPDF(QMainWindow):
             n = int(self.le_page.text()) - 1
             if 0 <= n < len(self.doc):
                 self.page_num = n
-                self.render()
+                self.render_page()
             else:
                 self.write_log(f"Avviso: Pagina {n + 1} non esiste (intervallo: 1-{len(self.doc)})")
         except ValueError:
@@ -1015,7 +1022,7 @@ class NullifyPDF(QMainWindow):
                     self.blocklist.add(cl)
                     self.list_manager.save_blocklist(self.blocklist)
                     self.list_manager.save_allowlist(self.allowlist)
-        self.render()
+        self.render_page()
 
     def user_click_pt(self, qpt: QPointF) -> None:
         """Handle user click on redaction to delete it.
@@ -1048,7 +1055,7 @@ class NullifyPDF(QMainWindow):
                     self.list_manager.save_blocklist(self.blocklist)
                     self.list_manager.save_allowlist(self.allowlist)
         if has_ans:
-            self.render()
+            self.render_page()
 
     def cmd_clear(self) -> None:
         """Clear all redactions on current page."""
@@ -1066,7 +1073,7 @@ class NullifyPDF(QMainWindow):
             ]
             for a in to_delete:
                 p.delete_annot(a)
-        self.render()
+        self.render_page()
         self.write_log(f"Censure rimosse su pagina {self.page_num+1}")
 
     def cmd_dict(self) -> None:
@@ -1111,30 +1118,30 @@ class NullifyPDF(QMainWindow):
         d.setWindowTitle("Info")
         d.setFixedSize(340, 440)
         lay = QVBoxLayout(d)
-        lay.setAlignment(Qt.AlignCenter)
+        lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ip = resource_path(os.path.join("images", "NullifyPDF_icon.png"))
         if os.path.exists(ip):
             lbl_icon = QLabel()
             lbl_icon.setPixmap(
                 QPixmap(ip).scaled(
-                    100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                    100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
                 )
             )
-            lbl_icon.setAlignment(Qt.AlignCenter)
+            lbl_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lay.addWidget(lbl_icon)
             lay.addSpacing(10)
         lbl_title = QLabel("NullifyPDF")
         lbl_title.setStyleSheet("font-size: 24px; font-weight: bold;")
-        lbl_title.setAlignment(Qt.AlignCenter)
+        lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(lbl_title)
         lbl_ver = QLabel(f"v{APP_VERSION} AI Privacy Beta")
         lbl_ver.setStyleSheet("color: #0ea5e9; font-weight: bold;")
-        lbl_ver.setAlignment(Qt.AlignCenter)
+        lbl_ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(lbl_ver)
         desc = QLabel(
             "\nAnonimizzazione PDF Offline.\n\nSviluppato da: Graziano Mariella\nLicenza MIT"
         )
-        desc.setAlignment(Qt.AlignCenter)
+        desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(desc)
         lay.addSpacing(20)
         btn = QPushButton("Chiudi")
@@ -1393,7 +1400,7 @@ class NullifyPDF(QMainWindow):
     def ai_finished(self) -> None:
         """Handle AI scan completion."""
         self.btn_ai.setEnabled(True)
-        self.render()
+        self.render_page()
 
     def cmd_export(self) -> None:
         """Export current PDF in irreversible or reversible privacy mode.
@@ -1441,7 +1448,7 @@ class NullifyPDF(QMainWindow):
                 self,
                 "Password mappa",
                 "Password per cifrare la mappa di ripristino (minimo 12 caratteri):",
-                QLineEdit.Password,
+                QLineEdit.EchoMode.Password,
             )
             if not ok:
                 return
