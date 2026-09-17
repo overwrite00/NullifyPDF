@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🐛 Fixed
 
 - **Manual redaction selection was silently broken**: drawing a rectangle on the PDF view to manually mark text/areas for redaction raised an uncaught `TypeError` on every mouse press (`QGraphicsView.mapToScene()` does not accept the `QPointF` that `event.position()` returns in this PySide6 version), so only AI-assisted detection actually redacted anything. Fixed by converting to `QPoint` before mapping.
+- **Exporting a redacted scanned PDF produced a blank page**: `apply_redactions()` was called with `images=PDF_REDACT_IMAGE_REMOVE`, which deletes an image object *entirely* if it intersects *any* redaction rectangle — on a scanned document (the whole page is one image), redacting even a single word wiped out the entire page, leaving only the black bar/placeholder visible on an otherwise blank sheet. Switched to `PDF_REDACT_IMAGE_PIXELS`, which blanks only the pixels under each redaction rectangle and leaves the rest of the image intact (verified this also still fully blanks whole-image redactions from "Oscura Immagini", including under page rotation, with no visible fringe).
 
 ### ✨ Added
 

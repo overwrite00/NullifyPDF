@@ -1612,8 +1612,17 @@ class NullifyPDF(QMainWindow):
                         page.delete_link(lnk)
                 except (RuntimeError, AttributeError, KeyError) as e:
                     self.logger.debug(f"Could not delete link: {e}")
+                # PDF_REDACT_IMAGE_REMOVE deletes the ENTIRE image object if it
+                # intersects ANY redaction rect, even a small one. On a scanned
+                # PDF (the whole page is one image), redacting a single word
+                # wiped out the entire page, leaving a blank sheet with only
+                # the placeholder text visible. PDF_REDACT_IMAGE_PIXELS blanks
+                # out only the pixels under each redaction rect and leaves the
+                # rest of the image intact (verified this also fully blanks
+                # whole-image redactions from "Oscura Immagini", including
+                # under page rotation, with no visible fringe).
                 page.apply_redactions(
-                    images=fitz.PDF_REDACT_IMAGE_REMOVE, graphics=True
+                    images=fitz.PDF_REDACT_IMAGE_PIXELS, graphics=True
                 )
                 try:
                     # Materialize first: mutating during iteration of
