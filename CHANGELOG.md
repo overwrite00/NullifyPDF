@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **PySide6 6.11.2**, **PyMuPDF 1.28.2** (still ships `cp310-abi3` wheels, so the Python 3.13 compatibility story is unaffected), **spaCy 3.8.16**, **pyinstaller 6.22.3**: routine minor/patch dependency updates.
 - **actions/labeler v5 -> v7**: CI-only bump; the `changed-files`/`any-glob-to-any-file` config schema in `.github/labeler.yml` is unchanged across these versions.
 - Dropped a stale `requirements.txt` comment on the `spacy` line that no longer matched the pinned version.
+- **mypy cleanup (18 -> 0 errors)**: Scoped all flattened PySide6/Qt6 enum aliases used in `NullifyPDF.py` (e.g. `Qt.LeftButton` -> `Qt.MouseButton.LeftButton`, `Qt.AlignCenter` -> `Qt.AlignmentFlag.AlignCenter`, `QImage.Format_RGB888` -> `QImage.Format.Format_RGB888`) — no behavior change, PySide6 accepts both forms at runtime. Renamed `NullifyPDF.render()` to `render_page()` to remove an accidental signature clash with `QWidget.render()` (all 7 call sites were internal, no external references). Used `getattr(sys, "_MEIPASS")` for the PyInstaller-injected attribute instead of direct access. Added a `DetectionDict` `TypedDict` for the AI-detection dict built during OCR-assisted scanning, replacing an ambiguous untyped dict literal.
 
 ## [2.1.0] - 2026-07-29
 
