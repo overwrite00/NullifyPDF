@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Fixed
+
+- **Manual redaction selection was silently broken**: drawing a rectangle on the PDF view to manually mark text/areas for redaction raised an uncaught `TypeError` on every mouse press (`QGraphicsView.mapToScene()` does not accept the `QPointF` that `event.position()` returns in this PySide6 version), so only AI-assisted detection actually redacted anything. Fixed by converting to `QPoint` before mapping.
+
+### ✨ Added
+
+- **Confirmation prompts for blocklist/allowlist changes**: manually drawing a redaction over recognized text now asks whether to add it to the permanent blocklist (redacted in every future document) instead of silently persisting it. Removing an existing redaction now offers a 3-way choice: exclude it only from this document, add it to the permanent whitelist (never redacted again), or cancel.
+- **Italian-specific PII recognition**: the AI engine now also detects `IT_FISCAL_CODE` (Codice Fiscale), `IT_VAT_CODE` (Partita IVA), `IT_DRIVER_LICENSE`, `IT_IDENTITY_CARD`, and `IT_PASSPORT` — all built into the pinned `presidio-analyzer` version but previously excluded from the requested entity list.
+- **Italian phone number formats**: Presidio's default phone-number recognizer only validates against `US/UK/DE/FR/IL/IN/CA/BR` regional formats, so Italian mobile/landline numbers without an explicit `+39` prefix (e.g. `340 1234567`, `02 1234567`) were never recognized. Added `IT` to the supported regions.
+- **Visible scanned-PDF warning**: opening a PDF with no extractable text (typical of scanned documents) now shows a popup confirming this and reminding to enable OCR before AI scanning, in addition to the existing log message. Manual selection already works on scanned pages regardless (see the crash fix above).
+
+### 🔧 Changed
+
+- Renamed the **"Esporta Privacy"** button to **"Esporta PDF"** (it exports the redacted PDF regardless of the chosen privacy mode, so the old label was misleading).
+
 ### 🔒 Security
 
 - **cryptography 50.0.0**: Updated from 49.0.0, resolving [CVE-2026-69247](https://github.com/pyca/cryptography/security/advisories/GHSA-g6cj-pr64-35w5) (high severity), a Bleichenbacher-style timing/error oracle in PKCS7 decryption. Not directly exercised by `privacy_core.py` (which only uses `Fernet`/`hashes`/`PBKDF2HMAC`), but updated as a precaution since it closes an open Dependabot security alert. Followed up by a 50.0.1 patch that only rebuilds the wheels against OpenSSL 4.0.2 (no further security-relevant change).

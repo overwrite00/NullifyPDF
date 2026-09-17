@@ -58,7 +58,7 @@ If log isn't updating:
 ## 🔴 Export Fails or Crashes
 
 ### Symptom
-Clicking "Esporta Privacy" causes error or app crash.
+Clicking "Esporta PDF" causes error or app crash.
 
 ### Root Cause
 - Insufficient disk space
@@ -461,5 +461,5 @@ The more details, the faster we can fix it! 🚀
 
 ---
 
-*Last updated: 2026-07-23*  
+*Last updated: 2026-09-17*  
 *← [User Guide](./USER_GUIDE.md) | [Development →](./DEVELOPMENT.md)*
