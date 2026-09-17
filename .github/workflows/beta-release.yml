@@ -99,7 +99,7 @@ jobs:
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             echo "Release $TAG already exists, uploading/replacing assets."
           else
-            gh release create "$TAG" --repo "$REPO" --prerelease --notes "$NOTES"
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --prerelease --notes "$NOTES"
           fi
 
           # Uploaded one at a time (not via softprops/action-gh-release's
