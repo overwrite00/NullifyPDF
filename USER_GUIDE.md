@@ -53,9 +53,10 @@ Click the **"Auto Redact (AI)"** button. NullifyPDF will automatically find and 
 - 🧑 **Names & Surnames**
 - 🏙️ **Cities & Addresses**
 - 📧 **Email Addresses**
-- 📱 **Phone Numbers**
+- 📱 **Phone Numbers** (including Italian mobile/landline formats)
 - 💳 **IBANs & Credit Card Numbers**
 - ₿ **Cryptocurrency Addresses**
+- 🇮🇹 **Italian national IDs**: Codice Fiscale, Partita IVA, carta d'identità, patente, passaporto
 
 **What to expect:**
 - Black boxes appear over detected data
