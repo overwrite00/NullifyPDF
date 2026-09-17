@@ -56,8 +56,8 @@ from privacy_core import (
     encrypt_restore_payload,
 )
 
-__version__ = "2.1.0"
-__version_prerelease__ = ""
+__version__ = "2.1.1"
+__version_prerelease__ = "beta.1"
 APP_VERSION = (
     f"{__version__}-{__version_prerelease__}"
     if __version_prerelease__
