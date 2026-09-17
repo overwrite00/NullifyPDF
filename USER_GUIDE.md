@@ -27,7 +27,7 @@ Your step-by-step guide to redacting sensitive data from PDFs safely and securel
 3. The document appears in the center. Scroll with mouse or use arrow buttons (top right)
 
 > [!NOTE]
-> Supported format: unencrypted PDF. Digital text is scanned directly; scanned pages require OCR.
+> Supported format: unencrypted PDF. Digital text is scanned directly; scanned pages require OCR. If NullifyPDF detects a page with no extractable text, a popup confirms it and reminds you to enable **OCR PDF scansionati** before AI scanning — manual selection (Step 4) works on scanned pages either way.
 
 ---
 
@@ -53,9 +53,10 @@ Click the **"Auto Redact (AI)"** button. NullifyPDF will automatically find and 
 - 🧑 **Names & Surnames**
 - 🏙️ **Cities & Addresses**
 - 📧 **Email Addresses**
-- 📱 **Phone Numbers**
+- 📱 **Phone Numbers** (including Italian mobile/landline formats)
 - 💳 **IBANs & Credit Card Numbers**
 - ₿ **Cryptocurrency Addresses**
+- 🇮🇹 **Italian national IDs**: Codice Fiscale, Partita IVA, carta d'identità, patente, passaporto
 
 **What to expect:**
 - Black boxes appear over detected data
@@ -75,14 +76,16 @@ No AI is 100% accurate. You can fix mistakes:
 ### Add a Redaction
 **Draw a box** over text you want to hide:
 1. Click and drag mouse over sensitive text
-2. A black box appears
-3. Redaction is scheduled (not destructive yet)
+2. A black box appears (redaction is scheduled, not destructive yet)
+3. If the covered text is recognized, you're asked whether to add it to the **Blocklist** — say yes only if it should be redacted in *every* PDF you open in the future, not just this one
 
 ### Remove a Redaction
 **Click once** on a black box to remove it:
 1. Single click on the redaction box
-2. Box disappears
-3. Word is added to **Allowlist** (AI will ignore it next time)
+2. Choose what happens next:
+   - **Solo questo documento**: the box disappears, nothing is saved to the lists (this document only)
+   - **Whitelist permanente**: the box disappears and the word is added to the **Allowlist** (AI will ignore it in every future document)
+   - **Annulla**: keeps the redaction in place
 
 ### Zoom In/Out
 Make small text larger:
@@ -111,7 +114,7 @@ Remove logos, signatures, or scanned photos:
 
 When satisfied with redactions:
 
-1. Click **"Esporta Privacy"**
+1. Click **"Esporta PDF"**
 2. Choose the export mode:
    - **Anonimizzazione irreversibile** removes selected personal data permanently
    - **Pseudonimizzazione reversibile** replaces selected personal data with placeholders and creates a separate encrypted restore map
@@ -263,5 +266,5 @@ python3.13 NullifyPDF.py
 
 ---
 
-*Last updated: 2026-07-23*  
+*Last updated: 2026-09-17*  
 *← [Back to README](./README.md) | [Troubleshooting →](./TROUBLESHOOTING.md)*

@@ -58,7 +58,7 @@ If log isn't updating:
 ## 🔴 Export Fails or Crashes
 
 ### Symptom
-Clicking "Esporta Privacy" causes error or app crash.
+Clicking "Esporta PDF" causes error or app crash.
 
 ### Root Cause
 - Insufficient disk space
@@ -215,8 +215,8 @@ AI redacted text that shouldn't be redacted (false positive).
 **Option 1 — Remove and Allowlist**
 
 1. **Click once** on the black redaction box
-2. It disappears
-3. Word is added to allowlist (won't be detected again)
+2. Choose **"Whitelist permanente"** in the dialog — the box disappears and the word is added to the allowlist (won't be detected again in any document)
+3. Choose **"Solo questo documento"** instead if the false positive is specific to this one PDF (nothing is saved to the allowlist)
 
 **Option 2 — Manual Redaction**
 
@@ -461,5 +461,5 @@ The more details, the faster we can fix it! 🚀
 
 ---
 
-*Last updated: 2026-07-23*  
+*Last updated: 2026-09-17*  
 *← [User Guide](./USER_GUIDE.md) | [Development →](./DEVELOPMENT.md)*

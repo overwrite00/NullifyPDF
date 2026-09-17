@@ -56,7 +56,7 @@ from privacy_core import (
     encrypt_restore_payload,
 )
 
-__version__ = "2.1.1"
+__version__ = "2.2.0"
 __version_prerelease__ = "beta.1"
 APP_VERSION = (
     f"{__version__}-{__version_prerelease__}"
@@ -374,8 +374,9 @@ class AIWorker(QObject):
             ocr_language = ocr_language_for_choice(choice, tessdata_dir)
             if not self.analyzer or sorted(self.loaded_langs) != sorted(target_langs):
                 self.log_sig.emit(f"Inizializzazione AI ({choice})...")
-                from presidio_analyzer import AnalyzerEngine
+                from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
                 from presidio_analyzer.nlp_engine import NlpEngineProvider
+                from presidio_analyzer.predefined_recognizers import PhoneRecognizer
 
                 models = (
                     [{"lang_code": "en", "model_name": "en_core_web_md"}]
@@ -387,8 +388,32 @@ class AIWorker(QObject):
                 provider = NlpEngineProvider(
                     nlp_configuration={"nlp_engine_name": "spacy", "models": models}
                 )
+                nlp_engine = provider.create_engine()
+
+                registry = RecognizerRegistry(supported_languages=target_langs)
+                registry.load_predefined_recognizers(
+                    languages=target_langs, nlp_engine=nlp_engine
+                )
+                # Presidio's default PhoneRecognizer regions
+                # (US/UK/DE/FR/IL/IN/CA/BR) omit Italy, so Italian numbers
+                # without an explicit "+39" prefix (e.g. mobile "340 1234567"
+                # or landline "02 1234567") are never matched. Replace it
+                # with an IT-aware instance for each loaded language.
+                phone_regions = PhoneRecognizer.DEFAULT_SUPPORTED_REGIONS + ("IT",)
+                registry.recognizers = [
+                    r for r in registry.recognizers
+                    if not isinstance(r, PhoneRecognizer)
+                ]
+                for lang in target_langs:
+                    registry.recognizers.append(
+                        PhoneRecognizer(
+                            supported_language=lang, supported_regions=phone_regions
+                        )
+                    )
+
                 self.analyzer = AnalyzerEngine(
-                    nlp_engine=provider.create_engine(),
+                    nlp_engine=nlp_engine,
+                    registry=registry,
                     supported_languages=target_langs,
                 )
                 self.loaded_langs = target_langs
@@ -401,6 +426,13 @@ class AIWorker(QObject):
                 "IBAN_CODE",
                 "CREDIT_CARD",
                 "CRYPTO",
+                # Italian national-ID formats (auto-loaded by Presidio only
+                # for language "it", harmless to always request).
+                "IT_FISCAL_CODE",
+                "IT_VAT_CODE",
+                "IT_DRIVER_LICENSE",
+                "IT_IDENTITY_CARD",
+                "IT_PASSPORT",
             ]
 
             # Determine page count under mutex (cheap, but doc may be replaced
@@ -537,9 +569,8 @@ class PDFView(QGraphicsView):
     def mousePressEvent(self, event: Any) -> None:
         """Handle mouse press: start selection rectangle on left-click."""
         if event.button() == Qt.MouseButton.LeftButton:
-            sp = self.mapToScene(event.position())
+            sp = self.mapToScene(event.position().toPoint())
             self.start_pos = sp
-            self.point_clicked.emit(sp)
             self.temp_rect = QGraphicsRectItem(QRectF(sp, sp))
             self.temp_rect.setPen(QPen(QColor("#ef4444"), 2))
             self.scene().addItem(self.temp_rect)
@@ -548,19 +579,26 @@ class PDFView(QGraphicsView):
     def mouseMoveEvent(self, event: Any) -> None:
         """Update in-progress selection rectangle while dragging."""
         if self.start_pos and self.temp_rect:
-            ep = self.mapToScene(event.position())
+            ep = self.mapToScene(event.position().toPoint())
             self.temp_rect.setRect(QRectF(self.start_pos, ep).normalized())
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: Any) -> None:
-        """Finalize selection rectangle and emit rect_drawn if large enough."""
+        """Finalize the gesture: a small movement is a click (point_clicked),
+        a larger one is a drawn selection (rect_drawn). Deferring both to
+        release, based on the final swept distance, keeps them mutually
+        exclusive so a drag never also fires a click mid-gesture.
+        """
         if event.button() == Qt.MouseButton.LeftButton and self.temp_rect:
             rect = self.temp_rect.rect()
+            start = self.start_pos
             self.scene().removeItem(self.temp_rect)
             self.temp_rect = None
             self.start_pos = None
             if rect.width() > 5 and rect.height() > 5:
                 self.rect_drawn.emit(rect)
+            elif start is not None:
+                self.point_clicked.emit(start)
         super().mouseReleaseEvent(event)
 
     def wheelEvent(self, event: Any) -> None:
@@ -751,7 +789,7 @@ class NullifyPDF(QMainWindow):
         btn_clear.clicked.connect(self.cmd_clear)
         s_lay.addWidget(btn_clear)
         s_lay.addSpacing(20)
-        btn_export = QPushButton("Esporta Privacy")
+        btn_export = QPushButton("Esporta PDF")
         btn_export.setStyleSheet("border-color: #0ea5e9; color: #0ea5e9;")
         btn_export.clicked.connect(self.cmd_export)
         s_lay.addWidget(btn_export)
@@ -922,6 +960,15 @@ class NullifyPDF(QMainWindow):
                 f"nelle pagine {preview}{suffix}. "
                 "Serve OCR prima della rilevazione automatica dei dati personali."
             )
+            QMessageBox.information(
+                self,
+                "PDF scansionato rilevato",
+                f"Questo documento sembra scansionato (nessun testo trovato "
+                f"nelle pagine {preview}{suffix}).\n\n"
+                'Puoi comunque selezionare manualmente le aree da censurare. '
+                'Per il riconoscimento automatico dei dati personali, attiva '
+                'prima "OCR PDF scansionati" e poi avvia "Auto Redact (AI)".',
+            )
 
     def render_page(self) -> None:
         """Render current PDF page to display."""
@@ -996,6 +1043,7 @@ class NullifyPDF(QMainWindow):
             qrect.right() / self.scale,
             qrect.bottom() / self.scale,
         )
+        cl = ""
         with QMutexLocker(self.doc_mutex):
             if not self.doc:
                 return
@@ -1017,12 +1065,26 @@ class NullifyPDF(QMainWindow):
                     entity_type=self._infer_entity_type(txt),
                 )
                 cl = " ".join(txt.split()).lower()
-                if len(cl) > 2:
-                    self.allowlist.discard(cl)
-                    self.blocklist.add(cl)
-                    self.list_manager.save_blocklist(self.blocklist)
-                    self.list_manager.save_allowlist(self.allowlist)
         self.render_page()
+        # The redaction on this page is already applied regardless of the
+        # answer below; this only decides whether the word is also
+        # persisted to blocklist.txt so it gets auto-redacted in every
+        # future document.
+        if len(cl) > 2 and cl not in self.blocklist:
+            answer = QMessageBox.question(
+                self,
+                "Aggiungi alla blacklist",
+                f'Vuoi aggiungere "{cl}" alla blacklist?\n\n'
+                "Verrà censurata automaticamente in ogni documento PDF "
+                "che aprirai in futuro.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                self.allowlist.discard(cl)
+                self.blocklist.add(cl)
+                self.list_manager.save_blocklist(self.blocklist)
+                self.list_manager.save_allowlist(self.allowlist)
 
     def user_click_pt(self, qpt: QPointF) -> None:
         """Handle user click on redaction to delete it.
@@ -1033,7 +1095,7 @@ class NullifyPDF(QMainWindow):
         if not self.doc:
             return
         pt = fitz.Point(qpt.x() / self.scale, qpt.y() / self.scale)
-        has_ans = False
+        cl = ""
         with QMutexLocker(self.doc_mutex):
             if not self.doc:
                 return
@@ -1043,19 +1105,54 @@ class NullifyPDF(QMainWindow):
                 for a in (p.annots() or [])
                 if a.type[0] == fitz.PDF_ANNOT_REDACT and a.rect.contains(pt)
             ]
-            if ans:
-                has_ans = True
-                txt = p.get_text("text", clip=ans[0].rect)
-                for a in ans:
-                    p.delete_annot(a)
-                cl = " ".join(txt.split()).lower()
-                if len(cl) > 2:
-                    self.blocklist.discard(cl)
-                    self.allowlist.add(cl)
-                    self.list_manager.save_blocklist(self.blocklist)
-                    self.list_manager.save_allowlist(self.allowlist)
-        if has_ans:
-            self.render_page()
+            if not ans:
+                return
+            txt = p.get_text("text", clip=ans[0].rect)
+            cl = " ".join(txt.split()).lower()
+
+        add_to_whitelist = False
+        if len(cl) > 2:
+            box = QMessageBox(self)
+            box.setWindowTitle("Rimuovi censura")
+            box.setText(
+                f'Rimuovere la censura su "{cl}"?\n\n'
+                "Scegli se escluderla solo da questo documento oppure "
+                "aggiungerla alla whitelist permanente (non verrà mai più "
+                "censurata in nessun documento)."
+            )
+            btn_doc_only = box.addButton(
+                "Solo questo documento", QMessageBox.ButtonRole.AcceptRole
+            )
+            btn_whitelist = box.addButton(
+                "Whitelist permanente", QMessageBox.ButtonRole.YesRole
+            )
+            btn_cancel = box.addButton(
+                "Annulla", QMessageBox.ButtonRole.RejectRole
+            )
+            box.setDefaultButton(btn_doc_only)
+            box.exec()
+            clicked = box.clickedButton()
+            if clicked == btn_cancel:
+                return
+            add_to_whitelist = clicked == btn_whitelist
+
+        with QMutexLocker(self.doc_mutex):
+            if not self.doc:
+                return
+            p = self.doc[self.page_num]
+            ans = [
+                a
+                for a in (p.annots() or [])
+                if a.type[0] == fitz.PDF_ANNOT_REDACT and a.rect.contains(pt)
+            ]
+            for a in ans:
+                p.delete_annot(a)
+            if add_to_whitelist and len(cl) > 2:
+                self.blocklist.discard(cl)
+                self.allowlist.add(cl)
+                self.list_manager.save_blocklist(self.blocklist)
+                self.list_manager.save_allowlist(self.allowlist)
+        self.render_page()
 
     def cmd_clear(self) -> None:
         """Clear all redactions on current page."""
@@ -1220,13 +1317,20 @@ class NullifyPDF(QMainWindow):
     def _infer_entity_type(self, value: str) -> str:
         """Infer a coarse placeholder type for manually marked text."""
         compact = " ".join(value.split())
+        compact_nospace = compact.replace(" ", "")
         if re.search(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", compact, re.I):
             return "EMAIL_ADDRESS"
-        if re.search(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b", compact.replace(" ", ""), re.I):
+        if re.search(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b", compact_nospace, re.I):
             return "IBAN_CODE"
+        if re.fullmatch(
+            r"[A-Z]{6}\d{2}[A-EHLMPR-T]\d{2}[A-Z]\d{3}[A-Z]", compact_nospace, re.I
+        ):
+            return "IT_FISCAL_CODE"
+        if re.fullmatch(r"\d{11}", compact_nospace):
+            return "IT_VAT_CODE"
         if re.search(r"\+?\d[\d\s()./-]{6,}\d", compact):
             return "PHONE_NUMBER"
-        if re.search(r"\b\d{13,19}\b", compact.replace(" ", "")):
+        if re.search(r"\b\d{13,19}\b", compact_nospace):
             return "CREDIT_CARD"
         return "DATA"
 
