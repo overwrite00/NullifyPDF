@@ -11,7 +11,7 @@ PyMuPDF==1.28.2
 # NLP & Security Analysis
 presidio-analyzer==2.2.364
 spacy==3.8.16
-cryptography==50.0.0
+cryptography==50.0.1
 # spaCy language models (pinned to exact versions for reproducibility)
 # IMPORTANT: model minor version MUST match the spaCy core minor version
 # (spaCy 3.8.x <-> models 3.8.x). The models declare spacy>=3.8.0,<3.9.0.
@@ -20,7 +20,7 @@ en-core-web-md @ https://github.com/explosion/spacy-models/releases/download/en_
 it-core-news-md @ https://github.com/explosion/spacy-models/releases/download/it_core_news_md-3.8.0/it_core_news_md-3.8.0-py3-none-any.whl
 
 # Build Tool (compatible with Python 3.13)
-pyinstaller==6.22.2
+pyinstaller==6.22.3
 
 # Development Tools
 isort==5.13.2
