@@ -86,15 +86,49 @@ jobs:
           pattern: beta-build-*
           merge-multiple: true
 
-      - name: Release
-        uses: softprops/action-gh-release@v3
-        with:
-          prerelease: true
-          files: |
+      - name: Create release and upload assets sequentially
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+          REPO="${{ github.repository }}"
+          NOTES="NullifyPDF beta release (build from develop). Includes Lite and Full OCR variants. Do not use in production. If validation succeeds, this build will be promoted to stable without rebuilding."
+
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, uploading/replacing assets."
+          else
+            gh release create "$TAG" --repo "$REPO" --prerelease --notes "$NOTES"
+          fi
+
+          # Uploaded one at a time (not via softprops/action-gh-release's
+          # concurrent batch) because parallel uploads of these large
+          # binaries (100-300MB each) were timing out with an opaque
+          # "Error saving asset" and no per-file retry.
+          shopt -s nullglob
+          files=(
             all-builds/NullifyPDF_v*_Windows_*.exe
             all-builds/NullifyPDF_v*_macOS_*.zip
             all-builds/NullifyPDF_v*_Ubuntu_*.deb
             all-builds/NullifyPDF_v*_Fedora_*.rpm
-          body: "NullifyPDF beta release (build from develop). Includes Lite and Full OCR variants. Do not use in production. If validation succeeds, this build will be promoted to stable without rebuilding."
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          )
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No release assets found to upload" >&2
+            exit 1
+          fi
+
+          for f in "${files[@]}"; do
+            echo "Uploading $f ..."
+            attempt=1
+            until gh release upload "$TAG" "$f" --repo "$REPO" --clobber; do
+              if [ "$attempt" -ge 3 ]; then
+                echo "Failed to upload $f after $attempt attempts" >&2
+                exit 1
+              fi
+              attempt=$((attempt + 1))
+              echo "Retrying upload of $f (attempt $attempt)..."
+              sleep 10
+            done
+          done
