@@ -1,6 +1,6 @@
 # 🏗️ Architecture — NullifyPDF
 
-This document explains how NullifyPDF is structured today: application layers, privacy export flow, OCR support, release variants, and the main security boundaries that matter during maintenance.
+This document explains how NullifyPDF is structured today: application layers, privacy export flow, OCR support, release packaging, and the main security boundaries that matter during maintenance.
 
 > [!TIP]
 > Read this after the [README](./README.md) if you want the technical view of how detection, redaction, pseudonymization, and packaging work together.
@@ -14,7 +14,7 @@ NullifyPDF is a local-first desktop application for preparing PDFs before they a
 It supports two privacy export modes:
 
 - **Irreversible anonymization** — selected content is redacted and removed from the exported PDF
-- **Reversible pseudonymization** — selected content is replaced with stable placeholders, while original values are stored in a separate encrypted restore map
+- **Reversible pseudonymization** — selected content is replaced with stable placeholders, while original values are stored in a separate encrypted restore map. The same restore map can later be used to reconstruct the original values back into a pseudonymized PDF.
 
 > [!NOTE]
 > Reversible mode is pseudonymization, not true anonymization, because the encrypted restore map can re-identify the original values.
@@ -25,12 +25,12 @@ It supports two privacy export modes:
 
 | 📄 File | ✨ Responsibility |
 | ------ | ----------------- |
-| `NullifyPDF.py` | Main PySide6 UI, PDF rendering, AI scan orchestration, redaction, export, OCR integration |
-| `privacy_core.py` | Privacy mode enum, placeholder registry, encrypted restore-map payloads |
+| `NullifyPDF.py` | Main PySide6 UI, PDF rendering, AI scan orchestration, redaction, export, reconstruction, OCR integration |
+| `privacy_core.py` | Privacy mode enum, placeholder registry, encrypted restore-map payloads, restore-map parsing |
 | `PDF_Checker.py` | Heuristic post-export inspection helper |
-| `build_local.py` | PyInstaller build script with Lite/Full release variants |
-| `scripts/download_ocr_data.py` | Downloads EN/IT Tesseract `tessdata_fast` files for Full builds |
-| `tests/` | Unit and smoke tests for validation, privacy primitives, OCR config, and build variants |
+| `build_local.py` | PyInstaller build script |
+| `scripts/download_ocr_data.py` | Downloads EN/IT Tesseract `tessdata_fast` files bundled into every build |
+| `tests/` | Unit and smoke tests for validation, privacy primitives, OCR config, and build configuration |
 
 ---
 
@@ -212,7 +212,7 @@ Runtime behavior:
 4. OCR text is used for Presidio detection.
 5. OCR search rectangles are used to place redactions on scanned pages.
 
-The Full release bundles EN/IT OCR data. The Lite release requires local Tesseract `tessdata` when OCR is enabled.
+Every release bundles EN/IT OCR data.
 
 ---
 
@@ -232,22 +232,16 @@ This separation prevents UI freezes and reduces concurrent document-mutation ris
 
 ---
 
-## 📦 Build Variants
+## 📦 Build
 
-### 🪶 Lite
-
-Lite builds do not bundle OCR language data. They are smaller and still support OCR if the user has Tesseract `tessdata` configured locally.
-
-### 🧰 Full
-
-Full builds bundle:
+Every build bundles OCR language data:
 
 ```text
 ocr/tessdata/eng.traineddata
 ocr/tessdata/ita.traineddata
 ```
 
-If the files are missing, `build_local.py --full` automatically downloads them from `tesseract-ocr/tessdata_fast` through `scripts/download_ocr_data.py`.
+If the files are missing, `build_local.py` automatically downloads them from `tesseract-ocr/tessdata_fast` through `scripts/download_ocr_data.py`.
 
 The `.traineddata` files are ignored by git and are not stored in the repository.
 
@@ -255,26 +249,22 @@ The `.traineddata` files are ignored by git and are not stored in the repository
 
 ## 🚀 CI/CD
 
-GitHub Actions build both variants on each supported OS:
+GitHub Actions build one artifact per supported OS:
 
-- Windows Lite / Full
-- macOS Lite / Full
-- Ubuntu Lite / Full
-- Fedora Lite / Full
+- Windows
+- macOS
+- Ubuntu
+- Fedora
 
 Beta releases build and upload all artifacts. Stable releases promote the latest verified beta artifacts without recompilation.
 
 Expected artifact names include:
 
 ```text
-NullifyPDF_vX.Y.Z_Windows_Lite.exe
-NullifyPDF_vX.Y.Z_Windows_Full.exe
-NullifyPDF_vX.Y.Z_macOS_Lite.zip
-NullifyPDF_vX.Y.Z_macOS_Full.zip
-NullifyPDF_vX.Y.Z_Ubuntu_Lite.deb
-NullifyPDF_vX.Y.Z_Ubuntu_Full.deb
-NullifyPDF_vX.Y.Z_Fedora_Lite.rpm
-NullifyPDF_vX.Y.Z_Fedora_Full.rpm
+NullifyPDF_vX.Y.Z_Windows.exe
+NullifyPDF_vX.Y.Z_macOS.zip
+NullifyPDF_vX.Y.Z_Ubuntu.deb
+NullifyPDF_vX.Y.Z_Fedora.rpm
 ```
 
 ---
@@ -288,8 +278,9 @@ Current tests cover:
 - OCR configuration helpers
 - privacy placeholder registry
 - encrypted restore-map round trip
-- build variant selection
-- Full build OCR data inclusion behavior
+- reconstruction of a pseudonymized PDF from its restore map
+- build configuration
+- OCR data inclusion behavior
 
 Run:
 
@@ -313,5 +304,5 @@ pytest tests/ -v
 
 ---
 
-*Last updated: 2026-07-23*  
+*Last updated: 2026-09-18*  
 *[Back to README](./README.md) | [Development →](./DEVELOPMENT.md)*

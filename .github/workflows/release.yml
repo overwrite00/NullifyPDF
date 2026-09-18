@@ -24,6 +24,28 @@ jobs:
     name: Promote latest beta artifacts to stable
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Verify CHANGELOG has an entry for this version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+
+          if ! grep -qE "^## \[$VERSION\] - [0-9]{4}-[0-9]{2}-[0-9]{2}" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [$VERSION] - YYYY-MM-DD' heading. On develop, move the [Unreleased] content under this heading before tagging the stable release."
+            exit 1
+          fi
+
+          UNRELEASED_BODY=$(awk '/^## \[Unreleased\]/{flag=1;next}/^## \[/{flag=0}flag' CHANGELOG.md | sed '/^[[:space:]]*$/d')
+          if [ -n "$UNRELEASED_BODY" ]; then
+            echo "::error::CHANGELOG.md still has content under [Unreleased] that hasn't been moved to [$VERSION]. Update it on develop first."
+            exit 1
+          fi
+
+          echo "[OK] CHANGELOG.md has a clean [$VERSION] entry and an empty [Unreleased] section."
+
       - name: Resolve target beta release
         id: beta
         env:
@@ -50,31 +72,71 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p stable-assets
+          # Patterns are deliberately tolerant of a trailing "_Full"/"_Lite"
+          # suffix (no underscore pinned before the extension) so a beta
+          # built before the lite/full split was removed can still be
+          # promoted to stable.
           gh release download "${{ steps.beta.outputs.tag }}" --repo "${{ github.repository }}" --dir stable-assets \
-            --pattern "NullifyPDF_v*_Windows_*.exe" \
-            --pattern "NullifyPDF_v*_macOS_*.zip" \
-            --pattern "NullifyPDF_v*_Ubuntu_*.deb" \
-            --pattern "NullifyPDF_v*_Fedora_*.rpm"
+            --pattern "NullifyPDF_v*_Windows*.exe" \
+            --pattern "NullifyPDF_v*_macOS*.zip" \
+            --pattern "NullifyPDF_v*_Ubuntu*.deb" \
+            --pattern "NullifyPDF_v*_Fedora*.rpm"
 
       - name: Strip beta suffix from filenames
         run: |
           cd stable-assets
+          # Drop any leftover "_Lite" assets from betas built before the
+          # lite/full split was removed: only the full variant is promoted.
+          rm -f *_Lite.* *_Lite
           for f in *; do
-            new="$(echo "$f" | sed -E 's/-beta\.[0-9]+//')"
+            # Also drops the now-redundant "_Full" variant tag.
+            new="$(echo "$f" | sed -E 's/-beta\.[0-9]+//; s/_Full//')"
             if [ "$f" != "$new" ]; then
               mv "$f" "$new"
             fi
           done
           ls -la
 
-      - name: Create Stable Release
-        uses: softprops/action-gh-release@v3
-        with:
-          files: stable-assets/*
-          prerelease: false
-          body: |
-            NullifyPDF stable release.
-            Promoted from beta `${{ steps.beta.outputs.tag }}` (already verified build, no rebuild).
-            Includes Lite and Full OCR variants for Windows, macOS, and Linux.
+      - name: Create stable release and upload assets sequentially
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+          REPO="${{ github.repository }}"
+          NOTES="NullifyPDF stable release.
+          Promoted from beta \`${{ steps.beta.outputs.tag }}\` (already verified build, no rebuild).
+          Available for Windows, macOS, and Linux."
+
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, uploading/replacing assets."
+          else
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes "$NOTES"
+          fi
+
+          # Uploaded one at a time, not via softprops/action-gh-release's
+          # concurrent batch: parallel uploads of these large binaries
+          # (100-300MB each) were timing out with an opaque "Error saving
+          # asset" and no per-file retry (see beta-release.yml).
+          shopt -s nullglob
+          files=(stable-assets/*)
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No release assets found to upload" >&2
+            exit 1
+          fi
+
+          for f in "${files[@]}"; do
+            echo "Uploading $f ..."
+            attempt=1
+            until gh release upload "$TAG" "$f" --repo "$REPO" --clobber; do
+              if [ "$attempt" -ge 3 ]; then
+                echo "Failed to upload $f after $attempt attempts" >&2
+                exit 1
+              fi
+              attempt=$((attempt + 1))
+              echo "Retrying upload of $f (attempt $attempt)..."
+              sleep 10
+            done
+          done

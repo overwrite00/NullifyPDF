@@ -27,7 +27,7 @@ Your step-by-step guide to redacting sensitive data from PDFs safely and securel
 3. The document appears in the center. Scroll with mouse or use arrow buttons (top right)
 
 > [!NOTE]
-> Supported format: unencrypted PDF. Digital text is scanned directly; scanned pages require OCR.
+> Supported format: unencrypted PDF. Digital text is scanned directly; scanned pages require OCR. If NullifyPDF detects a page with no extractable text, a popup confirms it and reminds you to enable **OCR PDF scansionati** before AI scanning — manual selection (Step 4) works on scanned pages either way.
 
 ---
 
@@ -53,9 +53,10 @@ Click the **"Auto Redact (AI)"** button. NullifyPDF will automatically find and 
 - 🧑 **Names & Surnames**
 - 🏙️ **Cities & Addresses**
 - 📧 **Email Addresses**
-- 📱 **Phone Numbers**
+- 📱 **Phone Numbers** (including Italian mobile/landline formats)
 - 💳 **IBANs & Credit Card Numbers**
 - ₿ **Cryptocurrency Addresses**
+- 🇮🇹 **Italian national IDs**: Codice Fiscale, Partita IVA, carta d'identità, patente, passaporto
 
 **What to expect:**
 - Black boxes appear over detected data
@@ -75,14 +76,16 @@ No AI is 100% accurate. You can fix mistakes:
 ### Add a Redaction
 **Draw a box** over text you want to hide:
 1. Click and drag mouse over sensitive text
-2. A black box appears
-3. Redaction is scheduled (not destructive yet)
+2. A black box appears (redaction is scheduled, not destructive yet)
+3. If the covered text is recognized, you're asked whether to add it to the **Blocklist** — say yes only if it should be redacted in *every* PDF you open in the future, not just this one
 
 ### Remove a Redaction
 **Click once** on a black box to remove it:
 1. Single click on the redaction box
-2. Box disappears
-3. Word is added to **Allowlist** (AI will ignore it next time)
+2. Choose what happens next:
+   - **Solo questo documento**: the box disappears, nothing is saved to the lists (this document only)
+   - **Whitelist permanente**: the box disappears and the word is added to the **Allowlist** (AI will ignore it in every future document)
+   - **Annulla**: keeps the redaction in place
 
 ### Zoom In/Out
 Make small text larger:
@@ -103,7 +106,7 @@ Remove logos, signatures, or scanned photos:
 3. All images replaced with gray placeholder: `[ IMAGE REMOVED ]`
 
 > [!NOTE]
-> For scanned documents, enable **OCR PDF scansionati** before running the AI scan. Full builds include EN/IT OCR data; Lite builds require local Tesseract tessdata.
+> For scanned documents, enable **OCR PDF scansionati** before running the AI scan. Every build includes EN/IT OCR data.
 
 ---
 
@@ -111,7 +114,7 @@ Remove logos, signatures, or scanned photos:
 
 When satisfied with redactions:
 
-1. Click **"Esporta Privacy"**
+1. Click **"Esporta PDF"**
 2. Choose the export mode:
    - **Anonimizzazione irreversibile** removes selected personal data permanently
    - **Pseudonimizzazione reversibile** replaces selected personal data with placeholders and creates a separate encrypted restore map
@@ -120,6 +123,23 @@ When satisfied with redactions:
 
 > [!CAUTION]
 > **Irreversible anonymization cannot be undone from the exported PDF.** Keep a backup of the original PDF. For pseudonymization, store the encrypted restore map separately from the PDF.
+
+---
+
+## Step 7️⃣ — Reconstruct a Pseudonymized PDF
+
+If you exported a PDF with **Pseudonimizzazione reversibile**, you can later restore the original values back into it:
+
+1. Click **"Ricostruisci PDF"**
+2. Select the pseudonymized PDF (the one containing placeholders like `PERSON_001`)
+3. Select its matching `.nullifypdf-map` restore map file
+4. Enter the map's password
+5. Choose where to save the reconstructed PDF
+
+NullifyPDF checks the SHA-256 hash recorded in the restore map against the selected PDF and refuses to proceed if they don't match, to avoid applying the wrong mapping to a document.
+
+> [!NOTE]
+> Reconstruction restores the original *content*, not the original *layout*: since placeholders like `PERSON_001` are usually shorter than the original values, restored text may be clipped or visually crowd its redaction box.
 
 ---
 
@@ -238,7 +258,7 @@ python3.13 NullifyPDF.py
 ## ❓ Common Questions
 
 ### Q: Why doesn't AI detect text in my scanned PDF?
-**A:** Enable **OCR PDF scansionati** before running the AI scan. Full builds include EN/IT OCR data; Lite builds need local Tesseract `tessdata`.
+**A:** Enable **OCR PDF scansionati** before running the AI scan. Every build includes EN/IT OCR data.
 
 ### Q: Can I password-protect the exported PDF?
 **A:** Not built-in. Use a PDF editor after export for password protection.
@@ -247,10 +267,10 @@ python3.13 NullifyPDF.py
 **A:** Export applies PDF redactions and removes selected metadata. Review the exported file before sharing, especially for high-risk documents.
 
 ### Q: Can I undo changes after export?
-**A:** Irreversible anonymization cannot be undone from the exported PDF. Pseudonymization can be restored only with the encrypted restore map and its password.
+**A:** Irreversible anonymization cannot be undone from the exported PDF. Pseudonymization can be restored using **"Ricostruisci PDF"** together with the encrypted restore map and its password (see [Step 7](#step-7%EF%B8%8F%E2%83%A3--reconstruct-a-pseudonymized-pdf) below).
 
 ### Q: Does NullifyPDF send data to the cloud?
-**A:** **No.** PDF processing is local. Full builds may download OCR data during build time, not while processing your PDFs.
+**A:** **No.** PDF processing is local. OCR data may be downloaded during build time, not while processing your PDFs.
 
 ---
 
@@ -263,5 +283,5 @@ python3.13 NullifyPDF.py
 
 ---
 
-*Last updated: 2026-07-23*  
+*Last updated: 2026-09-18*  
 *← [Back to README](./README.md) | [Troubleshooting →](./TROUBLESHOOTING.md)*

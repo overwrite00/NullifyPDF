@@ -1,4 +1,4 @@
-"""Download bundled OCR language data for NullifyPDF Full builds."""
+"""Download bundled OCR language data for NullifyPDF builds."""
 
 from __future__ import annotations
 

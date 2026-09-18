@@ -13,7 +13,8 @@ import hashlib
 import html
 import importlib.util
 import json
-from typing import Optional, List, Set, Dict, Any, Tuple
+import math
+from typing import Optional, List, Set, Dict, Any, Tuple, TypedDict, NotRequired
 import fitz
 from PySide6.QtWidgets import (
     QApplication,
@@ -50,19 +51,30 @@ from PySide6.QtGui import (
 from PySide6.QtCore import Qt, QThread, QObject, Signal, Slot, QRectF, QPointF, QMutex, QMutexLocker
 
 from privacy_core import (
+    PlaceholderEntry,
     PlaceholderRegistry,
     PrivacyMode,
     build_restore_payload,
+    decrypt_restore_payload,
     encrypt_restore_payload,
+    parse_restore_entries,
+    sort_entries_longest_placeholder_first,
 )
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 __version_prerelease__ = ""
 APP_VERSION = (
     f"{__version__}-{__version_prerelease__}"
     if __version_prerelease__
     else __version__
 )
+
+
+class DetectionDict(TypedDict):
+    text: str
+    entity_type: str
+    rects: List[Tuple[float, float, float, float]]
+    source: NotRequired[str]
 
 
 def setup_logging() -> logging.Logger:
@@ -111,7 +123,7 @@ def resource_path(relative_path: str) -> str:
         str: Absolute path to resource.
     """
     try:
-        base_path = sys._MEIPASS
+        base_path = getattr(sys, "_MEIPASS")
     except Exception:
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
@@ -124,6 +136,243 @@ def sha256_file(path: str) -> str:
         for chunk in iter(lambda: fh.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+class RestoreMapMismatch(ValueError):
+    """Raised when a restore map's recorded hash doesn't match the PDF."""
+
+
+REDACTION_FONTNAME = "helv"
+REDACTION_MAX_FONTSIZE = 8.0
+REDACTION_MIN_FONTSIZE = 3.0
+
+
+def fit_redaction_fontsize(
+    text: str,
+    rect: "fitz.Rect",
+    max_size: float = REDACTION_MAX_FONTSIZE,
+    min_size: float = REDACTION_MIN_FONTSIZE,
+) -> float:
+    """Return the largest font size that lays `text` out inside `rect` intact.
+
+    `apply_redactions()` lays its replacement text out as a text *box*: when
+    the text is wider than the box it wraps, and MuPDF will happily break in
+    the middle of a token, turning ``DATA_001`` into ``DATA_`` + ``001``. The
+    result is still perfectly legible on screen but is no longer findable by
+    `page.search_for("DATA_001")`, which silently breaks reconstruction. If
+    the text cannot be wrapped into the box at all, MuPDF drops it entirely.
+
+    Picking a size that fits up front avoids both outcomes. Wrapping
+    *between words* is fine and stays legible, so the size only has to make
+    the longest unbreakable token fit the box width; the box must then be
+    tall enough for the resulting number of wrapped lines.
+
+    Args:
+        text: The replacement string to be stamped into the box.
+        rect: The redaction box.
+        max_size: Preferred (largest) font size.
+        min_size: Floor; returned even if the text still does not fit.
+
+    Returns:
+        float: Font size to pass to `add_redact_annot(..., fontsize=...)`.
+    """
+    tokens = text.split() or [text]
+    usable_width = max(1.0, rect.width - 2.0)
+    size = max_size
+    while size > min_size:
+        line_height = size * 1.35
+        widest_token = max(
+            fitz.get_text_length(token, fontname=REDACTION_FONTNAME, fontsize=size)
+            for token in tokens
+        )
+        total_width = fitz.get_text_length(
+            text, fontname=REDACTION_FONTNAME, fontsize=size
+        )
+        lines_needed = max(1, math.ceil(total_width / usable_width))
+        if widest_token <= usable_width and lines_needed * line_height <= rect.height:
+            return size
+        size -= 0.25
+    return min_size
+
+
+def _placeholder_rects_by_chars(page: Any, placeholder: str) -> List["fitz.Rect"]:
+    """Locate a placeholder that `search_for()` cannot find, character by character.
+
+    Fallback for version 1 restore maps (which carry no coordinates) whose
+    placeholder was wrapped by `apply_redactions()`. Depending on the
+    PyMuPDF version, a wrap can land its pieces on separate *lines* of the
+    same text block, or in entirely separate *blocks* (observed with
+    PyMuPDF 1.28.2: a narrow box wraps "DATA_001" into a "DATA_" block and a
+    separate "001" block). Concatenating only within each block therefore
+    still misses it, so this walks every character on the page, in reading
+    order, ignoring block/line boundaries entirely.
+    """
+    rects: List["fitz.Rect"] = []
+    try:
+        raw = page.get_text("rawdict")
+    except Exception:
+        return rects
+    chars: List[Any] = []
+    for block in raw.get("blocks", []):
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                chars.extend(span.get("chars", []))
+    if not chars:
+        return rects
+    text = "".join(ch.get("c", "") for ch in chars)
+    start = text.find(placeholder)
+    while start != -1:
+        matched = chars[start:start + len(placeholder)]
+        box = fitz.Rect(matched[0]["bbox"])
+        for ch in matched[1:]:
+            box |= fitz.Rect(ch["bbox"])
+        rects.append(box)
+        start = text.find(placeholder, start + len(placeholder))
+    return rects
+
+
+def _restore_targets(page: Any, entry: PlaceholderEntry) -> List["fitz.Rect"]:
+    """Return the boxes on `page` that should get `entry.original` back.
+
+    Prefers the coordinates recorded in the restore map (version 2+), which
+    are the boxes the original value was taken from, so the value fits back
+    into them. Falls back to text search only for version 1 maps.
+    """
+    stored = [
+        fitz.Rect(occurrence.rect)
+        for occurrence in entry.occurrences
+        if occurrence.page == page.number
+    ]
+    if stored:
+        return stored
+    hits = list(page.search_for(entry.placeholder))
+    if hits:
+        return hits
+    return _placeholder_rects_by_chars(page, entry.placeholder)
+
+
+def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int:
+    """Rebuild a pseudonymized PDF's original values from a decrypted restore map.
+
+    Replaces every placeholder occurrence (e.g. ``PERSON_001``) with the
+    original value, using the same add_redact_annot()-then-apply_redactions()
+    mechanism used to create the placeholders during export. Does not restore
+    the original layout: a placeholder's redaction box is sized for the
+    placeholder text, so a longer original value may be visually clipped or
+    crowd the box.
+
+    Uses the redaction boxes recorded in the restore map (version 2+) and
+    only falls back to searching for the placeholder text with version 1
+    maps, which carry no coordinates.
+
+    Args:
+        in_path: Path to the pseudonymized PDF to reconstruct from.
+        out_path: Path to write the reconstructed PDF to.
+        payload: Decrypted restore-map payload (see `privacy_core.build_restore_payload`).
+
+    Returns:
+        int: Number of placeholder occurrences whose original value was
+            **verified present** in the saved output. The count is taken
+            from the written file, not from the number of redactions
+            requested, so a value that `apply_redactions()` silently
+            dropped is never reported as restored.
+
+    Raises:
+        ValueError: If the payload is not a recognized restore map.
+        RestoreMapMismatch: If `output_sha256` in the payload does not match
+            the SHA-256 of `in_path`.
+    """
+    expected_sha256 = payload.get("output_sha256")
+    if expected_sha256 and sha256_file(in_path) != expected_sha256:
+        raise RestoreMapMismatch(
+            "La mappa di ripristino non corrisponde a questo PDF "
+            "(hash SHA-256 diverso)."
+        )
+
+    entries = sort_entries_longest_placeholder_first(parse_restore_entries(payload))
+    # (page index, box, original value) for every restoration we attempted,
+    # so the saved output can be checked against it below.
+    attempted: List[Tuple[int, fitz.Rect, str]] = []
+    doc = fitz.open(in_path)
+    try:
+        for page in doc:
+            claimed: List[fitz.Rect] = []
+            for entry in entries:
+                for rect in _restore_targets(page, entry):
+                    # Entries are sorted longest-placeholder-first, so a
+                    # shorter placeholder must not re-redact a box a longer
+                    # one already claimed: searching for PERSON_001 also hits
+                    # the first ten characters of a rendered PERSON_0010, and
+                    # that hit sits *inside* the longer one's box.
+                    # Containment, not intersection: two separate fields the
+                    # user boxed side by side may legitimately touch, and
+                    # skipping the second would drop a value.
+                    if any(taken.contains(rect) for taken in claimed):
+                        continue
+                    claimed.append(fitz.Rect(rect))
+                    page.add_redact_annot(
+                        rect,
+                        text=entry.original,
+                        fill=(1, 1, 1),
+                        text_color=(0, 0, 0),
+                        align=1,
+                        fontsize=fit_redaction_fontsize(entry.original, rect),
+                    )
+                    attempted.append((page.number, fitz.Rect(rect), entry.original))
+            page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_PIXELS, graphics=True)
+        doc.save(out_path, garbage=4, deflate=True, clean=True)
+    finally:
+        doc.close()
+
+    return _verify_restored(out_path, attempted)
+
+
+def expected_restore_count(payload: Dict[str, Any]) -> int:
+    """Return how many placeholder occurrences a restore map should put back.
+
+    Counts occurrences, not entries: one entry can carry several boxes (the
+    same value redacted on more than one page), and `reconstruct_pdf`
+    returns restored *occurrences*. Comparing its result against the entry
+    count would hide a partial restore -- which is exactly the repeated-value
+    case reconstruction has already gone wrong on once.
+    """
+    return sum(
+        max(1, len(entry.occurrences)) for entry in parse_restore_entries(payload)
+    )
+
+
+def _verify_restored(
+    out_path: str, attempted: List[Tuple[int, "fitz.Rect", str]]
+) -> int:
+    """Count how many attempted restorations actually landed in the output.
+
+    `apply_redactions()` drops its replacement text silently when the text
+    cannot be laid out inside the box, so counting the redactions we asked
+    for would over-report: the feature would claim to have restored values
+    it had in fact destroyed. Read the answer back off the written file.
+    """
+    logger = logging.getLogger("nullifypdf")
+    restored = 0
+    doc = fitz.open(out_path)
+    try:
+        for page_number, rect, original in attempted:
+            probe = fitz.Rect(rect) + (-2, -2, 2, 2)
+            # Whitespace-insensitive: a long value legitimately wraps onto
+            # several lines inside its box. What matters is that its
+            # characters are back on the page, not how they are broken up.
+            found = "".join(doc[page_number].get_text("text", clip=probe).split())
+            if "".join(original.split()) in found:
+                restored += 1
+            else:
+                logger.warning(
+                    "Reconstruction: value not restored on page %s at %s "
+                    "(it did not fit its redaction box).",
+                    page_number + 1,
+                    tuple(round(v, 1) for v in rect),
+                )
+    finally:
+        doc.close()
+    return restored
 
 
 def find_tessdata_dir() -> Optional[str]:
@@ -367,8 +616,9 @@ class AIWorker(QObject):
             ocr_language = ocr_language_for_choice(choice, tessdata_dir)
             if not self.analyzer or sorted(self.loaded_langs) != sorted(target_langs):
                 self.log_sig.emit(f"Inizializzazione AI ({choice})...")
-                from presidio_analyzer import AnalyzerEngine
+                from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
                 from presidio_analyzer.nlp_engine import NlpEngineProvider
+                from presidio_analyzer.predefined_recognizers import PhoneRecognizer
 
                 models = (
                     [{"lang_code": "en", "model_name": "en_core_web_md"}]
@@ -380,8 +630,32 @@ class AIWorker(QObject):
                 provider = NlpEngineProvider(
                     nlp_configuration={"nlp_engine_name": "spacy", "models": models}
                 )
+                nlp_engine = provider.create_engine()
+
+                registry = RecognizerRegistry(supported_languages=target_langs)
+                registry.load_predefined_recognizers(
+                    languages=target_langs, nlp_engine=nlp_engine
+                )
+                # Presidio's default PhoneRecognizer regions
+                # (US/UK/DE/FR/IL/IN/CA/BR) omit Italy, so Italian numbers
+                # without an explicit "+39" prefix (e.g. mobile "340 1234567"
+                # or landline "02 1234567") are never matched. Replace it
+                # with an IT-aware instance for each loaded language.
+                phone_regions = PhoneRecognizer.DEFAULT_SUPPORTED_REGIONS + ("IT",)
+                registry.recognizers = [
+                    r for r in registry.recognizers
+                    if not isinstance(r, PhoneRecognizer)
+                ]
+                for lang in target_langs:
+                    registry.recognizers.append(
+                        PhoneRecognizer(
+                            supported_language=lang, supported_regions=phone_regions
+                        )
+                    )
+
                 self.analyzer = AnalyzerEngine(
-                    nlp_engine=provider.create_engine(),
+                    nlp_engine=nlp_engine,
+                    registry=registry,
                     supported_languages=target_langs,
                 )
                 self.loaded_langs = target_langs
@@ -394,6 +668,13 @@ class AIWorker(QObject):
                 "IBAN_CODE",
                 "CREDIT_CARD",
                 "CRYPTO",
+                # Italian national-ID formats (auto-loaded by Presidio only
+                # for language "it", harmless to always request).
+                "IT_FISCAL_CODE",
+                "IT_VAT_CODE",
+                "IT_DRIVER_LICENSE",
+                "IT_IDENTITY_CARD",
+                "IT_PASSPORT",
             ]
 
             # Determine page count under mutex (cheap, but doc may be replaced
@@ -455,7 +736,7 @@ class AIWorker(QObject):
                         f_reg.search(clean) or clean_pattern.search(a_str)
                         for a_str, f_reg in compiled_allowlist
                     ):
-                        detection = {
+                        detection: DetectionDict = {
                             "text": m,
                             "entity_type": entity_type,
                             "rects": [],
@@ -523,16 +804,15 @@ class PDFView(QGraphicsView):
             parent: Parent widget.
         """
         super().__init__(scene, parent)
-        self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
+        self.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)
         self.start_pos: Optional[QPointF] = None
         self.temp_rect: Optional[QGraphicsRectItem] = None
 
     def mousePressEvent(self, event: Any) -> None:
         """Handle mouse press: start selection rectangle on left-click."""
-        if event.button() == Qt.LeftButton:
-            sp = self.mapToScene(event.position())
+        if event.button() == Qt.MouseButton.LeftButton:
+            sp = self.mapToScene(event.position().toPoint())
             self.start_pos = sp
-            self.point_clicked.emit(sp)
             self.temp_rect = QGraphicsRectItem(QRectF(sp, sp))
             self.temp_rect.setPen(QPen(QColor("#ef4444"), 2))
             self.scene().addItem(self.temp_rect)
@@ -541,23 +821,30 @@ class PDFView(QGraphicsView):
     def mouseMoveEvent(self, event: Any) -> None:
         """Update in-progress selection rectangle while dragging."""
         if self.start_pos and self.temp_rect:
-            ep = self.mapToScene(event.position())
+            ep = self.mapToScene(event.position().toPoint())
             self.temp_rect.setRect(QRectF(self.start_pos, ep).normalized())
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: Any) -> None:
-        """Finalize selection rectangle and emit rect_drawn if large enough."""
-        if event.button() == Qt.LeftButton and self.temp_rect:
+        """Finalize the gesture: a small movement is a click (point_clicked),
+        a larger one is a drawn selection (rect_drawn). Deferring both to
+        release, based on the final swept distance, keeps them mutually
+        exclusive so a drag never also fires a click mid-gesture.
+        """
+        if event.button() == Qt.MouseButton.LeftButton and self.temp_rect:
             rect = self.temp_rect.rect()
+            start = self.start_pos
             self.scene().removeItem(self.temp_rect)
             self.temp_rect = None
             self.start_pos = None
             if rect.width() > 5 and rect.height() > 5:
                 self.rect_drawn.emit(rect)
+            elif start is not None:
+                self.point_clicked.emit(start)
         super().mouseReleaseEvent(event)
 
     def wheelEvent(self, event: Any) -> None:
-        if event.modifiers() == Qt.ControlModifier:
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             self.zoom_req.emit(1 if event.angleDelta().y() > 0 else -1)
             event.accept()
         else:
@@ -744,10 +1031,13 @@ class NullifyPDF(QMainWindow):
         btn_clear.clicked.connect(self.cmd_clear)
         s_lay.addWidget(btn_clear)
         s_lay.addSpacing(20)
-        btn_export = QPushButton("Esporta Privacy")
+        btn_export = QPushButton("Esporta PDF")
         btn_export.setStyleSheet("border-color: #0ea5e9; color: #0ea5e9;")
         btn_export.clicked.connect(self.cmd_export)
         s_lay.addWidget(btn_export)
+        btn_reconstruct = QPushButton("Ricostruisci PDF")
+        btn_reconstruct.clicked.connect(self.cmd_reconstruct)
+        s_lay.addWidget(btn_reconstruct)
         s_lay.addStretch()
         btn_about = QPushButton("Info")
         btn_about.clicked.connect(self.cmd_about)
@@ -777,7 +1067,7 @@ class NullifyPDF(QMainWindow):
         btn_prev.clicked.connect(lambda: self.move_page(-1))
         self.le_page = QLineEdit("0")
         self.le_page.setFixedWidth(40)
-        self.le_page.setAlignment(Qt.AlignCenter)
+        self.le_page.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.le_page.returnPressed.connect(self.jump_page)
         self.lbl_tot = QLabel("/ 0")
         btn_next = QPushButton(">")
@@ -915,8 +1205,17 @@ class NullifyPDF(QMainWindow):
                 f"nelle pagine {preview}{suffix}. "
                 "Serve OCR prima della rilevazione automatica dei dati personali."
             )
+            QMessageBox.information(
+                self,
+                "PDF scansionato rilevato",
+                f"Questo documento sembra scansionato (nessun testo trovato "
+                f"nelle pagine {preview}{suffix}).\n\n"
+                'Puoi comunque selezionare manualmente le aree da censurare. '
+                'Per il riconoscimento automatico dei dati personali, attiva '
+                'prima "OCR PDF scansionati" e poi avvia "Auto Redact (AI)".',
+            )
 
-    def render(self) -> None:
+    def render_page(self) -> None:
         """Render current PDF page to display."""
         if not self.doc:
             return
@@ -929,7 +1228,7 @@ class NullifyPDF(QMainWindow):
         # QImage does NOT copy `pix.samples`; if `pix` is garbage-collected before
         # the image is used the buffer is freed (UB / crash). Force a deep copy.
         img = QImage(
-            pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888
+            pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888
         ).copy()
         self.scene.clear()
         self.scene.addPixmap(QPixmap.fromImage(img))
@@ -945,7 +1244,7 @@ class NullifyPDF(QMainWindow):
         """
         self.scale = max(0.5, min(4.0, self.scale + (0.25 * d)))
         self.lbl_zoom.setText(f"{int(self.scale * 100)}%")
-        self.render()
+        self.render_page()
 
     def move_page(self, d: int) -> None:
         """Move to adjacent page.
@@ -955,7 +1254,7 @@ class NullifyPDF(QMainWindow):
         """
         if self.doc and 0 <= self.page_num + d < len(self.doc):
             self.page_num += d
-            self.render()
+            self.render_page()
 
     def jump_page(self) -> None:
         """Jump to the page number entered in the page selector."""
@@ -966,7 +1265,7 @@ class NullifyPDF(QMainWindow):
             n = int(self.le_page.text()) - 1
             if 0 <= n < len(self.doc):
                 self.page_num = n
-                self.render()
+                self.render_page()
             else:
                 self.write_log(f"Avviso: Pagina {n + 1} non esiste (intervallo: 1-{len(self.doc)})")
         except ValueError:
@@ -989,6 +1288,7 @@ class NullifyPDF(QMainWindow):
             qrect.right() / self.scale,
             qrect.bottom() / self.scale,
         )
+        cl = ""
         with QMutexLocker(self.doc_mutex):
             if not self.doc:
                 return
@@ -1010,12 +1310,26 @@ class NullifyPDF(QMainWindow):
                     entity_type=self._infer_entity_type(txt),
                 )
                 cl = " ".join(txt.split()).lower()
-                if len(cl) > 2:
-                    self.allowlist.discard(cl)
-                    self.blocklist.add(cl)
-                    self.list_manager.save_blocklist(self.blocklist)
-                    self.list_manager.save_allowlist(self.allowlist)
-        self.render()
+        self.render_page()
+        # The redaction on this page is already applied regardless of the
+        # answer below; this only decides whether the word is also
+        # persisted to blocklist.txt so it gets auto-redacted in every
+        # future document.
+        if len(cl) > 2 and cl not in self.blocklist:
+            answer = QMessageBox.question(
+                self,
+                "Aggiungi alla blacklist",
+                f'Vuoi aggiungere "{cl}" alla blacklist?\n\n'
+                "Verrà censurata automaticamente in ogni documento PDF "
+                "che aprirai in futuro.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                self.allowlist.discard(cl)
+                self.blocklist.add(cl)
+                self.list_manager.save_blocklist(self.blocklist)
+                self.list_manager.save_allowlist(self.allowlist)
 
     def user_click_pt(self, qpt: QPointF) -> None:
         """Handle user click on redaction to delete it.
@@ -1026,7 +1340,7 @@ class NullifyPDF(QMainWindow):
         if not self.doc:
             return
         pt = fitz.Point(qpt.x() / self.scale, qpt.y() / self.scale)
-        has_ans = False
+        cl = ""
         with QMutexLocker(self.doc_mutex):
             if not self.doc:
                 return
@@ -1036,19 +1350,54 @@ class NullifyPDF(QMainWindow):
                 for a in (p.annots() or [])
                 if a.type[0] == fitz.PDF_ANNOT_REDACT and a.rect.contains(pt)
             ]
-            if ans:
-                has_ans = True
-                txt = p.get_text("text", clip=ans[0].rect)
-                for a in ans:
-                    p.delete_annot(a)
-                cl = " ".join(txt.split()).lower()
-                if len(cl) > 2:
-                    self.blocklist.discard(cl)
-                    self.allowlist.add(cl)
-                    self.list_manager.save_blocklist(self.blocklist)
-                    self.list_manager.save_allowlist(self.allowlist)
-        if has_ans:
-            self.render()
+            if not ans:
+                return
+            txt = p.get_text("text", clip=ans[0].rect)
+            cl = " ".join(txt.split()).lower()
+
+        add_to_whitelist = False
+        if len(cl) > 2:
+            box = QMessageBox(self)
+            box.setWindowTitle("Rimuovi censura")
+            box.setText(
+                f'Rimuovere la censura su "{cl}"?\n\n'
+                "Scegli se escluderla solo da questo documento oppure "
+                "aggiungerla alla whitelist permanente (non verrà mai più "
+                "censurata in nessun documento)."
+            )
+            btn_doc_only = box.addButton(
+                "Solo questo documento", QMessageBox.ButtonRole.AcceptRole
+            )
+            btn_whitelist = box.addButton(
+                "Whitelist permanente", QMessageBox.ButtonRole.YesRole
+            )
+            btn_cancel = box.addButton(
+                "Annulla", QMessageBox.ButtonRole.RejectRole
+            )
+            box.setDefaultButton(btn_doc_only)
+            box.exec()
+            clicked = box.clickedButton()
+            if clicked == btn_cancel:
+                return
+            add_to_whitelist = clicked == btn_whitelist
+
+        with QMutexLocker(self.doc_mutex):
+            if not self.doc:
+                return
+            p = self.doc[self.page_num]
+            ans = [
+                a
+                for a in (p.annots() or [])
+                if a.type[0] == fitz.PDF_ANNOT_REDACT and a.rect.contains(pt)
+            ]
+            for a in ans:
+                p.delete_annot(a)
+            if add_to_whitelist and len(cl) > 2:
+                self.blocklist.discard(cl)
+                self.allowlist.add(cl)
+                self.list_manager.save_blocklist(self.blocklist)
+                self.list_manager.save_allowlist(self.allowlist)
+        self.render_page()
 
     def cmd_clear(self) -> None:
         """Clear all redactions on current page."""
@@ -1066,7 +1415,7 @@ class NullifyPDF(QMainWindow):
             ]
             for a in to_delete:
                 p.delete_annot(a)
-        self.render()
+        self.render_page()
         self.write_log(f"Censure rimosse su pagina {self.page_num+1}")
 
     def cmd_dict(self) -> None:
@@ -1111,30 +1460,30 @@ class NullifyPDF(QMainWindow):
         d.setWindowTitle("Info")
         d.setFixedSize(340, 440)
         lay = QVBoxLayout(d)
-        lay.setAlignment(Qt.AlignCenter)
+        lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ip = resource_path(os.path.join("images", "NullifyPDF_icon.png"))
         if os.path.exists(ip):
             lbl_icon = QLabel()
             lbl_icon.setPixmap(
                 QPixmap(ip).scaled(
-                    100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                    100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
                 )
             )
-            lbl_icon.setAlignment(Qt.AlignCenter)
+            lbl_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lay.addWidget(lbl_icon)
             lay.addSpacing(10)
         lbl_title = QLabel("NullifyPDF")
         lbl_title.setStyleSheet("font-size: 24px; font-weight: bold;")
-        lbl_title.setAlignment(Qt.AlignCenter)
+        lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(lbl_title)
         lbl_ver = QLabel(f"v{APP_VERSION} AI Privacy Beta")
         lbl_ver.setStyleSheet("color: #0ea5e9; font-weight: bold;")
-        lbl_ver.setAlignment(Qt.AlignCenter)
+        lbl_ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(lbl_ver)
         desc = QLabel(
             "\nAnonimizzazione PDF Offline.\n\nSviluppato da: Graziano Mariella\nLicenza MIT"
         )
-        desc.setAlignment(Qt.AlignCenter)
+        desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(desc)
         lay.addSpacing(20)
         btn = QPushButton("Chiudi")
@@ -1213,13 +1562,20 @@ class NullifyPDF(QMainWindow):
     def _infer_entity_type(self, value: str) -> str:
         """Infer a coarse placeholder type for manually marked text."""
         compact = " ".join(value.split())
+        compact_nospace = compact.replace(" ", "")
         if re.search(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", compact, re.I):
             return "EMAIL_ADDRESS"
-        if re.search(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b", compact.replace(" ", ""), re.I):
+        if re.search(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b", compact_nospace, re.I):
             return "IBAN_CODE"
+        if re.fullmatch(
+            r"[A-Z]{6}\d{2}[A-EHLMPR-T]\d{2}[A-Z]\d{3}[A-Z]", compact_nospace, re.I
+        ):
+            return "IT_FISCAL_CODE"
+        if re.fullmatch(r"\d{11}", compact_nospace):
+            return "IT_VAT_CODE"
         if re.search(r"\+?\d[\d\s()./-]{6,}\d", compact):
             return "PHONE_NUMBER"
-        if re.search(r"\b\d{13,19}\b", compact.replace(" ", "")):
+        if re.search(r"\b\d{13,19}\b", compact_nospace):
             return "CREDIT_CARD"
         return "DATA"
 
@@ -1295,6 +1651,7 @@ class NullifyPDF(QMainWindow):
                     clean_original,
                     entity_type,
                     page=page.number,
+                    rect=(rect.x0, rect.y0, rect.x1, rect.y1),
                 )
                 page.add_redact_annot(
                     rect,
@@ -1302,7 +1659,10 @@ class NullifyPDF(QMainWindow):
                     fill=(1, 1, 1),
                     text_color=(0, 0, 0),
                     align=1,
-                    fontsize=8,
+                    # Must fit on one line: a wrapped placeholder is still
+                    # readable but no longer findable by search_for(), which
+                    # is the only handle a version 1 restore map has.
+                    fontsize=fit_redaction_fontsize(placeholder, rect),
                 )
             else:
                 page.add_redact_annot(
@@ -1311,7 +1671,7 @@ class NullifyPDF(QMainWindow):
                     fill=(1, 1, 1),
                     text_color=(0, 0, 0),
                     align=1,
-                    fontsize=8,
+                    fontsize=fit_redaction_fontsize("[IMAGE_REMOVED]", rect),
                 )
 
     @Slot(int, object)
@@ -1393,7 +1753,7 @@ class NullifyPDF(QMainWindow):
     def ai_finished(self) -> None:
         """Handle AI scan completion."""
         self.btn_ai.setEnabled(True)
-        self.render()
+        self.render_page()
 
     def cmd_export(self) -> None:
         """Export current PDF in irreversible or reversible privacy mode.
@@ -1441,7 +1801,7 @@ class NullifyPDF(QMainWindow):
                 self,
                 "Password mappa",
                 "Password per cifrare la mappa di ripristino (minimo 12 caratteri):",
-                QLineEdit.Password,
+                QLineEdit.EchoMode.Password,
             )
             if not ok:
                 return
@@ -1501,8 +1861,17 @@ class NullifyPDF(QMainWindow):
                         page.delete_link(lnk)
                 except (RuntimeError, AttributeError, KeyError) as e:
                     self.logger.debug(f"Could not delete link: {e}")
+                # PDF_REDACT_IMAGE_REMOVE deletes the ENTIRE image object if it
+                # intersects ANY redaction rect, even a small one. On a scanned
+                # PDF (the whole page is one image), redacting a single word
+                # wiped out the entire page, leaving a blank sheet with only
+                # the placeholder text visible. PDF_REDACT_IMAGE_PIXELS blanks
+                # out only the pixels under each redaction rect and leaves the
+                # rest of the image intact (verified this also fully blanks
+                # whole-image redactions from "Oscura Immagini", including
+                # under page rotation, with no visible fringe).
                 page.apply_redactions(
-                    images=fitz.PDF_REDACT_IMAGE_REMOVE, graphics=True
+                    images=fitz.PDF_REDACT_IMAGE_PIXELS, graphics=True
                 )
                 try:
                     # Materialize first: mutating during iteration of
@@ -1553,6 +1922,87 @@ class NullifyPDF(QMainWindow):
                     os.remove(tmp_path)
             except OSError as e:
                 self.logger.debug(f"Could not remove temp file {tmp_path}: {e}")
+
+    def cmd_reconstruct(self) -> None:
+        """Reconstruct a previously pseudonymized PDF using its restore map.
+
+        Operates on files chosen by the user, independent of whatever
+        document (if any) is currently loaded in the viewer.
+        """
+        if importlib.util.find_spec("cryptography") is None:
+            QMessageBox.critical(
+                self,
+                "Dipendenza mancante",
+                "La ricostruzione richiede la libreria 'cryptography'.",
+            )
+            return
+
+        pdf_path, _ = QFileDialog.getOpenFileName(
+            self, "Seleziona il PDF pseudonimizzato", "", "PDF (*.pdf)"
+        )
+        if not pdf_path:
+            return
+        map_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleziona la mappa di ripristino",
+            "",
+            "NullifyPDF map (*.nullifypdf-map)",
+        )
+        if not map_path:
+            return
+        map_password, ok = QInputDialog.getText(
+            self,
+            "Password mappa",
+            "Password per decifrare la mappa di ripristino:",
+            QLineEdit.EchoMode.Password,
+        )
+        if not ok or not map_password:
+            return
+        out_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Salva PDF ricostruito",
+            f"{os.path.splitext(pdf_path)[0]}_ricostruito.pdf",
+            "PDF (*.pdf)",
+        )
+        if not out_path:
+            return
+
+        from cryptography.fernet import InvalidToken
+
+        self.write_log("Ricostruzione PDF in corso...")
+        try:
+            with open(map_path, "rb") as fh:
+                encrypted = fh.read()
+            payload = decrypt_restore_payload(encrypted, map_password)
+            expected = expected_restore_count(payload)
+            restored_count = reconstruct_pdf(pdf_path, out_path, payload)
+            self.write_log(
+                f"RICOSTRUITO. {restored_count} segnaposto ripristinati."
+            )
+            # A restore that silently puts nothing back used to look like a
+            # success: same message, no dialog, output identical to input.
+            if restored_count < expected:
+                QMessageBox.warning(
+                    self,
+                    "Ricostruzione incompleta",
+                    f"Ripristinati solo {restored_count} valori su {expected} "
+                    "attesi.\n\nI valori mancanti non sono stati riscritti nel "
+                    "PDF: il file originale e la mappa restano l'unica copia. "
+                    "Controlla il log per i dettagli.",
+                )
+        except RestoreMapMismatch as e:
+            self.write_log(f"ERRORE ricostruzione: {e}")
+            QMessageBox.critical(self, "Mappa non corrispondente", str(e))
+        except InvalidToken:
+            self.write_log("ERRORE ricostruzione: password errata o mappa corrotta.")
+            QMessageBox.critical(
+                self,
+                "Errore decifrazione",
+                "Password errata o file della mappa corrotto.",
+            )
+        except Exception as e:
+            self.logger.error(f"Reconstruction failed: {traceback.format_exc()}")
+            self.write_log(f"ERRORE ricostruzione: {type(e).__name__}: {str(e)}")
 
 
 if __name__ == "__main__":

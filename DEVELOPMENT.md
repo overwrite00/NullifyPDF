@@ -108,13 +108,14 @@ NullifyPDF/
 |-- privacy_core.py            # Privacy modes and encrypted restore maps
 |-- PDF_Checker.py             # Heuristic verification utility
 |-- setup_env.py               # Environment setup script
-|-- build_local.py             # Lite/Full PyInstaller build script
+|-- build_local.py             # PyInstaller build script
 |-- requirements.txt           # Python dependencies
 |-- scripts/
-|   `-- download_ocr_data.py   # EN/IT OCR data downloader for Full builds
+|   `-- download_ocr_data.py   # EN/IT OCR data downloader
 |-- tests/
 |   |-- test_validation.py
 |   |-- test_privacy_core.py
+|   |-- test_reconstruct.py
 |   `-- test_build_config.py
 |-- images/
 |   `-- NullifyPDF.png
@@ -133,11 +134,11 @@ NullifyPDF/
 
 | Package               | Version | Purpose                      |
 | --------------------- | ------- | ---------------------------- |
-| **PySide6**           | 6.11.1  | GUI framework (Qt6 bindings) |
-| **PyMuPDF**           | 1.28.0  | PDF manipulation and OCR bridge |
+| **PySide6**           | 6.11.2  | GUI framework (Qt6 bindings) |
+| **PyMuPDF**           | 1.28.2  | PDF manipulation and OCR bridge |
 | **presidio-analyzer** | 2.2.364 | PII detection                |
-| **spaCy**             | 3.8.14  | NLP for entity recognition   |
-| **cryptography**      | 49.0.0  | Encrypted restore maps       |
+| **spaCy**             | 3.8.16  | NLP for entity recognition   |
+| **cryptography**      | 50.0.1  | Encrypted restore maps       |
 | **pytest**            | 9.1.1   | Testing framework            |
 
 ### Language Models (Auto-Downloaded)
@@ -179,6 +180,7 @@ class NullifyPDF:
     def cmd_auto_ai(self)               # Start AI/OCR scan
     def apply_ai_to_page(self, i, data) # Receive AI results
     def cmd_export(self)                # Export privacy PDF
+    def cmd_reconstruct(self)           # Reconstruct pseudonymized PDF from restore map
     def user_draw_rect(self, rect)      # Draw manual redaction
 ```
 
@@ -226,7 +228,7 @@ Opens `htmlcov/index.html` in browser.
 - ✅ **PDFListManager** — File I/O, persistence
 - ✅ **OCR Config** — Tesseract language selection and tessdata discovery
 - ✅ **Privacy Core** — Placeholder mapping and encrypted restore maps
-- ✅ **Build Config** — Lite/Full build variant behavior
+- ✅ **Build Config** — OCR data bundling behavior
 - ✅ **Resource Paths** — PyInstaller compatibility
 
 ---
@@ -236,27 +238,27 @@ Opens `htmlcov/index.html` in browser.
 ### Quick Build
 
 ```bash
-python build_local.py --lite
-python build_local.py --full
+python build_local.py
 ```
 
-**Output:** `dist/NullifyPDF_vX.Y.Z_Windows_Lite.exe` or `dist/NullifyPDF_vX.Y.Z_Windows_Full.exe` (on Windows)
+**Output:** `dist/NullifyPDF_vX.Y.Z_Windows.exe` (on Windows)
 
 ### What It Does
 
 1. Cleans `build/` and `dist/` directories
 2. Detects your OS (Windows/macOS/Linux)
 3. Reads version from `NullifyPDF.py` (`__version__`)
-4. Compiles with PyInstaller
-5. Renames with version and variant: `NullifyPDF_v{VERSION}_{OS}_{Lite|Full}.exe`
+4. Bundles EN/IT OCR data (downloaded automatically if missing)
+5. Compiles with PyInstaller
+6. Renames with version: `NullifyPDF_v{VERSION}_{OS}.exe`
 
 ### Distribution Artifacts
 
 | OS          | Output                            |
 | ----------- | --------------------------------- |
-| **Windows** | Lite/Full `.exe` executables      |
-| **macOS**   | Lite/Full `.app` bundle ZIPs      |
-| **Linux**   | Lite/Full binary + `.deb` + `.rpm` packages |
+| **Windows** | `.exe` executable                 |
+| **macOS**   | `.app` bundle ZIP                 |
+| **Linux**   | Portable binary + `.deb` + `.rpm` packages |
 
 ### Troubleshooting Build Issues
 
@@ -279,7 +281,7 @@ sys.setrecursionlimit(5000)
 <summary><strong>Build succeeds but executable won't run</strong></summary>
 
 1. Check antivirus isn't blocking
-2. Run in debug mode: `NullifyPDF_vX.Y.Z_Windows_Lite.exe` or `NullifyPDF_vX.Y.Z_Windows_Full.exe` from PowerShell
+2. Run in debug mode: `NullifyPDF_vX.Y.Z_Windows.exe` from PowerShell
 3. Check `.stdout` file if created
 4. Report on GitHub
 
@@ -305,7 +307,7 @@ git checkout -b feature/my-feature
 
 # 4. Test
 pytest tests/ -v
-python build_local.py --lite
+python build_local.py
 
 # 5. Commit with clear message
 git commit -m "feat(ai): add IBAN detection"
@@ -437,7 +439,7 @@ isort NullifyPDF.py
 | `NullifyPDF.py`    | Main app, GUI, OCR, export logic |
 | `privacy_core.py`  | Placeholder and restore-map logic |
 | `setup_env.py`     | Environment setup |
-| `build_local.py`   | PyInstaller Lite/Full build |
+| `build_local.py`   | PyInstaller build |
 | `PDF_Checker.py`   | Post-processing utility |
 | `requirements.txt` | Dependencies |
 | `tests/`           | Unit and smoke tests |
@@ -450,6 +452,7 @@ isort NullifyPDF.py
 | Auto Redact         | `NullifyPDF.py` | `cmd_auto_ai()`       |
 | AI Processing       | `NullifyPDF.py` | `AIWorker.run_scan()` |
 | Export              | `NullifyPDF.py` | `cmd_export()`        |
+| Reconstruct         | `NullifyPDF.py` | `cmd_reconstruct()`   |
 | Blocklist/Allowlist | `NullifyPDF.py` | `PDFListManager`      |
 
 ---
@@ -504,7 +507,7 @@ Never hardcode API keys or passwords.
 2. Edit code following code standards
 3. Add tests: `pytest tests/test_my_feature.py`
 4. Run full test suite: `pytest tests/ -v`
-5. Build locally: `python build_local.py --lite`
+5. Build locally: `python build_local.py`
 6. Commit and push
 
 ### Q: How do I test on different OS?
@@ -560,5 +563,5 @@ Ready to contribute? See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
 
 ---
 
-*Last updated: 2026-07-29*  
+*Last updated: 2026-09-18*  
 *← [Troubleshooting](./TROUBLESHOOTING.md) | [Back to README →](./README.md)*

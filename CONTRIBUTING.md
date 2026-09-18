@@ -57,7 +57,7 @@ source .venv/bin/activate  # or .venv\Scripts\Activate.ps1 on Windows
 pytest tests/ -v
 
 # Build to verify compilation
-python build_local.py --lite
+python build_local.py
 ```
 
 ### 5️⃣ Commit with Clear Messages
@@ -89,7 +89,7 @@ Then open Pull Request on GitHub with description from template.
 
 ❌ **Major Architecture Changes** — Discuss first via issue  
 ❌ **New Heavy Dependencies** — Discuss first; keep the app local and maintainable  
-✅ **OCR Improvements** — In scope when they stay local/offline and preserve the Lite/Full build split  
+✅ **OCR Improvements** — In scope when they stay local/offline  
 ❌ **Cloud Features** — Must remain 100% local  
 
 > [!TIP]
@@ -219,7 +219,7 @@ thread when scanning large PDFs concurrently."
 ### Before Opening PR
 
 1. ✅ Run tests: `pytest tests/ -v`
-2. ✅ Build locally: `python build_local.py --lite` and, when OCR packaging changes, `python build_local.py --full`
+2. ✅ Build locally: `python build_local.py`
 3. ✅ Update CHANGELOG.md with your changes
 4. ✅ Self-review your code (would you understand this in 6 months?)
 5. ✅ Check links in documentation
@@ -378,5 +378,5 @@ Every contribution — code, docs, bug reports, ideas — helps make NullifyPDF 
 
 ---
 
-*Last updated: 2026-07-23*  
+*Last updated: 2026-09-18*  
 *← [Back to README](./README.md) | [Architecture →](./ARCHITECTURE.md)*

@@ -22,7 +22,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-22.04, macos-latest]
-        variant: [lite, full]
 
     steps:
       - name: Checkout Code
@@ -58,20 +57,18 @@ jobs:
           echo "NULLIFYPDF_BETA_SUFFIX=${TAG#*-}" >> "$GITHUB_ENV"
 
       - name: Build
-        env:
-          NULLIFYPDF_BUILD_VARIANT: ${{ matrix.variant }}
         run: python build_local.py
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: beta-build-${{ runner.os }}-${{ matrix.variant }}
+          name: beta-build-${{ runner.os }}
           retention-days: 5
           path: |
-            dist/NullifyPDF_v*_Windows_*.exe
-            dist/NullifyPDF_v*_macOS_*.zip
-            dist/NullifyPDF_v*_Ubuntu_*.deb
-            dist/NullifyPDF_v*_Fedora_*.rpm
+            dist/NullifyPDF_v*_Windows.exe
+            dist/NullifyPDF_v*_macOS.zip
+            dist/NullifyPDF_v*_Ubuntu.deb
+            dist/NullifyPDF_v*_Fedora.rpm
 
   create_beta_release:
     name: Create GitHub Beta Release
@@ -86,15 +83,49 @@ jobs:
           pattern: beta-build-*
           merge-multiple: true
 
-      - name: Release
-        uses: softprops/action-gh-release@v3
-        with:
-          prerelease: true
-          files: |
-            all-builds/NullifyPDF_v*_Windows_*.exe
-            all-builds/NullifyPDF_v*_macOS_*.zip
-            all-builds/NullifyPDF_v*_Ubuntu_*.deb
-            all-builds/NullifyPDF_v*_Fedora_*.rpm
-          body: "NullifyPDF beta release (build from develop). Includes Lite and Full OCR variants. Do not use in production. If validation succeeds, this build will be promoted to stable without rebuilding."
+      - name: Create release and upload assets sequentially
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+          REPO="${{ github.repository }}"
+          NOTES="NullifyPDF beta release (build from develop). Do not use in production. If validation succeeds, this build will be promoted to stable without rebuilding."
+
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, uploading/replacing assets."
+          else
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --prerelease --notes "$NOTES"
+          fi
+
+          # Uploaded one at a time (not via softprops/action-gh-release's
+          # concurrent batch) because parallel uploads of these large
+          # binaries (100-300MB each) were timing out with an opaque
+          # "Error saving asset" and no per-file retry.
+          shopt -s nullglob
+          files=(
+            all-builds/NullifyPDF_v*_Windows.exe
+            all-builds/NullifyPDF_v*_macOS.zip
+            all-builds/NullifyPDF_v*_Ubuntu.deb
+            all-builds/NullifyPDF_v*_Fedora.rpm
+          )
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No release assets found to upload" >&2
+            exit 1
+          fi
+
+          for f in "${files[@]}"; do
+            echo "Uploading $f ..."
+            attempt=1
+            until gh release upload "$TAG" "$f" --repo "$REPO" --clobber; do
+              if [ "$attempt" -ge 3 ]; then
+                echo "Failed to upload $f after $attempt attempts" >&2
+                exit 1
+              fi
+              attempt=$((attempt + 1))
+              echo "Retrying upload of $f (attempt $attempt)..."
+              sleep 10
+            done
+          done

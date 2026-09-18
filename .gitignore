@@ -74,7 +74,7 @@ desktop.ini
 *.nullifypdf.tmp
 *.nullifypdf-map
 
-# OCR data is downloaded for Full builds, not stored in git.
+# OCR data is downloaded at build time, not stored in git.
 ocr/tessdata/*.traineddata
 
 # Packaging temp directories

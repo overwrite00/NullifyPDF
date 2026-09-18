@@ -21,18 +21,15 @@ Install or download the language data you need:
 - `eng.traineddata` for English OCR.
 - `ita.traineddata` for Italian OCR.
 
-For release builds, NullifyPDF uses the `Full` variant to bundle these two
-files automatically. Developers can prepare a local Full build with:
+Release builds always bundle these two files automatically. Developers can
+prepare a local build with:
 
 ```bash
-python build_local.py --full
+python build_local.py
 ```
 
-If the OCR files are missing, the Full build downloads them automatically from
+If the OCR files are missing, the build downloads them automatically from
 `tesseract-ocr/tessdata_fast` before running PyInstaller.
-
-Use `python build_local.py --lite` for a smaller build without bundled OCR
-data.
 
 If OCR is enabled in the app but `tessdata` cannot be found, NullifyPDF stops
 before scanning and asks you to configure Tesseract instead of silently
@@ -40,5 +37,5 @@ processing scanned pages without OCR.
 
 ---
 
-*Last updated: 2026-07-23*  
+*Last updated: 2026-09-18*  
 *[Back to README](./README.md) | [Architecture →](./ARCHITECTURE.md)*
