@@ -13,6 +13,7 @@ import hashlib
 import html
 import importlib.util
 import json
+import math
 from typing import Optional, List, Set, Dict, Any, Tuple, TypedDict, NotRequired
 import fitz
 from PySide6.QtWidgets import (
@@ -50,6 +51,7 @@ from PySide6.QtGui import (
 from PySide6.QtCore import Qt, QThread, QObject, Signal, Slot, QRectF, QPointF, QMutex, QMutexLocker
 
 from privacy_core import (
+    PlaceholderEntry,
     PlaceholderRegistry,
     PrivacyMode,
     build_restore_payload,
@@ -140,6 +142,111 @@ class RestoreMapMismatch(ValueError):
     """Raised when a restore map's recorded hash doesn't match the PDF."""
 
 
+REDACTION_FONTNAME = "helv"
+REDACTION_MAX_FONTSIZE = 8.0
+REDACTION_MIN_FONTSIZE = 3.0
+
+
+def fit_redaction_fontsize(
+    text: str,
+    rect: "fitz.Rect",
+    max_size: float = REDACTION_MAX_FONTSIZE,
+    min_size: float = REDACTION_MIN_FONTSIZE,
+) -> float:
+    """Return the largest font size that lays `text` out inside `rect` intact.
+
+    `apply_redactions()` lays its replacement text out as a text *box*: when
+    the text is wider than the box it wraps, and MuPDF will happily break in
+    the middle of a token, turning ``DATA_001`` into ``DATA_`` + ``001``. The
+    result is still perfectly legible on screen but is no longer findable by
+    `page.search_for("DATA_001")`, which silently breaks reconstruction. If
+    the text cannot be wrapped into the box at all, MuPDF drops it entirely.
+
+    Picking a size that fits up front avoids both outcomes. Wrapping
+    *between words* is fine and stays legible, so the size only has to make
+    the longest unbreakable token fit the box width; the box must then be
+    tall enough for the resulting number of wrapped lines.
+
+    Args:
+        text: The replacement string to be stamped into the box.
+        rect: The redaction box.
+        max_size: Preferred (largest) font size.
+        min_size: Floor; returned even if the text still does not fit.
+
+    Returns:
+        float: Font size to pass to `add_redact_annot(..., fontsize=...)`.
+    """
+    tokens = text.split() or [text]
+    usable_width = max(1.0, rect.width - 2.0)
+    size = max_size
+    while size > min_size:
+        line_height = size * 1.35
+        widest_token = max(
+            fitz.get_text_length(token, fontname=REDACTION_FONTNAME, fontsize=size)
+            for token in tokens
+        )
+        total_width = fitz.get_text_length(
+            text, fontname=REDACTION_FONTNAME, fontsize=size
+        )
+        lines_needed = max(1, math.ceil(total_width / usable_width))
+        if widest_token <= usable_width and lines_needed * line_height <= rect.height:
+            return size
+        size -= 0.25
+    return min_size
+
+
+def _placeholder_rects_by_chars(page: Any, placeholder: str) -> List["fitz.Rect"]:
+    """Locate a placeholder that `search_for()` cannot find, character by character.
+
+    Fallback for version 1 restore maps (which carry no coordinates) whose
+    placeholder was wrapped across lines by `apply_redactions()`. Walks each
+    text block's characters in reading order, ignoring the line breaks that
+    defeat `search_for()`, and returns the union box of each match.
+    """
+    rects: List["fitz.Rect"] = []
+    try:
+        raw = page.get_text("rawdict")
+    except Exception:
+        return rects
+    for block in raw.get("blocks", []):
+        chars: List[Any] = []
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                chars.extend(span.get("chars", []))
+        if not chars:
+            continue
+        text = "".join(ch.get("c", "") for ch in chars)
+        start = text.find(placeholder)
+        while start != -1:
+            matched = chars[start:start + len(placeholder)]
+            box = fitz.Rect(matched[0]["bbox"])
+            for ch in matched[1:]:
+                box |= fitz.Rect(ch["bbox"])
+            rects.append(box)
+            start = text.find(placeholder, start + len(placeholder))
+    return rects
+
+
+def _restore_targets(page: Any, entry: PlaceholderEntry) -> List["fitz.Rect"]:
+    """Return the boxes on `page` that should get `entry.original` back.
+
+    Prefers the coordinates recorded in the restore map (version 2+), which
+    are the boxes the original value was taken from, so the value fits back
+    into them. Falls back to text search only for version 1 maps.
+    """
+    stored = [
+        fitz.Rect(occurrence.rect)
+        for occurrence in entry.occurrences
+        if occurrence.page == page.number
+    ]
+    if stored:
+        return stored
+    hits = list(page.search_for(entry.placeholder))
+    if hits:
+        return hits
+    return _placeholder_rects_by_chars(page, entry.placeholder)
+
+
 def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int:
     """Rebuild a pseudonymized PDF's original values from a decrypted restore map.
 
@@ -150,11 +257,9 @@ def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int
     placeholder text, so a longer original value may be visually clipped or
     crowd the box.
 
-    Searches every page for every placeholder rather than trusting each
-    entry's recorded `page`: `PlaceholderRegistry` reuses the same
-    placeholder for a repeated value and only records the page of its first
-    occurrence, so a later occurrence on another page would otherwise never
-    be found.
+    Uses the redaction boxes recorded in the restore map (version 2+) and
+    only falls back to searching for the placeholder text with version 1
+    maps, which carry no coordinates.
 
     Args:
         in_path: Path to the pseudonymized PDF to reconstruct from.
@@ -162,7 +267,11 @@ def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int
         payload: Decrypted restore-map payload (see `privacy_core.build_restore_payload`).
 
     Returns:
-        int: Number of placeholder occurrences restored.
+        int: Number of placeholder occurrences whose original value was
+            **verified present** in the saved output. The count is taken
+            from the written file, not from the number of redactions
+            requested, so a value that `apply_redactions()` silently
+            dropped is never reported as restored.
 
     Raises:
         ValueError: If the payload is not a recognized restore map.
@@ -177,26 +286,89 @@ def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int
         )
 
     entries = sort_entries_longest_placeholder_first(parse_restore_entries(payload))
-    restored_count = 0
+    # (page index, box, original value) for every restoration we attempted,
+    # so the saved output can be checked against it below.
+    attempted: List[Tuple[int, fitz.Rect, str]] = []
     doc = fitz.open(in_path)
     try:
         for page in doc:
+            claimed: List[fitz.Rect] = []
             for entry in entries:
-                for rect in page.search_for(entry.placeholder):
+                for rect in _restore_targets(page, entry):
+                    # Entries are sorted longest-placeholder-first, so a
+                    # shorter placeholder must not re-redact a box a longer
+                    # one already claimed: searching for PERSON_001 also hits
+                    # the first ten characters of a rendered PERSON_0010, and
+                    # that hit sits *inside* the longer one's box.
+                    # Containment, not intersection: two separate fields the
+                    # user boxed side by side may legitimately touch, and
+                    # skipping the second would drop a value.
+                    if any(taken.contains(rect) for taken in claimed):
+                        continue
+                    claimed.append(fitz.Rect(rect))
                     page.add_redact_annot(
                         rect,
                         text=entry.original,
                         fill=(1, 1, 1),
                         text_color=(0, 0, 0),
                         align=1,
-                        fontsize=8,
+                        fontsize=fit_redaction_fontsize(entry.original, rect),
                     )
-                    restored_count += 1
+                    attempted.append((page.number, fitz.Rect(rect), entry.original))
             page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_PIXELS, graphics=True)
         doc.save(out_path, garbage=4, deflate=True, clean=True)
     finally:
         doc.close()
-    return restored_count
+
+    return _verify_restored(out_path, attempted)
+
+
+def expected_restore_count(payload: Dict[str, Any]) -> int:
+    """Return how many placeholder occurrences a restore map should put back.
+
+    Counts occurrences, not entries: one entry can carry several boxes (the
+    same value redacted on more than one page), and `reconstruct_pdf`
+    returns restored *occurrences*. Comparing its result against the entry
+    count would hide a partial restore -- which is exactly the repeated-value
+    case reconstruction has already gone wrong on once.
+    """
+    return sum(
+        max(1, len(entry.occurrences)) for entry in parse_restore_entries(payload)
+    )
+
+
+def _verify_restored(
+    out_path: str, attempted: List[Tuple[int, "fitz.Rect", str]]
+) -> int:
+    """Count how many attempted restorations actually landed in the output.
+
+    `apply_redactions()` drops its replacement text silently when the text
+    cannot be laid out inside the box, so counting the redactions we asked
+    for would over-report: the feature would claim to have restored values
+    it had in fact destroyed. Read the answer back off the written file.
+    """
+    logger = logging.getLogger("nullifypdf")
+    restored = 0
+    doc = fitz.open(out_path)
+    try:
+        for page_number, rect, original in attempted:
+            probe = fitz.Rect(rect) + (-2, -2, 2, 2)
+            # Whitespace-insensitive: a long value legitimately wraps onto
+            # several lines inside its box. What matters is that its
+            # characters are back on the page, not how they are broken up.
+            found = "".join(doc[page_number].get_text("text", clip=probe).split())
+            if "".join(original.split()) in found:
+                restored += 1
+            else:
+                logger.warning(
+                    "Reconstruction: value not restored on page %s at %s "
+                    "(it did not fit its redaction box).",
+                    page_number + 1,
+                    tuple(round(v, 1) for v in rect),
+                )
+    finally:
+        doc.close()
+    return restored
 
 
 def find_tessdata_dir() -> Optional[str]:
@@ -1475,6 +1647,7 @@ class NullifyPDF(QMainWindow):
                     clean_original,
                     entity_type,
                     page=page.number,
+                    rect=(rect.x0, rect.y0, rect.x1, rect.y1),
                 )
                 page.add_redact_annot(
                     rect,
@@ -1482,7 +1655,10 @@ class NullifyPDF(QMainWindow):
                     fill=(1, 1, 1),
                     text_color=(0, 0, 0),
                     align=1,
-                    fontsize=8,
+                    # Must fit on one line: a wrapped placeholder is still
+                    # readable but no longer findable by search_for(), which
+                    # is the only handle a version 1 restore map has.
+                    fontsize=fit_redaction_fontsize(placeholder, rect),
                 )
             else:
                 page.add_redact_annot(
@@ -1491,7 +1667,7 @@ class NullifyPDF(QMainWindow):
                     fill=(1, 1, 1),
                     text_color=(0, 0, 0),
                     align=1,
-                    fontsize=8,
+                    fontsize=fit_redaction_fontsize("[IMAGE_REMOVED]", rect),
                 )
 
     @Slot(int, object)
@@ -1794,10 +1970,22 @@ class NullifyPDF(QMainWindow):
             with open(map_path, "rb") as fh:
                 encrypted = fh.read()
             payload = decrypt_restore_payload(encrypted, map_password)
+            expected = expected_restore_count(payload)
             restored_count = reconstruct_pdf(pdf_path, out_path, payload)
             self.write_log(
                 f"RICOSTRUITO. {restored_count} segnaposto ripristinati."
             )
+            # A restore that silently puts nothing back used to look like a
+            # success: same message, no dialog, output identical to input.
+            if restored_count < expected:
+                QMessageBox.warning(
+                    self,
+                    "Ricostruzione incompleta",
+                    f"Ripristinati solo {restored_count} valori su {expected} "
+                    "attesi.\n\nI valori mancanti non sono stati riscritti nel "
+                    "PDF: il file originale e la mappa restano l'unica copia. "
+                    "Controlla il log per i dettagli.",
+                )
         except RestoreMapMismatch as e:
             self.write_log(f"ERRORE ricostruzione: {e}")
             QMessageBox.critical(self, "Mappa non corrispondente", str(e))
