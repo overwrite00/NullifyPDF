@@ -48,7 +48,7 @@ Your step-by-step guide to redacting sensitive data from PDFs safely and securel
 
 ## Step 3️⃣ — Automatic Redaction (AI Scan)
 
-Click the **"Auto Redact (AI)"** button. NullifyPDF will automatically find and flag:
+Click the **"Auto Redact (AI)"** button. A dialog first lets you tick which data types to look for (your choice is remembered). NullifyPDF will then automatically find and flag the selected types; other occurrences of a detected value are matched as whole words only ("Rossi" does not match "Rossini"):
 
 - 🧑 **Names & Surnames**
 - 🏙️ **Cities & Addresses**

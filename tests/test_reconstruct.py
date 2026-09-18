@@ -3,7 +3,7 @@
 import pathlib
 import sys
 
-import fitz
+import pymupdf as fitz
 import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))

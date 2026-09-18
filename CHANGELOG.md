@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Added
+
+- **Choose what the AI scan looks for**: clicking "Auto Redact (AI)" now opens a dialog with one checkbox per data type (names, locations, email, phone, IBAN, credit cards, crypto wallets, fiscal code, VAT number, driver licence, ID card, passport). The choice is remembered in `~/.nullifypdf/ai_entities.json`.
+
+### 🐛 Fixed
+
+- **AI scan selected ordinary text and parts of words**: detections were reduced to bare strings and then re-searched page-wide with a case-insensitive substring search, so one NER hit on "Rossi" also redacted "Rossini", and a stray tag spread to every occurrence on the page. Detections now use Presidio's exact character offsets mapped to word boxes, other occurrences are matched as whole words only, weak recognizers are filtered by per-type confidence thresholds, and generic PERSON/LOCATION hits (titles, months, salutations, lowercase text) are dropped. Blocklist and allowlist matching is whole-word too. A name that the NER model glues to the following address ("Rossini Marco Via Garibaldi") is now cut at the street word or number; the address part is kept as a location only when that type is enabled.
+
+### 🔧 Changed
+
+- **Type checking is now a blocking CI step**: `mypy` runs on `NullifyPDF.py`, `pii_detection.py`, `privacy_core.py` and `PDF_Checker.py` without `--ignore-missing-imports` or `|| true`. PyMuPDF is imported as `pymupdf` (the `fitz` alias ships no type marker), so its usage is really type-checked.
+
 ## [2.2.0] - 2026-09-18
 
 Validated through the 2.2.0-beta.1/beta.2/beta.3/beta.4 prereleases before this stable release, promoted from `v2.2.0-beta.4` without rebuilding; only the final stable version gets its own heading here.
