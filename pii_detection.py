@@ -72,6 +72,12 @@ _HONORIFICS = {
     "avv.", "geom", "geom.", "rag", "rag.", "mr", "mr.", "mrs", "mrs.", "ms",
     "ms.", "spett.le", "gentile", "egregio", "egregia",
 }
+_STREET_WORDS = {
+    "via", "viale", "v.le", "piazza", "p.za", "piazzale", "corso", "c.so",
+    "largo", "vicolo", "strada", "str.", "contrada", "località", "loc.",
+    "frazione", "fraz.", "borgo", "lungotevere", "c/o", "street", "st.",
+    "avenue", "road", "rd.", "lane",
+}
 _EDGE_PUNCT = " \t\r\n.,;:!?()[]{}<>\"'«»“”‘’"
 
 
@@ -186,17 +192,62 @@ def _strip_honorifics(c: Candidate) -> Optional[Candidate]:
     )
 
 
+def _split_person_address(
+    c: Candidate,
+) -> Tuple[Optional[Candidate], Optional[Candidate]]:
+    """Cut a PERSON span at the first street word or number token.
+
+    NER often glues a name to the address that follows it ("Rossini Marco
+    Via Garibaldi"). Returns ``(person, address_tail)``; either may be None.
+    """
+    tokens = list(re.finditer(r"\S+", c.text))
+    for i, tok in enumerate(tokens):
+        word = tok.group().strip(",;:()").lower()
+        if word in _STREET_WORDS or any(ch.isdigit() for ch in word):
+            if i == 0:
+                return None, Candidate(
+                    c.start, c.end, c.text, "LOCATION", c.score
+                )
+            cut = tokens[i].start()
+            person_text = c.text[:cut].rstrip(_EDGE_PUNCT + " ")
+            person = Candidate(
+                c.start, c.start + len(person_text), person_text,
+                c.entity_type, c.score,
+            )
+            tail_text = c.text[cut:].strip(_EDGE_PUNCT)
+            tail = Candidate(
+                c.start + cut, c.start + cut + len(tail_text), tail_text,
+                "LOCATION", c.score,
+            )
+            return person, tail
+    return c, None
+
+
 def clean_candidates(
-    candidates: Iterable[Candidate], stopwords: Optional[Iterable[str]] = None
+    candidates: Iterable[Candidate],
+    stopwords: Optional[Iterable[str]] = None,
+    enabled_types: Optional[Iterable[str]] = None,
 ) -> List[Candidate]:
-    """Drop generic/unlikely PERSON and LOCATION hits; other types pass."""
+    """Drop generic/unlikely PERSON and LOCATION hits; other types pass.
+
+    A PERSON span running into an address is cut before the address; the
+    address part is kept as a LOCATION only when LOCATION is enabled.
+    """
     stop = {s.lower() for s in (stopwords or ())}
+    allowed = set(enabled_types) if enabled_types is not None else None
     out: List[Candidate] = []
     for c in candidates:
         if c.entity_type not in _NER_TYPES:
             out.append(c)
             continue
-        cleaned = _strip_honorifics(c) if c.entity_type == "PERSON" else c
+        cleaned: Optional[Candidate] = c
+        if c.entity_type == "PERSON":
+            cleaned = _strip_honorifics(c)
+            tail: Optional[Candidate] = None
+            if cleaned is not None:
+                cleaned, tail = _split_person_address(cleaned)
+            if tail is not None and (allowed is None or "LOCATION" in allowed):
+                out.extend(clean_candidates([tail], stop, allowed))
         if cleaned is None or not any(ch.isupper() for ch in cleaned.text):
             continue
         tokens = [t.strip(_EDGE_PUNCT).lower() for t in cleaned.text.split()]

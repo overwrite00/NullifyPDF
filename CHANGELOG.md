@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed
 
-- **AI scan selected ordinary text and parts of words**: detections were reduced to bare strings and then re-searched page-wide with a case-insensitive substring search, so one NER hit on "Rossi" also redacted "Rossini", and a stray tag spread to every occurrence on the page. Detections now use Presidio's exact character offsets mapped to word boxes, other occurrences are matched as whole words only, weak recognizers are filtered by per-type confidence thresholds, and generic PERSON/LOCATION hits (titles, months, salutations, lowercase text) are dropped. Blocklist and allowlist matching is whole-word too.
+- **AI scan selected ordinary text and parts of words**: detections were reduced to bare strings and then re-searched page-wide with a case-insensitive substring search, so one NER hit on "Rossi" also redacted "Rossini", and a stray tag spread to every occurrence on the page. Detections now use Presidio's exact character offsets mapped to word boxes, other occurrences are matched as whole words only, weak recognizers are filtered by per-type confidence thresholds, and generic PERSON/LOCATION hits (titles, months, salutations, lowercase text) are dropped. Blocklist and allowlist matching is whole-word too. A name that the NER model glues to the following address ("Rossini Marco Via Garibaldi") is now cut at the street word or number; the address part is kept as a location only when that type is enabled.
 
 ## [2.2.0] - 2026-09-18
 

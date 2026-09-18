@@ -112,3 +112,18 @@ def test_real_analyzer_no_partial_word_redaction():
         for rect in propagate_whole_word(idx, c.text):
             words = [idx.text[w.start:w.end] for w in idx.words if w.rect[1] == rect[1] and w.rect[0] >= rect[0] - 0.1 and w.rect[2] <= rect[2] + 0.1]
             assert words and words[0].strip(".,").lower() == first
+
+
+def test_person_glued_to_address_is_split():
+    text = "Rossini Marco Via Garibaldi"
+    c = Candidate(0, len(text), text, "PERSON", 0.85)
+    out = clean_candidates([c])
+    assert [(x.entity_type, x.text) for x in out] == [
+        ("LOCATION", "Via Garibaldi"), ("PERSON", "Rossini Marco"),
+    ]
+    only_person = clean_candidates([c], enabled_types=["PERSON"])
+    assert [x.text for x in only_person] == ["Rossini Marco"]
+    numbered = Candidate(0, 15, "Mario Rossi 12 A", "PERSON", 0.85)
+    assert [x.text for x in clean_candidates([numbered], enabled_types=["PERSON"])] == ["Mario Rossi"]
+    addr_first = Candidate(0, 13, "Via Garibaldi", "PERSON", 0.85)
+    assert [x.entity_type for x in clean_candidates([addr_first])] == ["LOCATION"]

@@ -725,7 +725,9 @@ class AIWorker(QObject):
                         text=index.text, entities=targets, language=lang
                     )
                     candidates.extend(filter_results(res, index.text, targets))
-                candidates = resolve_overlaps(clean_candidates(candidates))
+                candidates = resolve_overlaps(
+                    clean_candidates(candidates, enabled_types=targets)
+                )
                 detections = []
                 seen_values: Set[Tuple[str, str]] = set()
                 for c in candidates:
