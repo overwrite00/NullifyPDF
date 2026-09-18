@@ -212,7 +212,7 @@ Runtime behavior:
 4. OCR text is used for Presidio detection.
 5. OCR search rectangles are used to place redactions on scanned pages.
 
-The Full release bundles EN/IT OCR data. The Lite release requires local Tesseract `tessdata` when OCR is enabled.
+Every release bundles EN/IT OCR data.
 
 ---
 
