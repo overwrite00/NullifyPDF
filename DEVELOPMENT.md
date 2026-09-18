@@ -106,6 +106,7 @@ If the GUI opens → **You're ready to develop!** 🎉
 NullifyPDF/
 |-- NullifyPDF.py              # Main PySide6 application
 |-- privacy_core.py            # Privacy modes and encrypted restore maps
+|-- pii_detection.py           # Qt-free AI detection helpers (offsets, filters, whole-word matching)
 |-- PDF_Checker.py             # Heuristic verification utility
 |-- setup_env.py               # Environment setup script
 |-- build_local.py             # PyInstaller build script
@@ -115,6 +116,7 @@ NullifyPDF/
 |-- tests/
 |   |-- test_validation.py
 |   |-- test_privacy_core.py
+|   |-- test_pii_detection.py
 |   |-- test_reconstruct.py
 |   `-- test_build_config.py
 |-- images/
@@ -438,6 +440,7 @@ isort NullifyPDF.py
 | ------------------ | ----------------------- |
 | `NullifyPDF.py`    | Main app, GUI, OCR, export logic |
 | `privacy_core.py`  | Placeholder and restore-map logic |
+| `pii_detection.py` | AI detection precision: word-box index, thresholds, filters, entity selection |
 | `setup_env.py`     | Environment setup |
 | `build_local.py`   | PyInstaller build |
 | `PDF_Checker.py`   | Post-processing utility |
@@ -519,11 +522,9 @@ Never hardcode API keys or passwords.
 ### Q: Where do I add new AI detections?
 
 **A:**
-In `AIWorker.run_scan()`:
-1. Use Presidio analyzer for regex patterns
-2. Use spaCy models for entity recognition
-3. Merge and deduplicate results
-4. Filter through allowlist
+1. Add the Presidio entity type (and its dialog label) to `ENTITY_GROUPS` in `pii_detection.py`, plus a threshold in `ENTITY_SCORE_THRESHOLDS`.
+2. `AIWorker.run_scan()` analyzes the page text built by `build_page_index()`. Filtering (`filter_results`, `clean_candidates`, `resolve_overlaps`) and offset-to-rectangle mapping (`span_to_rects`, `propagate_whole_word`) live in `pii_detection.py`, which has no Qt dependency and is unit-tested in `tests/test_pii_detection.py`.
+3. Detections are filtered through the allowlist in the worker.
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for AI pipeline details.
 
