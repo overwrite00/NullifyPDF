@@ -32,7 +32,7 @@ NullifyPDF goes beyond simple text covering. It uses **Natural Language Processi
 
 ## ✨ Key Features
 
-- 🧠 **AI-Powered Redaction** — Automatic bilingual (EN/IT) detection of PII: names, locations, emails, phones, IBANs, credit cards, crypto addresses
+- 🧠 **AI-Powered Redaction** — Automatic bilingual (EN/IT) detection of PII: names, locations, emails, phones, IBANs, credit cards, crypto addresses, Italian fiscal codes and IDs. A dialog lets you choose which data types to scan for, and matching is whole-word so ordinary text is not caught
 - 🗄️ **Fluid UI & Thread-Safe** — PySide6 modern dark-mode interface with zero UI freezing. Text extraction in worker thread with QMutex serialization
 - 📖 **Persistent Dictionaries** — Blocklist and Allowlist synchronized to disk (`~/.nullifypdf`) with O(1) fast-path matching
 - 🛡️ **Privacy Export Modes** — Choose irreversible anonymization or reversible pseudonymization with a separately encrypted restore map
@@ -197,6 +197,7 @@ pytest tests/ -v
 - Resource path resolution
 - OCR configuration helpers
 - Privacy placeholder and encrypted restore-map primitives
+- AI detection helpers (offset mapping, filtering, whole-word matching) and reconstruction with the original font
 - Build configuration
 
 </details>

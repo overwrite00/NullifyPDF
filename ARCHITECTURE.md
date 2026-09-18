@@ -89,18 +89,20 @@ Export pipeline writes a cleaned PDF copy
 
 ### 🤖 AI Scan
 
-1. User selects language: `EN`, `IT`, or `BOTH`.
-2. User optionally enables:
+1. User clicks **Auto Redact (AI)** and, in a dialog, picks which data types to look for (names, locations, email, phone, IBAN, cards, crypto, fiscal code, VAT, licence, ID card, passport). The selection is remembered in `~/.nullifypdf/ai_entities.json`.
+2. User selects language (`EN`, `IT`, or `BOTH`) and optionally enables:
    - `OCR PDF scansionati`
    - `Oscura Immagini`
 3. `cmd_auto_ai()` checks OCR configuration if OCR is enabled.
 4. `AIWorker.run_scan()` processes pages in a background thread.
 5. For each page:
-   - digital text is extracted with `page.get_text()`
-   - if the page looks scanned, OCR is run with `page.get_textpage_ocr()`
-   - Presidio analyzes the extracted/OCR text
-   - detected entities are emitted with text, entity type, source, and optional OCR rectangles
-6. `apply_ai_to_page()` runs on the UI thread and creates pending redaction annotations.
+   - the analysis text is built by `pii_detection.build_page_index()` from `page.get_text("words")`, recording each word's rectangle so character offsets map back to exact boxes
+   - if the page looks scanned, OCR is run with `page.get_textpage_ocr()` and the same index is built from the OCR words
+   - Presidio analyzes the text for the enabled entity types
+   - results are filtered by per-type confidence thresholds, generic PERSON/LOCATION hits (titles, months, salutations, lowercase) are dropped, a name glued to a following address is cut at the street word, and overlapping spans are resolved
+   - each surviving value is located by its offsets, and its other occurrences on the page are added as **whole words only**
+   - detections are emitted with text, entity type, score, source, and their rectangles
+6. `apply_ai_to_page()` runs on the UI thread and creates pending redaction annotations from the received rectangles. Blocklist and allowlist terms are matched as whole words too.
 
 ### 🖊️ Manual Review
 
@@ -186,6 +188,8 @@ The restore map contains:
 - original values
 - entity types
 - page numbers
+- the redaction box of every occurrence
+- for native (non-scanned) PDFs, the typography of the redacted text: font, size, colour, flags and baseline (map version 3, optional)
 
 The map is encrypted with `cryptography` using Fernet and a key derived from the user password with PBKDF2-HMAC-SHA256.
 
