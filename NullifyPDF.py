@@ -15,7 +15,7 @@ import importlib.util
 import json
 import math
 from typing import Optional, List, Set, Dict, Any, Tuple, TypedDict, NotRequired
-import fitz
+import pymupdf as fitz
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -75,6 +75,11 @@ from pii_detection import (
     span_to_rects,
     whole_word_rects,
 )
+
+# PyMuPDF defines these constants dynamically, which mypy cannot see; read
+# them once here (with the suppression) instead of at every call site.
+PDF_ANNOT_REDACT: int = fitz.PDF_ANNOT_REDACT  # type: ignore[attr-defined]
+PDF_REDACT_IMAGE_PIXELS: int = fitz.PDF_REDACT_IMAGE_PIXELS  # type: ignore[attr-defined]
 
 __version__ = "2.2.0"
 __version_prerelease__ = ""
@@ -311,7 +316,7 @@ def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int
     attempted: List[Tuple[int, fitz.Rect, str]] = []
     doc = fitz.open(in_path)
     try:
-        for page in doc:
+        for page in doc.pages():
             claimed: List[fitz.Rect] = []
             for entry in entries:
                 for rect in _restore_targets(page, entry):
@@ -335,7 +340,7 @@ def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int
                         fontsize=fit_redaction_fontsize(entry.original, rect),
                     )
                     attempted.append((page.number, fitz.Rect(rect), entry.original))
-            page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_PIXELS, graphics=True)
+            page.apply_redactions(images=PDF_REDACT_IMAGE_PIXELS, graphics=True)
         doc.save(out_path, garbage=4, deflate=True, clean=True)
     finally:
         doc.close()
@@ -384,7 +389,7 @@ def _verify_restored(
                     "Reconstruction: value not restored on page %s at %s "
                     "(it did not fit its redaction box).",
                     page_number + 1,
-                    tuple(round(v, 1) for v in rect),
+                    tuple(round(v, 1) for v in (rect.x0, rect.y0, rect.x1, rect.y1)),
                 )
     finally:
         doc.close()
@@ -1356,7 +1361,7 @@ class NullifyPDF(QMainWindow):
             ans = [
                 a
                 for a in (p.annots() or [])
-                if a.type[0] == fitz.PDF_ANNOT_REDACT and a.rect.contains(pt)
+                if a.type[0] == PDF_ANNOT_REDACT and a.rect.contains(pt)
             ]
             if not ans:
                 return
@@ -1396,7 +1401,7 @@ class NullifyPDF(QMainWindow):
             ans = [
                 a
                 for a in (p.annots() or [])
-                if a.type[0] == fitz.PDF_ANNOT_REDACT and a.rect.contains(pt)
+                if a.type[0] == PDF_ANNOT_REDACT and a.rect.contains(pt)
             ]
             for a in ans:
                 p.delete_annot(a)
@@ -1419,7 +1424,7 @@ class NullifyPDF(QMainWindow):
             # generator returned by p.annots(), and list-comprehension-for-
             # side-effects is an anti-pattern (PEP 8 / pylint W0106).
             to_delete = [
-                a for a in (p.annots() or []) if a.type[0] == fitz.PDF_ANNOT_REDACT
+                a for a in (p.annots() or []) if a.type[0] == PDF_ANNOT_REDACT
             ]
             for a in to_delete:
                 p.delete_annot(a)
@@ -1646,7 +1651,7 @@ class NullifyPDF(QMainWindow):
         """Return redaction rectangles for a page."""
         return [
             a.rect for a in (page.annots() or [])
-            if a.type[0] == fitz.PDF_ANNOT_REDACT
+            if a.type[0] == PDF_ANNOT_REDACT
         ]
 
     def _add_privacy_redaction(
@@ -1697,10 +1702,10 @@ class NullifyPDF(QMainWindow):
                 page.get_text("text", clip=annot.rect).strip(),
             )
             for annot in (page.annots() or [])
-            if annot.type[0] == fitz.PDF_ANNOT_REDACT
+            if annot.type[0] == PDF_ANNOT_REDACT
         ]
         for annot in list(page.annots() or []):
-            if annot.type[0] == fitz.PDF_ANNOT_REDACT:
+            if annot.type[0] == PDF_ANNOT_REDACT:
                 page.delete_annot(annot)
         for rect, payload, clipped_text in pending:
             clean_original = " ".join(
@@ -1763,7 +1768,7 @@ class NullifyPDF(QMainWindow):
             page = self.doc[i]
             e_rects = [
                 a.rect for a in (page.annots() or [])
-                if a.type[0] == fitz.PDF_ANNOT_REDACT
+                if a.type[0] == PDF_ANNOT_REDACT
             ]
             if self.chk_img.isChecked():
                 for img in page.get_image_info(hashes=False):
@@ -1915,7 +1920,7 @@ class NullifyPDF(QMainWindow):
             ex_doc = fitz.open(tmp_path)
 
             # Step 3: scrub on the disk-backed copy.
-            for page in ex_doc:
+            for page in ex_doc.pages():
                 if mode == PrivacyMode.PSEUDONYMIZE:
                     self._prepare_pseudonymized_page(page, registry)
                 # page.annots() may return None for pages with no annotations
@@ -1939,7 +1944,7 @@ class NullifyPDF(QMainWindow):
                 # whole-image redactions from "Oscura Immagini", including
                 # under page rotation, with no visible fringe).
                 page.apply_redactions(
-                    images=fitz.PDF_REDACT_IMAGE_PIXELS, graphics=True
+                    images=PDF_REDACT_IMAGE_PIXELS, graphics=True
                 )
                 try:
                     # Materialize first: mutating during iteration of
