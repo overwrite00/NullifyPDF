@@ -26,6 +26,7 @@ It supports two privacy export modes:
 | 📄 File | ✨ Responsibility |
 | ------ | ----------------- |
 | `NullifyPDF.py` | Main PySide6 UI, PDF rendering, AI scan orchestration, redaction, export, reconstruction, OCR integration |
+| `pii_detection.py` | Qt-free AI detection helpers: word-box text index, offset-to-rect mapping, per-type score thresholds, generic-word filtering, whole-word propagation, entity selection persistence |
 | `privacy_core.py` | Privacy mode enum, placeholder registry, encrypted restore-map payloads, restore-map parsing |
 | `PDF_Checker.py` | Heuristic post-export inspection helper |
 | `build_local.py` | PyInstaller build script |

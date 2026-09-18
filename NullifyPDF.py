@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QGraphicsScene,
     QFileDialog,
     QDialog,
+    QDialogButtonBox,
     QLineEdit,
     QButtonGroup,
     QGraphicsRectItem,
@@ -60,6 +61,20 @@ from privacy_core import (
     parse_restore_entries,
     sort_entries_longest_placeholder_first,
 )
+from pii_detection import (
+    ALL_GROUP_IDS,
+    ENTITY_GROUPS,
+    build_page_index,
+    clean_candidates,
+    expand_group_ids,
+    filter_results,
+    load_enabled_groups,
+    propagate_whole_word,
+    resolve_overlaps,
+    save_enabled_groups,
+    span_to_rects,
+    whole_word_rects,
+)
 
 __version__ = "2.2.0"
 __version_prerelease__ = ""
@@ -75,6 +90,7 @@ class DetectionDict(TypedDict):
     entity_type: str
     rects: List[Tuple[float, float, float, float]]
     source: NotRequired[str]
+    score: NotRequired[float]
 
 
 def setup_logging() -> logging.Logger:
@@ -568,11 +584,12 @@ class AIWorker(QObject):
         except Exception as e:
             logging.getLogger("nullifypdf").debug(f"Error during AI cleanup: {e}")
 
-    @Slot(object, object, str, list, set, bool, object)
+    @Slot(object, object, str, list, set, bool, object, list)
     def run_scan(self, doc: Any, doc_mutex: Any, choice: str,
                  compiled_allowlist: List[Tuple[str, Any]],
                  allowlist_set: Set[str], use_ocr: bool,
-                 tessdata_dir: Optional[str]) -> None:
+                 tessdata_dir: Optional[str],
+                 enabled_types: List[str]) -> None:
         """Run AI scan on PDF pages and emit detected sensitive entities.
 
         Text extraction (`page.get_text()`) is performed inside this worker so
@@ -588,6 +605,7 @@ class AIWorker(QObject):
             compiled_allowlist: Pre-compiled regex patterns to skip redaction.
             allowlist_set: Set of allowlist entries (lowercase) for O(1)
                 exact-match fast-path lookup before regex any() scan.
+            enabled_types: Presidio entity types the user chose to detect.
         """
         try:
             if self._stop_requested:
@@ -660,22 +678,7 @@ class AIWorker(QObject):
                 )
                 self.loaded_langs = target_langs
             self.log_sig.emit("Scansione privacy in corso...")
-            targets = [
-                "PERSON",
-                "LOCATION",
-                "EMAIL_ADDRESS",
-                "PHONE_NUMBER",
-                "IBAN_CODE",
-                "CREDIT_CARD",
-                "CRYPTO",
-                # Italian national-ID formats (auto-loaded by Presidio only
-                # for language "it", harmless to always request).
-                "IT_FISCAL_CODE",
-                "IT_VAT_CODE",
-                "IT_DRIVER_LICENSE",
-                "IT_IDENTITY_CARD",
-                "IT_PASSPORT",
-            ]
+            targets = list(enabled_types)
 
             # Determine page count under mutex (cheap, but doc may be replaced
             # mid-flight by load_path if not for the disabled UI during scan).
@@ -694,6 +697,7 @@ class AIWorker(QObject):
                         page = doc[i]
                         text = page.get_text()
                         needs_ocr = use_ocr and self._page_needs_ocr(page, text)
+                        index = build_page_index(page.get_text("words"))
                         if needs_ocr:
                             self.log_sig.emit(f"OCR pagina {i + 1}...")
                             textpage = page.get_textpage_ocr(
@@ -703,58 +707,60 @@ class AIWorker(QObject):
                                 tessdata=tessdata_dir,
                             )
                             text = page.get_text(textpage=textpage)
+                            index = build_page_index(
+                                page.get_text("words", textpage=textpage)
+                            )
                             used_ocr = True
                     except Exception as e:
                         self.log_sig.emit(
                             f"Avviso: estrazione testo/OCR fallita pagina {i+1}: {e}"
                         )
                         text = ""
-                found: Dict[str, str] = {}
+                        index = build_page_index([])
+                candidates: List[Any] = []
                 for lang in self.loaded_langs:
+                    if not targets or not index.text:
+                        break
                     res = self.analyzer.analyze(
-                        text=text, entities=targets, language=lang
+                        text=index.text, entities=targets, language=lang
                     )
-                    for r in res:
-                        w = text[r.start : r.end].strip()
-                        if len(w) > 2:
-                            found[w] = r.entity_type
+                    candidates.extend(filter_results(res, index.text, targets))
+                candidates = resolve_overlaps(clean_candidates(candidates))
                 detections = []
-                for m, entity_type in found.items():
+                seen_values: Set[Tuple[str, str]] = set()
+                for c in candidates:
+                    m, entity_type = c.text, c.entity_type
                     clean = " ".join(m.strip(string.punctuation).lower().split())
                     if not clean:
                         continue
-                    # Fast path: exact set membership is O(1). The vast majority
-                    # of user allowlist entries are full tokens matched verbatim
-                    # against `clean`, so this short-circuits before the O(N)
-                    # regex any() scan over the whole allowlist.
+                    # Fast path: exact set membership is O(1).
                     if clean in allowlist_set:
                         continue
-                    # Cache the word-boundary regex for `clean` so we don't
-                    # rebuild and recompile it once per allowlist entry.
-                    clean_pattern = re.compile(r"\b" + re.escape(clean) + r"\b")
-                    if not any(
+                    clean_pattern = re.compile(r"" + re.escape(clean) + r"")
+                    if any(
                         f_reg.search(clean) or clean_pattern.search(a_str)
                         for a_str, f_reg in compiled_allowlist
                     ):
-                        detection: DetectionDict = {
-                            "text": m,
-                            "entity_type": entity_type,
-                            "rects": [],
-                            "source": "ocr" if used_ocr else "text",
-                        }
-                        if used_ocr and textpage is not None:
-                            with QMutexLocker(doc_mutex):
-                                try:
-                                    rects = doc[i].search_for(m, textpage=textpage)
-                                    detection["rects"] = [
-                                        (r.x0, r.y0, r.x1, r.y1) for r in rects
-                                    ]
-                                except Exception as e:
-                                    self.log_sig.emit(
-                                        f"Avviso: coordinate OCR non disponibili "
-                                        f"pagina {i+1}: {e}"
-                                    )
-                        detections.append(detection)
+                        continue
+                    rects = span_to_rects(index, c.start, c.end)
+                    if (m, entity_type) not in seen_values:
+                        seen_values.add((m, entity_type))
+                        # Other occurrences of the same value: whole words only.
+                        for extra in propagate_whole_word(
+                            index, m,
+                            case_sensitive=entity_type in ("PERSON", "LOCATION"),
+                        ):
+                            if extra not in rects:
+                                rects.append(extra)
+                    if not rects:
+                        continue
+                    detections.append({
+                        "text": m,
+                        "entity_type": entity_type,
+                        "rects": rects,
+                        "source": "ocr" if used_ocr else "text",
+                        "score": c.score,
+                    })
                 self.page_done_sig.emit(i, detections)
                 self.progress_sig.emit(i + 1, total_pages)
             if not self._stop_requested:
@@ -866,7 +872,7 @@ class NullifyPDF(QMainWindow):
         config_dir: Path to user config directory (~/.nullifypdf).
     """
 
-    start_scan_sig = Signal(object, object, str, list, set, bool, object)
+    start_scan_sig = Signal(object, object, str, list, set, bool, object, list)
 
     def __init__(self) -> None:
         """Initialize main application window and setup UI."""
@@ -1500,6 +1506,9 @@ class NullifyPDF(QMainWindow):
         """
         if not self.doc:
             return
+        enabled_groups = self._select_ai_entities()
+        if not enabled_groups:
+            return
         self.btn_ai.setEnabled(False)
         self.prog.setValue(0)
         c_allow = [
@@ -1532,7 +1541,59 @@ class NullifyPDF(QMainWindow):
             set(self.allowlist),
             use_ocr,
             tessdata_dir,
+            expand_group_ids(enabled_groups),
         )
+
+    def _select_ai_entities(self) -> Optional[List[str]]:
+        """Ask which data types the AI scan should look for.
+
+        Returns the chosen group ids, or None if the user cancels. The
+        selection is remembered in ``ai_entities.json``.
+        """
+        store = self.config_dir / "ai_entities.json"
+        previous = set(load_enabled_groups(store))
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Tipi di dati da rilevare")
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(QLabel("Seleziona i dati da censurare / pseudonimizzare:"))
+        boxes: Dict[str, QCheckBox] = {}
+        for gid, label, _types in ENTITY_GROUPS:
+            cb = QCheckBox(label)
+            cb.setChecked(gid in previous)
+            boxes[gid] = cb
+            lay.addWidget(cb)
+        row = QHBoxLayout()
+        btn_all = QPushButton("Seleziona tutto")
+        btn_none = QPushButton("Deseleziona tutto")
+        row.addWidget(btn_all)
+        row.addWidget(btn_none)
+        lay.addLayout(row)
+        bb = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        lay.addWidget(bb)
+        ok = bb.button(QDialogButtonBox.StandardButton.Ok)
+
+        def refresh() -> None:
+            ok.setEnabled(any(cb.isChecked() for cb in boxes.values()))
+
+        for cb in boxes.values():
+            cb.toggled.connect(refresh)
+        def set_all(state: bool) -> None:
+            for cb in boxes.values():
+                cb.setChecked(state)
+
+        btn_all.clicked.connect(lambda: set_all(True))
+        btn_none.clicked.connect(lambda: set_all(False))
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        refresh()
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        chosen = [gid for gid in ALL_GROUP_IDS if boxes[gid].isChecked()]
+        save_enabled_groups(store, chosen)
+        return chosen
 
     def _select_privacy_export(self) -> Optional[PrivacyMode]:
         """Ask the user which privacy export mode to use."""
@@ -1713,8 +1774,9 @@ class NullifyPDF(QMainWindow):
                         fontsize=8,
                     )
                     e_rects.append(ir)
+            page_index = build_page_index(page.get_text("words"))
             for bw in self.blocklist:
-                for r in page.search_for(bw):
+                for r in (fitz.Rect(*t) for t in whole_word_rects(page_index, bw)):
                     if not any(
                         e.contains(fitz.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2))
                         for e in e_rects
@@ -1726,7 +1788,11 @@ class NullifyPDF(QMainWindow):
                             entity_type=self._infer_entity_type(bw),
                         )
                         e_rects.append(r)
-            p_rects = [r for aw in self.allowlist for r in page.search_for(aw)]
+            p_rects = [
+                fitz.Rect(*t)
+                for aw in self.allowlist
+                for t in whole_word_rects(page_index, aw)
+            ]
             for detection in normalized_detections:
                 word = str(detection.get("text", ""))
                 entity_type = str(detection.get("entity_type", "DATA"))
