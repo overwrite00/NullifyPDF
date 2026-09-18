@@ -139,7 +139,7 @@ If you exported a PDF with **Pseudonimizzazione reversibile**, you can later res
 NullifyPDF checks the SHA-256 hash recorded in the restore map against the selected PDF and refuses to proceed if they don't match, to avoid applying the wrong mapping to a document.
 
 > [!NOTE]
-> Reconstruction restores the original *content*, not the original *layout*: since placeholders like `PERSON_001` are usually shorter than the original values, restored text may be clipped or visually crowd its redaction box.
+> For PDFs created by other applications (Word, Office, etc. — not scans), the restore map also records each value's font, size, colour and baseline, and reconstruction writes the text back with the same size, colour and position, reusing the original embedded font when the file still carries it and otherwise the closest standard font (serif/sans/mono, bold/italic). Glyph shapes may therefore differ slightly from the original when the font cannot be reused. For scanned PDFs there is no font to restore, so the value is fitted into its box: it may be clipped or visually crowd it. Maps created by earlier versions keep the previous behaviour.
 
 ---
 
