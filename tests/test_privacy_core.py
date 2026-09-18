@@ -3,10 +3,13 @@
 import pytest
 
 from privacy_core import (
+    PlaceholderEntry,
     PlaceholderRegistry,
     build_restore_payload,
     decrypt_restore_payload,
     encrypt_restore_payload,
+    group_entries_by_page,
+    parse_restore_entries,
 )
 
 
@@ -51,3 +54,43 @@ def test_encrypted_restore_map_round_trip():
 def test_restore_map_requires_strong_enough_password():
     with pytest.raises(ValueError):
         encrypt_restore_payload({}, "short")
+
+
+def test_parse_restore_entries_round_trip():
+    registry = PlaceholderRegistry()
+    registry.placeholder_for("Mario Rossi", "PERSON", page=0)
+    payload = build_restore_payload(
+        source_name="input.pdf",
+        source_sha256="a" * 64,
+        output_sha256="b" * 64,
+        entries=registry.entries(),
+    )
+
+    entries = parse_restore_entries(payload)
+
+    assert entries == [
+        PlaceholderEntry(
+            placeholder="PERSON_001",
+            original="Mario Rossi",
+            entity_type="PERSON",
+            page=0,
+        )
+    ]
+
+
+def test_parse_restore_entries_rejects_unknown_format():
+    with pytest.raises(ValueError):
+        parse_restore_entries({"format": "something else", "version": 1})
+
+
+def test_group_entries_by_page_sorts_longest_placeholder_first():
+    entries = [
+        PlaceholderEntry("PERSON_001", "Ann", "PERSON", page=0),
+        PlaceholderEntry("PERSON_0010", "Bob", "PERSON", page=0),
+        PlaceholderEntry("EMAIL_ADDRESS_001", "a@b.com", "EMAIL_ADDRESS", page=1),
+    ]
+
+    grouped = group_entries_by_page(entries)
+
+    assert [e.placeholder for e in grouped[0]] == ["PERSON_0010", "PERSON_001"]
+    assert [e.placeholder for e in grouped[1]] == ["EMAIL_ADDRESS_001"]

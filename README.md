@@ -36,7 +36,7 @@ NullifyPDF goes beyond simple text covering. It uses **Natural Language Processi
 - 🗄️ **Fluid UI & Thread-Safe** — PySide6 modern dark-mode interface with zero UI freezing. Text extraction in worker thread with QMutex serialization
 - 📖 **Persistent Dictionaries** — Blocklist and Allowlist synchronized to disk (`~/.nullifypdf`) with O(1) fast-path matching
 - 🛡️ **Privacy Export Modes** — Choose irreversible anonymization or reversible pseudonymization with a separately encrypted restore map
-- 🔎 **OCR Support** — Full builds bundle EN/IT Tesseract language data for scanned PDFs
+- 🔎 **OCR Support** — Bundled EN/IT Tesseract language data for scanned PDFs
 - 🖼️ **Blindfold Mode** — One-click image/logo censoring with professional placeholder: `[ IMAGE REMOVED ]`
 - 📦 **Native Cross-Platform** — Automated build scripts generate Windows `.exe`, macOS ZIP bundles, and Linux `.deb`/`.rpm` packages
 - 🎯 **Drag & Drop Support** — Native file drag-and-drop on main window
@@ -50,7 +50,6 @@ To keep NullifyPDF lightweight, 100% offline, and secure, be aware of these tech
 
 | ❌ Limitation                       | 💡 Workaround                                                                                            |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **OCR availability**              | Full builds include EN/IT OCR data. Lite builds require local Tesseract tessdata for scanned PDFs.      |
 | **Handwritten Text**               | NLP models cannot analyze non-digitized handwriting.                                                    |
 | **Password-Protected PDFs**        | Encrypted documents are blocked at load. Decrypt before importing.                                      |
 | **Digital Signatures Invalidated** | Privacy export changes the PDF; cryptographic signatures (PAdES, notarized) become invalid.            |
@@ -82,12 +81,10 @@ To keep NullifyPDF lightweight, 100% offline, and secure, be aware of these tech
 
 Download the latest pre-compiled executable from [Releases](https://github.com/overwrite00/NullifyPDF/releases):
 
-- **Windows Lite:** `NullifyPDF_vX.Y.Z_Windows_Lite.exe`
-- **Windows Full OCR:** `NullifyPDF_vX.Y.Z_Windows_Full.exe`
-- **macOS Lite:** `NullifyPDF_vX.Y.Z_macOS_Lite.zip`
-- **macOS Full OCR:** `NullifyPDF_vX.Y.Z_macOS_Full.zip`
-- **Ubuntu Lite/Full:** `NullifyPDF_vX.Y.Z_Ubuntu_Lite.deb` or `NullifyPDF_vX.Y.Z_Ubuntu_Full.deb`
-- **Fedora Lite/Full:** `NullifyPDF_vX.Y.Z_Fedora_Lite.rpm` or `NullifyPDF_vX.Y.Z_Fedora_Full.rpm`
+- **Windows:** `NullifyPDF_vX.Y.Z_Windows.exe`
+- **macOS:** `NullifyPDF_vX.Y.Z_macOS.zip`
+- **Ubuntu:** `NullifyPDF_vX.Y.Z_Ubuntu.deb`
+- **Fedora:** `NullifyPDF_vX.Y.Z_Fedora.rpm`
 
 No installation needed on Windows/macOS - just run or unzip. Linux users can install the `.deb` or `.rpm` package.
 
@@ -169,15 +166,15 @@ python setup_env.py
 Compiles standalone executable with PyInstaller.
 
 ```bash
-python build_local.py --lite
-python build_local.py --full
+python build_local.py
 ```
 
 **Features:**
 - Cleans temporary directories
 - Auto-detects your OS
 - Reads version dynamically from code
-- Generates named executables such as `NullifyPDF_vX.Y.Z_Windows_Lite.exe` or `NullifyPDF_vX.Y.Z_Windows_Full.exe`
+- Generates named executables such as `NullifyPDF_vX.Y.Z_Windows.exe`
+- Bundles EN/IT OCR data (downloaded automatically if missing)
 
 **Linux bonus:** On Ubuntu/Fedora, automatically builds `.deb` and `.rpm` packages in `dist/`
 
@@ -200,7 +197,7 @@ pytest tests/ -v
 - Resource path resolution
 - OCR configuration helpers
 - Privacy placeholder and encrypted restore-map primitives
-- Build variant configuration
+- Build configuration
 
 </details>
 
@@ -214,7 +211,7 @@ pytest tests/ -v
 | [CONTRIBUTING.md](./CONTRIBUTING.md)       | How to contribute code & report issues |
 | [ARCHITECTURE.md](./ARCHITECTURE.md)       | System design & technical overview     |
 | [DEVELOPMENT.md](./DEVELOPMENT.md)         | Local dev setup, testing & builds      |
-| [OCR_SETUP.md](./OCR_SETUP.md)             | OCR data setup and Lite/Full build notes |
+| [OCR_SETUP.md](./OCR_SETUP.md)             | OCR data setup and build notes         |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | Common issues & solutions              |
 | [CHANGELOG.md](./CHANGELOG.md)             | Release history & updates              |
 
@@ -263,5 +260,5 @@ Want to help improve NullifyPDF? See [CONTRIBUTING.md](./CONTRIBUTING.md) for gu
 
 ---
 
-*Last updated: 2026-07-23*  
+*Last updated: 2026-09-18*  
 *[User Guide →](./USER_GUIDE.md)*

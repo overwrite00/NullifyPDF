@@ -4,14 +4,12 @@ import shutil
 import subprocess
 import platform
 import re
-import argparse
 import pathlib
 from typing import List, Optional, Tuple
 
 from scripts.download_ocr_data import download_ocr_data
 
 
-VALID_BUILD_VARIANTS = {"lite", "full"}
 OCR_TESSDATA_FILES = ("eng.traineddata", "ita.traineddata")
 
 
@@ -75,35 +73,8 @@ def ensure_icon(sys_os: str) -> Optional[str]:
     return os.path.join(base_dir, "NullifyPDF_icon.png").replace("\\", "/")
 
 
-def normalize_build_variant(value: Optional[str]) -> str:
-    """Return a supported build variant name."""
-    variant = (value or os.environ.get("NULLIFYPDF_BUILD_VARIANT") or "lite").lower()
-    if variant not in VALID_BUILD_VARIANTS:
-        allowed = ", ".join(sorted(VALID_BUILD_VARIANTS))
-        raise ValueError(f"Build variant non valida: {variant}. Valori: {allowed}")
-    return variant
-
-
-def parse_args() -> argparse.Namespace:
-    """Parse build command-line options."""
-    parser = argparse.ArgumentParser(description="Build NullifyPDF with PyInstaller")
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("--lite", action="store_true", help="Build without bundled OCR")
-    group.add_argument("--full", action="store_true", help="Build with bundled OCR data")
-    return parser.parse_args()
-
-
-def variant_from_args(args: argparse.Namespace) -> str:
-    """Resolve build variant from CLI flags or environment."""
-    if args.lite:
-        return "lite"
-    if args.full:
-        return "full"
-    return normalize_build_variant(None)
-
-
 def ensure_ocr_data(download_func=download_ocr_data) -> None:
-    """Ensure EN/IT OCR data is available for Full builds."""
+    """Ensure EN/IT OCR data is available for the build."""
     tessdata_dir = os.path.join("ocr", "tessdata")
     missing = [
         name for name in OCR_TESSDATA_FILES
@@ -114,7 +85,7 @@ def ensure_ocr_data(download_func=download_ocr_data) -> None:
 
     missing_list = ", ".join(missing)
     print(
-        "[INFO] Build Full richiesto: mancano dati OCR "
+        "[INFO] Mancano dati OCR "
         f"({missing_list}). Download automatico da tesseract-ocr/tessdata_fast..."
     )
     download_func(pathlib.Path(tessdata_dir))
@@ -125,37 +96,34 @@ def ensure_ocr_data(download_func=download_ocr_data) -> None:
     if still_missing:
         raise FileNotFoundError(
             "Download OCR incompleto. Mancano ancora: "
-            f"{', '.join(still_missing)}. Usa --lite oppure controlla la rete."
+            f"{', '.join(still_missing)}. Controlla la connessione di rete."
         )
 
 
-def pyinstaller_datas(
-    build_variant: str, download_missing_ocr: bool = True
-) -> List[Tuple[str, str]]:
+def pyinstaller_datas(download_missing_ocr: bool = True) -> List[Tuple[str, str]]:
     """Return data files/directories to include in the PyInstaller bundle."""
     datas: List[Tuple[str, str]] = []
     if os.path.exists("images"):
         datas.append(("images", "images"))
-    if build_variant == "full":
-        tessdata_dir = os.path.join("ocr", "tessdata")
-        if download_missing_ocr:
-            ensure_ocr_data()
-        elif any(
-            not os.path.exists(os.path.join(tessdata_dir, name))
-            for name in OCR_TESSDATA_FILES
-        ):
-            raise FileNotFoundError(
-                "Build Full richiesto, ma mancano file OCR. "
-                "Usa download_missing_ocr=True oppure --lite."
-            )
-        for name in OCR_TESSDATA_FILES:
-            source = os.path.join(tessdata_dir, name).replace("\\", "/")
-            datas.append((source, "ocr/tessdata"))
+    tessdata_dir = os.path.join("ocr", "tessdata")
+    if download_missing_ocr:
+        ensure_ocr_data()
+    elif any(
+        not os.path.exists(os.path.join(tessdata_dir, name))
+        for name in OCR_TESSDATA_FILES
+    ):
+        raise FileNotFoundError(
+            "Mancano file OCR. Usa download_missing_ocr=True oppure esegui "
+            "scripts/download_ocr_data.py."
+        )
+    for name in OCR_TESSDATA_FILES:
+        source = os.path.join(tessdata_dir, name).replace("\\", "/")
+        datas.append((source, "ocr/tessdata"))
     return datas
 
 
 def build_rpm(
-    version: str, file_version: str, executable_name: str, variant_label: str
+    version: str, file_version: str, executable_name: str
 ) -> None:
     """Build RPM package for Fedora/RHEL.
 
@@ -232,7 +200,7 @@ EOF
                 if file.endswith(".rpm"):
                     shutil.move(
                         os.path.join(root, file),
-                        f"dist/NullifyPDF_v{file_version}_Fedora_{variant_label}.rpm",
+                        f"dist/NullifyPDF_v{file_version}_Fedora.rpm",
                     )
         print("[OK] RPM creato con successo.")
     except Exception as e:
@@ -242,7 +210,7 @@ EOF
 
 
 def build_deb(
-    version: str, file_version: str, executable_name: str, variant_label: str
+    version: str, file_version: str, executable_name: str
 ) -> None:
     """Build DEB package for Ubuntu/Debian.
 
@@ -297,7 +265,7 @@ def build_deb(
                 "dpkg-deb",
                 "--build",
                 pkg_dir,
-                f"dist/NullifyPDF_v{file_version}_Ubuntu_{variant_label}.deb",
+                f"dist/NullifyPDF_v{file_version}_Ubuntu.deb",
             ],
             check=True,
             stdout=subprocess.DEVNULL,
@@ -309,7 +277,7 @@ def build_deb(
         shutil.rmtree(pkg_dir, ignore_errors=True)
 
 
-def build_app(build_variant: Optional[str] = None) -> None:
+def build_app() -> None:
     """Build NullifyPDF application for current OS using PyInstaller.
 
     Automatically generates platform-specific executables:
@@ -318,8 +286,6 @@ def build_app(build_variant: Optional[str] = None) -> None:
     - Linux: portable binary + .deb + .rpm packages
     """
     print("--- Avvio Compilazione NullifyPDF (PySide6) ---")
-    build_variant = normalize_build_variant(build_variant)
-    variant_label = build_variant.capitalize()
     version, code_prerelease = get_version_info()
     beta_suffix = os.environ.get("NULLIFYPDF_BETA_SUFFIX", "").strip()
     file_version = get_file_version(version, code_prerelease, beta_suffix)
@@ -334,13 +300,12 @@ def build_app(build_variant: Optional[str] = None) -> None:
         if sys_os == "Windows"
         else ("macOS", "") if sys_os == "Darwin" else ("Linux_Portable", "")
     )
-    final_name = f"NullifyPDF_v{file_version}_{os_name}_{variant_label}{ext}"
+    final_name = f"NullifyPDF_v{file_version}_{os_name}{ext}"
     icon_path = ensure_icon(sys_os)
     # Use repr() to safely embed the path as a Python literal in the spec file.
     # Manual single-quote wrapping is unsafe for paths containing quotes/backslashes.
     icon_str = repr(icon_path) if icon_path else "None"
-    datas_literal = repr(pyinstaller_datas(build_variant))
-    print(f"[INFO] Variante build: {variant_label}")
+    datas_literal = repr(pyinstaller_datas())
 
     if sys_os == "Darwin":
         spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
@@ -386,7 +351,7 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, name='NullifyPDF', debug=False, c
             print(f"[OK] Compilazione completata: dist/{final_name}")
         elif sys_os == "Darwin":
             print("[INFO] Compressione App Bundle per macOS in formato ZIP...")
-            zip_filename = f"NullifyPDF_v{file_version}_macOS_{variant_label}.zip"
+            zip_filename = f"NullifyPDF_v{file_version}_macOS.zip"
             subprocess.run(
                 ["zip", "-r", "-y", zip_filename, "NullifyPDF.app"],
                 cwd="dist",
@@ -399,9 +364,9 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, name='NullifyPDF', debug=False, c
             os.rename("dist/NullifyPDF", f"dist/{final_name}")
             print(f"[OK] Eseguibile portatile pronto: dist/{final_name}")
             if shutil.which("rpmbuild"):
-                build_rpm(version, file_version, final_name, variant_label)
+                build_rpm(version, file_version, final_name)
             if shutil.which("dpkg-deb"):
-                build_deb(version, file_version, final_name, variant_label)
+                build_deb(version, file_version, final_name)
 
     except subprocess.CalledProcessError as e:
         print(f"\n[ERROR] ERRORE CRITICO: Compilazione fallita (exit {e.returncode}).")
@@ -409,4 +374,4 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, name='NullifyPDF', debug=False, c
 
 
 if __name__ == "__main__":
-    build_app(variant_from_args(parse_args()))
+    build_app()

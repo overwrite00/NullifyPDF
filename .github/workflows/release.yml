@@ -72,17 +72,25 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p stable-assets
+          # Patterns are deliberately tolerant of a trailing "_Full"/"_Lite"
+          # suffix (no underscore pinned before the extension) so a beta
+          # built before the lite/full split was removed can still be
+          # promoted to stable.
           gh release download "${{ steps.beta.outputs.tag }}" --repo "${{ github.repository }}" --dir stable-assets \
-            --pattern "NullifyPDF_v*_Windows_*.exe" \
-            --pattern "NullifyPDF_v*_macOS_*.zip" \
-            --pattern "NullifyPDF_v*_Ubuntu_*.deb" \
-            --pattern "NullifyPDF_v*_Fedora_*.rpm"
+            --pattern "NullifyPDF_v*_Windows*.exe" \
+            --pattern "NullifyPDF_v*_macOS*.zip" \
+            --pattern "NullifyPDF_v*_Ubuntu*.deb" \
+            --pattern "NullifyPDF_v*_Fedora*.rpm"
 
       - name: Strip beta suffix from filenames
         run: |
           cd stable-assets
+          # Drop any leftover "_Lite" assets from betas built before the
+          # lite/full split was removed: only the full variant is promoted.
+          rm -f *_Lite.* *_Lite
           for f in *; do
-            new="$(echo "$f" | sed -E 's/-beta\.[0-9]+//')"
+            # Also drops the now-redundant "_Full" variant tag.
+            new="$(echo "$f" | sed -E 's/-beta\.[0-9]+//; s/_Full//')"
             if [ "$f" != "$new" ]; then
               mv "$f" "$new"
             fi
@@ -99,7 +107,7 @@ jobs:
           REPO="${{ github.repository }}"
           NOTES="NullifyPDF stable release.
           Promoted from beta \`${{ steps.beta.outputs.tag }}\` (already verified build, no rebuild).
-          Includes Lite and Full OCR variants for Windows, macOS, and Linux."
+          Available for Windows, macOS, and Linux."
 
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             echo "Release $TAG already exists, uploading/replacing assets."

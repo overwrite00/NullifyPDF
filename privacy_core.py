@@ -73,6 +73,10 @@ class PlaceholderRegistry:
         return list(self._entries)
 
 
+RESTORE_MAP_FORMAT = "NullifyPDF restore map"
+RESTORE_MAP_VERSION = 1
+
+
 def build_restore_payload(
     *,
     source_name: str,
@@ -83,13 +87,59 @@ def build_restore_payload(
     """Build the JSON-serializable restore-map payload."""
 
     return {
-        "format": "NullifyPDF restore map",
-        "version": 1,
+        "format": RESTORE_MAP_FORMAT,
+        "version": RESTORE_MAP_VERSION,
         "source_name": os.path.basename(source_name),
         "source_sha256": source_sha256,
         "output_sha256": output_sha256,
         "entries": [asdict(entry) for entry in entries],
     }
+
+
+def parse_restore_entries(payload: Dict[str, object]) -> List[PlaceholderEntry]:
+    """Validate a decrypted restore-map payload and return its entries.
+
+    Raises:
+        ValueError: If the payload is not a recognized restore map.
+    """
+    if (
+        not isinstance(payload, dict)
+        or payload.get("format") != RESTORE_MAP_FORMAT
+        or payload.get("version") != RESTORE_MAP_VERSION
+    ):
+        raise ValueError("Formato mappa di ripristino non riconosciuto.")
+
+    entries: List[PlaceholderEntry] = []
+    raw_entries = payload.get("entries") or []
+    assert isinstance(raw_entries, list)
+    for raw in raw_entries:
+        entries.append(
+            PlaceholderEntry(
+                placeholder=str(raw["placeholder"]),
+                original=str(raw["original"]),
+                entity_type=str(raw["entity_type"]),
+                page=int(raw["page"]),
+            )
+        )
+    return entries
+
+
+def group_entries_by_page(
+    entries: Iterable[PlaceholderEntry],
+) -> Dict[int, List[PlaceholderEntry]]:
+    """Group restore entries by page, longest placeholder first on each page.
+
+    Longest-first ordering matters because placeholder search is a substring
+    match: once a type exceeds 9 instances (``PERSON_0010``), a shorter
+    placeholder like ``PERSON_001`` would otherwise match its first 10
+    characters and restore the wrong value.
+    """
+    by_page: Dict[int, List[PlaceholderEntry]] = {}
+    for entry in entries:
+        by_page.setdefault(entry.page, []).append(entry)
+    for page_entries in by_page.values():
+        page_entries.sort(key=lambda e: len(e.placeholder), reverse=True)
+    return by_page
 
 
 def encrypt_restore_payload(payload: Dict[str, object], password: str) -> bytes:

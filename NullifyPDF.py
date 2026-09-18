@@ -53,7 +53,10 @@ from privacy_core import (
     PlaceholderRegistry,
     PrivacyMode,
     build_restore_payload,
+    decrypt_restore_payload,
     encrypt_restore_payload,
+    group_entries_by_page,
+    parse_restore_entries,
 )
 
 __version__ = "2.2.0"
@@ -131,6 +134,66 @@ def sha256_file(path: str) -> str:
         for chunk in iter(lambda: fh.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+class RestoreMapMismatch(ValueError):
+    """Raised when a restore map's recorded hash doesn't match the PDF."""
+
+
+def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int:
+    """Rebuild a pseudonymized PDF's original values from a decrypted restore map.
+
+    Replaces each placeholder occurrence (e.g. ``PERSON_001``) found on its
+    recorded page with the original value, using the same
+    add_redact_annot()-then-apply_redactions() mechanism used to create the
+    placeholders during export. Does not restore the original layout: a
+    placeholder's redaction box is sized for the placeholder text, so a
+    longer original value may be visually clipped or crowd the box.
+
+    Args:
+        in_path: Path to the pseudonymized PDF to reconstruct from.
+        out_path: Path to write the reconstructed PDF to.
+        payload: Decrypted restore-map payload (see `privacy_core.build_restore_payload`).
+
+    Returns:
+        int: Number of placeholder occurrences restored.
+
+    Raises:
+        ValueError: If the payload is not a recognized restore map.
+        RestoreMapMismatch: If `output_sha256` in the payload does not match
+            the SHA-256 of `in_path`.
+    """
+    expected_sha256 = payload.get("output_sha256")
+    if expected_sha256 and sha256_file(in_path) != expected_sha256:
+        raise RestoreMapMismatch(
+            "La mappa di ripristino non corrisponde a questo PDF "
+            "(hash SHA-256 diverso)."
+        )
+
+    entries_by_page = group_entries_by_page(parse_restore_entries(payload))
+    restored_count = 0
+    doc = fitz.open(in_path)
+    try:
+        for page_number, entries in entries_by_page.items():
+            if page_number >= len(doc):
+                continue
+            page = doc[page_number]
+            for entry in entries:
+                for rect in page.search_for(entry.placeholder):
+                    page.add_redact_annot(
+                        rect,
+                        text=entry.original,
+                        fill=(1, 1, 1),
+                        text_color=(0, 0, 0),
+                        align=1,
+                        fontsize=8,
+                    )
+                    restored_count += 1
+            page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_PIXELS, graphics=True)
+        doc.save(out_path, garbage=4, deflate=True, clean=True)
+    finally:
+        doc.close()
+    return restored_count
 
 
 def find_tessdata_dir() -> Optional[str]:
@@ -793,6 +856,9 @@ class NullifyPDF(QMainWindow):
         btn_export.setStyleSheet("border-color: #0ea5e9; color: #0ea5e9;")
         btn_export.clicked.connect(self.cmd_export)
         s_lay.addWidget(btn_export)
+        btn_reconstruct = QPushButton("Ricostruisci PDF")
+        btn_reconstruct.clicked.connect(self.cmd_reconstruct)
+        s_lay.addWidget(btn_reconstruct)
         s_lay.addStretch()
         btn_about = QPushButton("Info")
         btn_about.clicked.connect(self.cmd_about)
@@ -1673,6 +1739,75 @@ class NullifyPDF(QMainWindow):
                     os.remove(tmp_path)
             except OSError as e:
                 self.logger.debug(f"Could not remove temp file {tmp_path}: {e}")
+
+    def cmd_reconstruct(self) -> None:
+        """Reconstruct a previously pseudonymized PDF using its restore map.
+
+        Operates on files chosen by the user, independent of whatever
+        document (if any) is currently loaded in the viewer.
+        """
+        if importlib.util.find_spec("cryptography") is None:
+            QMessageBox.critical(
+                self,
+                "Dipendenza mancante",
+                "La ricostruzione richiede la libreria 'cryptography'.",
+            )
+            return
+
+        pdf_path, _ = QFileDialog.getOpenFileName(
+            self, "Seleziona il PDF pseudonimizzato", "", "PDF (*.pdf)"
+        )
+        if not pdf_path:
+            return
+        map_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleziona la mappa di ripristino",
+            "",
+            "NullifyPDF map (*.nullifypdf-map)",
+        )
+        if not map_path:
+            return
+        map_password, ok = QInputDialog.getText(
+            self,
+            "Password mappa",
+            "Password per decifrare la mappa di ripristino:",
+            QLineEdit.EchoMode.Password,
+        )
+        if not ok or not map_password:
+            return
+        out_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Salva PDF ricostruito",
+            f"{os.path.splitext(pdf_path)[0]}_ricostruito.pdf",
+            "PDF (*.pdf)",
+        )
+        if not out_path:
+            return
+
+        from cryptography.fernet import InvalidToken
+
+        self.write_log("Ricostruzione PDF in corso...")
+        try:
+            with open(map_path, "rb") as fh:
+                encrypted = fh.read()
+            payload = decrypt_restore_payload(encrypted, map_password)
+            restored_count = reconstruct_pdf(pdf_path, out_path, payload)
+            self.write_log(
+                f"RICOSTRUITO. {restored_count} segnaposto ripristinati."
+            )
+        except RestoreMapMismatch as e:
+            self.write_log(f"ERRORE ricostruzione: {e}")
+            QMessageBox.critical(self, "Mappa non corrispondente", str(e))
+        except InvalidToken:
+            self.write_log("ERRORE ricostruzione: password errata o mappa corrotta.")
+            QMessageBox.critical(
+                self,
+                "Errore decifrazione",
+                "Password errata o file della mappa corrotto.",
+            )
+        except Exception as e:
+            self.logger.error(f"Reconstruction failed: {traceback.format_exc()}")
+            self.write_log(f"ERRORE ricostruzione: {type(e).__name__}: {str(e)}")
 
 
 if __name__ == "__main__":

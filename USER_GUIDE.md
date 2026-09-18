@@ -106,7 +106,7 @@ Remove logos, signatures, or scanned photos:
 3. All images replaced with gray placeholder: `[ IMAGE REMOVED ]`
 
 > [!NOTE]
-> For scanned documents, enable **OCR PDF scansionati** before running the AI scan. Full builds include EN/IT OCR data; Lite builds require local Tesseract tessdata.
+> For scanned documents, enable **OCR PDF scansionati** before running the AI scan. Every build includes EN/IT OCR data.
 
 ---
 
@@ -123,6 +123,23 @@ When satisfied with redactions:
 
 > [!CAUTION]
 > **Irreversible anonymization cannot be undone from the exported PDF.** Keep a backup of the original PDF. For pseudonymization, store the encrypted restore map separately from the PDF.
+
+---
+
+## Step 7️⃣ — Reconstruct a Pseudonymized PDF
+
+If you exported a PDF with **Pseudonimizzazione reversibile**, you can later restore the original values back into it:
+
+1. Click **"Ricostruisci PDF"**
+2. Select the pseudonymized PDF (the one containing placeholders like `PERSON_001`)
+3. Select its matching `.nullifypdf-map` restore map file
+4. Enter the map's password
+5. Choose where to save the reconstructed PDF
+
+NullifyPDF checks the SHA-256 hash recorded in the restore map against the selected PDF and refuses to proceed if they don't match, to avoid applying the wrong mapping to a document.
+
+> [!NOTE]
+> Reconstruction restores the original *content*, not the original *layout*: since placeholders like `PERSON_001` are usually shorter than the original values, restored text may be clipped or visually crowd its redaction box.
 
 ---
 
@@ -241,7 +258,7 @@ python3.13 NullifyPDF.py
 ## ❓ Common Questions
 
 ### Q: Why doesn't AI detect text in my scanned PDF?
-**A:** Enable **OCR PDF scansionati** before running the AI scan. Full builds include EN/IT OCR data; Lite builds need local Tesseract `tessdata`.
+**A:** Enable **OCR PDF scansionati** before running the AI scan. Every build includes EN/IT OCR data.
 
 ### Q: Can I password-protect the exported PDF?
 **A:** Not built-in. Use a PDF editor after export for password protection.
@@ -250,10 +267,10 @@ python3.13 NullifyPDF.py
 **A:** Export applies PDF redactions and removes selected metadata. Review the exported file before sharing, especially for high-risk documents.
 
 ### Q: Can I undo changes after export?
-**A:** Irreversible anonymization cannot be undone from the exported PDF. Pseudonymization can be restored only with the encrypted restore map and its password.
+**A:** Irreversible anonymization cannot be undone from the exported PDF. Pseudonymization can be restored using **"Ricostruisci PDF"** together with the encrypted restore map and its password (see [Step 7](#step-7%EF%B8%8F%E2%83%A3--reconstruct-a-pseudonymized-pdf) below).
 
 ### Q: Does NullifyPDF send data to the cloud?
-**A:** **No.** PDF processing is local. Full builds may download OCR data during build time, not while processing your PDFs.
+**A:** **No.** PDF processing is local. OCR data may be downloaded during build time, not while processing your PDFs.
 
 ---
 
@@ -266,5 +283,5 @@ python3.13 NullifyPDF.py
 
 ---
 
-*Last updated: 2026-09-17*  
+*Last updated: 2026-09-18*  
 *← [Back to README](./README.md) | [Troubleshooting →](./TROUBLESHOOTING.md)*

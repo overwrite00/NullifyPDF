@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Added
+
+- **Reconstruct pseudonymized PDFs**: New "Ricostruisci PDF" action reopens a previously pseudonymized PDF together with its encrypted `.nullifypdf-map` and password, and writes out a new PDF with the original values restored in place of the placeholders. The reconstructed PDF is refused if its SHA-256 hash does not match the `output_sha256` recorded in the restore map, to prevent applying a mapping to the wrong document. Because a placeholder's on-page box is usually smaller than the original text, restored text may be visually clipped or overlap — this restores the original *content*, not the original layout.
+
+### 🔧 Changed
+
+- **BREAKING: Removed the Lite/Full build split**: every build and release artifact now bundles the EN/IT OCR data unconditionally (previously only "Full" builds did). The `--lite`/`--full` flags and `NULLIFYPDF_BUILD_VARIANT` environment variable are gone from `build_local.py`. Release artifact filenames no longer carry a `_Lite`/`_Full` suffix (e.g. `NullifyPDF_vX.Y.Z_Windows.exe` instead of `NullifyPDF_vX.Y.Z_Windows_Full.exe`). Users who were downloading the Lite asset should switch to the single artifact for their OS.
+
 ### 🐛 Fixed
 
 - **Manual redaction selection was silently broken**: drawing a rectangle on the PDF view to manually mark text/areas for redaction raised an uncaught `TypeError` on every mouse press (`QGraphicsView.mapToScene()` does not accept the `QPointF` that `event.position()` returns in this PySide6 version), so only AI-assisted detection actually redacted anything. Fixed by converting to `QPoint` before mapping.

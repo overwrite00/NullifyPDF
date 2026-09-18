@@ -183,7 +183,7 @@ If you can't copy → it's an image → enable **OCR PDF scansionati**
 
 For scanned PDFs:
 1. Enable **"OCR PDF scansionati"** in the sidebar
-2. Make sure you use a Full build or have local Tesseract `tessdata`
+2. Make sure OCR data is present (bundled by default) or you have local Tesseract `tessdata`
 3. Run **"Auto Redact (AI)"** again
 
 Use image redaction only when you intentionally want to remove whole images or
@@ -461,5 +461,5 @@ The more details, the faster we can fix it! 🚀
 
 ---
 
-*Last updated: 2026-09-17*  
+*Last updated: 2026-09-18*  
 *← [User Guide](./USER_GUIDE.md) | [Development →](./DEVELOPMENT.md)*
