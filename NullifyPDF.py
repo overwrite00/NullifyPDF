@@ -199,31 +199,35 @@ def _placeholder_rects_by_chars(page: Any, placeholder: str) -> List["fitz.Rect"
     """Locate a placeholder that `search_for()` cannot find, character by character.
 
     Fallback for version 1 restore maps (which carry no coordinates) whose
-    placeholder was wrapped across lines by `apply_redactions()`. Walks each
-    text block's characters in reading order, ignoring the line breaks that
-    defeat `search_for()`, and returns the union box of each match.
+    placeholder was wrapped by `apply_redactions()`. Depending on the
+    PyMuPDF version, a wrap can land its pieces on separate *lines* of the
+    same text block, or in entirely separate *blocks* (observed with
+    PyMuPDF 1.28.2: a narrow box wraps "DATA_001" into a "DATA_" block and a
+    separate "001" block). Concatenating only within each block therefore
+    still misses it, so this walks every character on the page, in reading
+    order, ignoring block/line boundaries entirely.
     """
     rects: List["fitz.Rect"] = []
     try:
         raw = page.get_text("rawdict")
     except Exception:
         return rects
+    chars: List[Any] = []
     for block in raw.get("blocks", []):
-        chars: List[Any] = []
         for line in block.get("lines", []):
             for span in line.get("spans", []):
                 chars.extend(span.get("chars", []))
-        if not chars:
-            continue
-        text = "".join(ch.get("c", "") for ch in chars)
-        start = text.find(placeholder)
-        while start != -1:
-            matched = chars[start:start + len(placeholder)]
-            box = fitz.Rect(matched[0]["bbox"])
-            for ch in matched[1:]:
-                box |= fitz.Rect(ch["bbox"])
-            rects.append(box)
-            start = text.find(placeholder, start + len(placeholder))
+    if not chars:
+        return rects
+    text = "".join(ch.get("c", "") for ch in chars)
+    start = text.find(placeholder)
+    while start != -1:
+        matched = chars[start:start + len(placeholder)]
+        box = fitz.Rect(matched[0]["bbox"])
+        for ch in matched[1:]:
+            box |= fitz.Rect(ch["bbox"])
+        rects.append(box)
+        start = text.find(placeholder, start + len(placeholder))
     return rects
 
 
