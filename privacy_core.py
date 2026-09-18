@@ -12,7 +12,7 @@ import os
 import re
 from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
 class PrivacyMode(str, Enum):
@@ -36,6 +36,27 @@ class PlaceholderOccurrence:
 
     page: int
     rect: Tuple[float, float, float, float]
+    # Typography of the original text under this box (native PDFs only):
+    # {font, size, color, flags, origin, text}. None for scanned pages and
+    # for maps written before version 3.
+    style: Optional[Dict[str, Any]] = None
+
+
+def validate_style(raw: Any) -> Dict[str, Any]:
+    """Check a stored text style and return a normalized copy."""
+    if not isinstance(raw, dict):
+        raise ValueError("Mappa di ripristino: stile non valido.")
+    origin = [float(v) for v in raw["origin"]]
+    if len(origin) != 2:
+        raise ValueError("Mappa di ripristino: stile non valido.")
+    return {
+        "font": str(raw.get("font", "")),
+        "size": float(raw["size"]),
+        "color": int(raw.get("color", 0)),
+        "flags": int(raw.get("flags", 0)),
+        "origin": origin,
+        "text": str(raw.get("text", "")),
+    }
 
 
 @dataclass(frozen=True)
@@ -71,6 +92,7 @@ class PlaceholderRegistry:
         entity_type: Optional[str] = None,
         page: int = 0,
         rect: Optional[Sequence[float]] = None,
+        style: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Return the stable placeholder for `original`, recording this hit.
 
@@ -102,7 +124,9 @@ class PlaceholderRegistry:
         if rect is not None:
             x0, y0, x1, y1 = (float(v) for v in tuple(rect)[:4])
             self._occurrences[placeholder].append(
-                PlaceholderOccurrence(page=page_index, rect=(x0, y0, x1, y1))
+                PlaceholderOccurrence(
+                    page=page_index, rect=(x0, y0, x1, y1), style=style
+                )
             )
         return placeholder
 
@@ -123,11 +147,12 @@ class PlaceholderRegistry:
 
 
 RESTORE_MAP_FORMAT = "NullifyPDF restore map"
-RESTORE_MAP_VERSION = 2
+RESTORE_MAP_VERSION = 3
 # Version 1 maps carry no `occurrences`; they are still readable, and
 # reconstruction falls back to searching the PDF for the placeholder text.
 # Refusing them would permanently strand the PII of every map already issued.
-SUPPORTED_RESTORE_MAP_VERSIONS = frozenset({1, 2})
+# Version 3 adds an optional per-occurrence `style`; 2 maps stay readable.
+SUPPORTED_RESTORE_MAP_VERSIONS = frozenset({1, 2, 3})
 
 
 def build_restore_payload(
@@ -145,7 +170,11 @@ def build_restore_payload(
         # asdict() keeps tuples as tuples; JSON round-trips them to lists, so
         # normalize here and keep the payload byte-comparable with itself.
         raw["occurrences"] = [
-            {"page": occurrence.page, "rect": list(occurrence.rect)}
+            {
+                "page": occurrence.page,
+                "rect": list(occurrence.rect),
+                **({"style": occurrence.style} if occurrence.style else {}),
+            }
             for occurrence in entry.occurrences
         ]
         raw_entries.append(raw)
@@ -186,6 +215,11 @@ def parse_restore_entries(payload: Dict[str, object]) -> List[PlaceholderEntry]:
                 PlaceholderOccurrence(
                     page=int(raw_occ["page"]),
                     rect=(coords[0], coords[1], coords[2], coords[3]),
+                    style=(
+                        validate_style(raw_occ["style"])
+                        if raw_occ.get("style")
+                        else None
+                    ),
                 )
             )
         entries.append(

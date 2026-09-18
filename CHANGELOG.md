@@ -10,10 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### ✨ Added
 
 - **Choose what the AI scan looks for**: clicking "Auto Redact (AI)" now opens a dialog with one checkbox per data type (names, locations, email, phone, IBAN, credit cards, crypto wallets, fiscal code, VAT number, driver licence, ID card, passport). The choice is remembered in `~/.nullifypdf/ai_entities.json`.
+- **Reconstruction keeps the original typography on native PDFs**: for PDFs not produced by scanning (Word, Office, ...), the pseudonymization export now records the font, size, colour and baseline of each redacted value, and "Ricostruisci PDF" writes it back with that size, colour and position, reusing the original embedded font when present with all needed glyphs and otherwise the closest Base-14 font (serif/sans/mono, bold/italic). Restore maps are now version 3 (versions 1 and 2 still load); scanned pages keep the fitted-box behaviour.
 
 ### 🐛 Fixed
 
 - **AI scan selected ordinary text and parts of words**: detections were reduced to bare strings and then re-searched page-wide with a case-insensitive substring search, so one NER hit on "Rossi" also redacted "Rossini", and a stray tag spread to every occurrence on the page. Detections now use Presidio's exact character offsets mapped to word boxes, other occurrences are matched as whole words only, weak recognizers are filtered by per-type confidence thresholds, and generic PERSON/LOCATION hits (titles, months, salutations, lowercase text) are dropped. Blocklist and allowlist matching is whole-word too. A name that the NER model glues to the following address ("Rossini Marco Via Garibaldi") is now cut at the street word or number; the address part is kept as a location only when that type is enabled.
+- **A value wrapped over several boxes is restored per box**: reconstruction now restores the text that actually sat inside each box instead of writing the whole value into each one.
 
 ### 🔧 Changed
 

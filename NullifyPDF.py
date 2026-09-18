@@ -252,24 +252,164 @@ def _placeholder_rects_by_chars(page: Any, placeholder: str) -> List["fitz.Rect"
     return rects
 
 
-def _restore_targets(page: Any, entry: PlaceholderEntry) -> List["fitz.Rect"]:
-    """Return the boxes on `page` that should get `entry.original` back.
+def capture_text_style(page: Any, rect: "fitz.Rect") -> Optional[Dict[str, Any]]:
+    """Read the typography of the native text under `rect`.
+
+    Returns ``{font, size, color, flags, origin, text}`` for the dominant
+    span (most characters), where ``text`` is the text actually inside this
+    box and ``origin`` the baseline start of its first line. Returns None
+    when the box holds no real text: no span at all, or only an invisible
+    OCR layer (GlyphLessFont / render mode 3). That is what distinguishes a
+    native PDF from a scanned one.
+    """
+    try:
+        blocks = page.get_text("dict", clip=rect).get("blocks", [])
+    except Exception:
+        return None
+    spans: List[Dict[str, Any]] = []
+    for block in blocks:
+        if block.get("type") != 0:
+            continue
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                if not str(span.get("text", "")).strip():
+                    continue
+                if "glyphless" in str(span.get("font", "")).lower():
+                    continue
+                if span.get("alpha", 255) == 0:
+                    continue
+                spans.append(span)
+    if not spans:
+        return None
+    dominant = max(spans, key=lambda sp: len(str(sp["text"]).strip()))
+    text = " ".join(" ".join(str(sp["text"]) for sp in spans).split())
+    return {
+        "font": str(dominant.get("font", "")),
+        "size": float(dominant["size"]),
+        "color": int(dominant.get("color", 0)),
+        "flags": int(dominant.get("flags", 0)),
+        "origin": [float(dominant["origin"][0]), float(dominant["origin"][1])],
+        "text": text,
+    }
+
+
+_BASE14 = {
+    # (family, bold, italic) -> Base-14 font code
+    ("sans", False, False): "helv", ("sans", True, False): "hebo",
+    ("sans", False, True): "heit", ("sans", True, True): "hebi",
+    ("serif", False, False): "tiro", ("serif", True, False): "tibo",
+    ("serif", False, True): "tiit", ("serif", True, True): "tibi",
+    ("mono", False, False): "cour", ("mono", True, False): "cobo",
+    ("mono", False, True): "coit", ("mono", True, True): "cobi",
+}
+_SERIF_HINTS = (
+    "times", "serif", "georgia", "cambria", "garamond", "book", "palatino", "minion",
+)
+
+
+def _strip_subset_prefix(name: str) -> str:
+    return re.sub(r"^[A-Z]{6}\+", "", name or "").lower()
+
+
+def _same_face(basefont: str, wanted: str) -> bool:
+    """Loose font-name match: ignores subset prefix, case and punctuation."""
+    def norm(name: str) -> str:
+        n = re.sub(r"[^a-z0-9]", "", _strip_subset_prefix(name))
+        return re.sub(r"(regular|mt|ps)$", "", n)
+
+    a, b = norm(basefont), norm(wanted)
+    return bool(a) and bool(b) and (a == b or a.startswith(b) or b.startswith(a))
+
+
+def closest_base14(style: Dict[str, Any]) -> str:
+    """Pick the Base-14 font code closest to the original face."""
+    name = _strip_subset_prefix(str(style.get("font", "")))
+    flags = int(style.get("flags", 0))
+    if "mono" in name or "courier" in name or "consolas" in name or flags & 8:
+        family = "mono"
+    elif "sans" not in name and (flags & 4 or any(k in name for k in _SERIF_HINTS)):
+        family = "serif"
+    else:
+        family = "sans"
+    bold = bool(flags & 16) or any(k in name for k in ("bold", "black", "heavy"))
+    italic = bool(flags & 2) or any(k in name for k in ("italic", "oblique"))
+    return _BASE14[(family, bold, italic)]
+
+
+def resolve_font(
+    doc: Any, page: Any, style: Dict[str, Any], text: str
+) -> Tuple["fitz.Font", str]:
+    """Return ``(font, description)`` for restoring `text` in `style`.
+
+    Prefers the original embedded font when the file still carries it and it
+    has a glyph for every character; otherwise the closest Base-14 face.
+    """
+    wanted = _strip_subset_prefix(str(style.get("font", "")))
+    if wanted:
+        try:
+            for entry in page.get_fonts(full=True):
+                xref, basefont = entry[0], str(entry[3])
+                if xref <= 0 or not _same_face(basefont, wanted):
+                    continue
+                _name, ext, _type, buffer = doc.extract_font(xref)
+                if not buffer or ext in ("", "n/a"):
+                    continue
+                font = fitz.Font(fontbuffer=buffer)
+                if all(font.has_glyph(ord(ch)) for ch in text if not ch.isspace()):
+                    return font, f"embedded:{basefont}"
+        except Exception:
+            pass
+    code = closest_base14(style)
+    return fitz.Font(code), f"base14:{code}"
+
+
+def write_styled_text(
+    doc: Any, page: Any, rect: "fitz.Rect", text: str, style: Dict[str, Any]
+) -> None:
+    """Write `text` with the original size, colour, baseline and closest font."""
+    font, used = resolve_font(doc, page, style, text)
+    logging.getLogger("nullifypdf").debug(
+        "Reconstruction font: original=%s used=%s", style.get("font"), used
+    )
+    size = float(style["size"])
+    color = fitz.sRGB_to_pdf(int(style.get("color", 0)))
+    origin = fitz.Point(style["origin"][0], style["origin"][1])
+    width = font.text_length(text, fontsize=size)
+    usable = max(1.0, rect.width + 1.0)
+    writer = fitz.TextWriter(page.rect)
+    if width <= usable:
+        writer.append(origin, text, font=font, fontsize=size)
+    else:
+        # Wider in the fallback font (or a multi-line original): shrink a
+        # little, and wrap inside the box if it still does not fit.
+        scaled = max(REDACTION_MIN_FONTSIZE, size * usable / width)
+        if font.text_length(text, fontsize=scaled) <= usable:
+            writer.append(origin, text, font=font, fontsize=scaled)
+        else:
+            writer.fill_textbox(rect, text, font=font, fontsize=scaled, align=0)
+    writer.write_text(page, color=color)
+
+
+def _restore_targets(
+    page: Any, entry: PlaceholderEntry
+) -> List[Tuple["fitz.Rect", Optional[Dict[str, Any]]]]:
+    """Return the ``(box, style)`` pairs on `page` that should get `entry.original` back.
 
     Prefers the coordinates recorded in the restore map (version 2+), which
     are the boxes the original value was taken from, so the value fits back
     into them. Falls back to text search only for version 1 maps.
     """
     stored = [
-        fitz.Rect(occurrence.rect)
+        (fitz.Rect(occurrence.rect), occurrence.style)
         for occurrence in entry.occurrences
         if occurrence.page == page.number
     ]
     if stored:
         return stored
     hits = list(page.search_for(entry.placeholder))
-    if hits:
-        return hits
-    return _placeholder_rects_by_chars(page, entry.placeholder)
+    if not hits:
+        hits = _placeholder_rects_by_chars(page, entry.placeholder)
+    return [(hit, None) for hit in hits]
 
 
 def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int:
@@ -318,8 +458,9 @@ def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int
     try:
         for page in doc.pages():
             claimed: List[fitz.Rect] = []
+            styled: List[Tuple[fitz.Rect, str, Dict[str, Any]]] = []
             for entry in entries:
-                for rect in _restore_targets(page, entry):
+                for rect, style in _restore_targets(page, entry):
                     # Entries are sorted longest-placeholder-first, so a
                     # shorter placeholder must not re-redact a box a longer
                     # one already claimed: searching for PERSON_001 also hits
@@ -331,6 +472,15 @@ def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int
                     if any(taken.contains(rect) for taken in claimed):
                         continue
                     claimed.append(fitz.Rect(rect))
+                    if style:
+                        # Native text: blank the box now, write the value in
+                        # its original typography after apply_redactions()
+                        # (which would otherwise erase it).
+                        text = style.get("text") or entry.original
+                        page.add_redact_annot(rect, fill=(1, 1, 1))
+                        styled.append((fitz.Rect(rect), text, style))
+                        attempted.append((page.number, fitz.Rect(rect), text))
+                        continue
                     page.add_redact_annot(
                         rect,
                         text=entry.original,
@@ -341,6 +491,8 @@ def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int
                     )
                     attempted.append((page.number, fitz.Rect(rect), entry.original))
             page.apply_redactions(images=PDF_REDACT_IMAGE_PIXELS, graphics=True)
+            for rect, text, style in styled:
+                write_styled_text(doc, page, rect, text, style)
         doc.save(out_path, garbage=4, deflate=True, clean=True)
     finally:
         doc.close()
@@ -1700,6 +1852,7 @@ class NullifyPDF(QMainWindow):
                 annot.rect,
                 self._read_redaction_payload(annot),
                 page.get_text("text", clip=annot.rect).strip(),
+                capture_text_style(page, annot.rect),
             )
             for annot in (page.annots() or [])
             if annot.type[0] == PDF_ANNOT_REDACT
@@ -1707,7 +1860,7 @@ class NullifyPDF(QMainWindow):
         for annot in list(page.annots() or []):
             if annot.type[0] == PDF_ANNOT_REDACT:
                 page.delete_annot(annot)
-        for rect, payload, clipped_text in pending:
+        for rect, payload, clipped_text, style in pending:
             clean_original = " ".join(
                 (payload.get("original") or clipped_text).split()
             )
@@ -1720,6 +1873,7 @@ class NullifyPDF(QMainWindow):
                     entity_type,
                     page=page.number,
                     rect=(rect.x0, rect.y0, rect.x1, rect.y1),
+                    style=style,
                 )
                 page.add_redact_annot(
                     rect,

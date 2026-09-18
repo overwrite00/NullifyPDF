@@ -27,7 +27,7 @@ It supports two privacy export modes:
 | ------ | ----------------- |
 | `NullifyPDF.py` | Main PySide6 UI, PDF rendering, AI scan orchestration, redaction, export, reconstruction, OCR integration |
 | `pii_detection.py` | Qt-free AI detection helpers: word-box text index, offset-to-rect mapping, per-type score thresholds, generic-word filtering, whole-word propagation, entity selection persistence |
-| `privacy_core.py` | Privacy mode enum, placeholder registry, encrypted restore-map payloads, restore-map parsing |
+| `privacy_core.py` | Privacy mode enum, placeholder registry, encrypted restore-map payloads (version 3, optional per-occurrence text style), restore-map parsing |
 | `PDF_Checker.py` | Heuristic post-export inspection helper |
 | `build_local.py` | PyInstaller build script |
 | `scripts/download_ocr_data.py` | Downloads EN/IT Tesseract `tessdata_fast` files bundled into every build |
