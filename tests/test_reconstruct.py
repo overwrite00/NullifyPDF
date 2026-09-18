@@ -61,6 +61,52 @@ def test_reconstruct_pdf_restores_original_value(tmp_path):
     assert "PERSON_001" not in text
 
 
+def test_reconstruct_pdf_restores_repeated_value_on_later_page(tmp_path):
+    """Regression test: PlaceholderRegistry only records the page of a
+    value's *first* occurrence, so an entry's `page` field cannot be trusted
+    to find every occurrence of its placeholder.
+    """
+    doc = fitz.open()
+    doc.new_page().insert_text((72, 72), "Mario Rossi lives in Rome.")
+    doc.new_page().insert_text((72, 72), "Contact: Mario Rossi again.")
+
+    registry = PlaceholderRegistry()
+    placeholder = registry.placeholder_for("Mario Rossi", "PERSON", page=0)
+    assert placeholder == "PERSON_001"
+
+    for page_index in (0, 1):
+        page = doc[page_index]
+        for rect in page.search_for("Mario Rossi"):
+            page.add_redact_annot(
+                rect, text=placeholder, fill=(1, 1, 1), text_color=(0, 0, 0),
+                align=1, fontsize=8,
+            )
+        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_PIXELS, graphics=True)
+
+    pseudonymized_path = tmp_path / "pseudonymized.pdf"
+    doc.save(str(pseudonymized_path))
+    doc.close()
+
+    from NullifyPDF import sha256_file
+
+    payload = build_restore_payload(
+        source_name="original.pdf",
+        source_sha256="a" * 64,
+        output_sha256=sha256_file(str(pseudonymized_path)),
+        entries=registry.entries(),
+    )
+
+    out_path = tmp_path / "reconstructed.pdf"
+    restored_count = reconstruct_pdf(str(pseudonymized_path), str(out_path), payload)
+
+    assert restored_count == 2
+    reconstructed_doc = fitz.open(str(out_path))
+    text = "\n".join(p.get_text("text") for p in reconstructed_doc)
+    reconstructed_doc.close()
+    assert text.count("Mario Rossi") == 2
+    assert "PERSON_001" not in text
+
+
 def test_reconstruct_pdf_rejects_hash_mismatch(tmp_path):
     pseudonymized_path = tmp_path / "pseudonymized.pdf"
     registry = _make_pseudonymized_pdf(pseudonymized_path)

@@ -124,22 +124,23 @@ def parse_restore_entries(payload: Dict[str, object]) -> List[PlaceholderEntry]:
     return entries
 
 
-def group_entries_by_page(
+def sort_entries_longest_placeholder_first(
     entries: Iterable[PlaceholderEntry],
-) -> Dict[int, List[PlaceholderEntry]]:
-    """Group restore entries by page, longest placeholder first on each page.
+) -> List[PlaceholderEntry]:
+    """Sort restore entries with the longest placeholder text first.
 
     Longest-first ordering matters because placeholder search is a substring
     match: once a type exceeds 9 instances (``PERSON_0010``), a shorter
     placeholder like ``PERSON_001`` would otherwise match its first 10
     characters and restore the wrong value.
+
+    Reconstruction must search every page for every placeholder rather than
+    trusting each entry's recorded `page`: `PlaceholderRegistry` reuses the
+    same placeholder for a repeated value and only records the page of its
+    *first* occurrence, so later occurrences on other pages would otherwise
+    never be found.
     """
-    by_page: Dict[int, List[PlaceholderEntry]] = {}
-    for entry in entries:
-        by_page.setdefault(entry.page, []).append(entry)
-    for page_entries in by_page.values():
-        page_entries.sort(key=lambda e: len(e.placeholder), reverse=True)
-    return by_page
+    return sorted(entries, key=lambda e: len(e.placeholder), reverse=True)
 
 
 def encrypt_restore_payload(payload: Dict[str, object], password: str) -> bytes:

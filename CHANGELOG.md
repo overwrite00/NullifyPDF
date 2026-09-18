@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Reconstruct pseudonymized PDFs**: New "Ricostruisci PDF" action reopens a previously pseudonymized PDF together with its encrypted `.nullifypdf-map` and password, and writes out a new PDF with the original values restored in place of the placeholders. The reconstructed PDF is refused if its SHA-256 hash does not match the `output_sha256` recorded in the restore map, to prevent applying a mapping to the wrong document. Because a placeholder's on-page box is usually smaller than the original text, restored text may be visually clipped or overlap — this restores the original *content*, not the original layout.
 
+### 🐛 Fixed
+
+- **Reconstruction missed repeated placeholder occurrences**: `PlaceholderRegistry` reuses the same placeholder (e.g. `PERSON_001`) for a repeated value but only records the page of its *first* occurrence. "Ricostruisci PDF" trusted that recorded page, so a later occurrence of the same value on another page (or elsewhere on the same page) was never found and stayed unreplaced. Reconstruction now searches every page for every placeholder instead of relying on the recorded page.
+
 ### 🔧 Changed
 
 - **BREAKING: Removed the Lite/Full build split**: every build and release artifact now bundles the EN/IT OCR data unconditionally (previously only "Full" builds did). The `--lite`/`--full` flags and `NULLIFYPDF_BUILD_VARIANT` environment variable are gone from `build_local.py`. Release artifact filenames no longer carry a `_Lite`/`_Full` suffix (e.g. `NullifyPDF_vX.Y.Z_Windows.exe` instead of `NullifyPDF_vX.Y.Z_Windows_Full.exe`). Users who were downloading the Lite asset should switch to the single artifact for their OS.

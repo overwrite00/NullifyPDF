@@ -55,8 +55,8 @@ from privacy_core import (
     build_restore_payload,
     decrypt_restore_payload,
     encrypt_restore_payload,
-    group_entries_by_page,
     parse_restore_entries,
+    sort_entries_longest_placeholder_first,
 )
 
 __version__ = "2.2.0"
@@ -143,12 +143,18 @@ class RestoreMapMismatch(ValueError):
 def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int:
     """Rebuild a pseudonymized PDF's original values from a decrypted restore map.
 
-    Replaces each placeholder occurrence (e.g. ``PERSON_001``) found on its
-    recorded page with the original value, using the same
-    add_redact_annot()-then-apply_redactions() mechanism used to create the
-    placeholders during export. Does not restore the original layout: a
-    placeholder's redaction box is sized for the placeholder text, so a
-    longer original value may be visually clipped or crowd the box.
+    Replaces every placeholder occurrence (e.g. ``PERSON_001``) with the
+    original value, using the same add_redact_annot()-then-apply_redactions()
+    mechanism used to create the placeholders during export. Does not restore
+    the original layout: a placeholder's redaction box is sized for the
+    placeholder text, so a longer original value may be visually clipped or
+    crowd the box.
+
+    Searches every page for every placeholder rather than trusting each
+    entry's recorded `page`: `PlaceholderRegistry` reuses the same
+    placeholder for a repeated value and only records the page of its first
+    occurrence, so a later occurrence on another page would otherwise never
+    be found.
 
     Args:
         in_path: Path to the pseudonymized PDF to reconstruct from.
@@ -170,14 +176,11 @@ def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int
             "(hash SHA-256 diverso)."
         )
 
-    entries_by_page = group_entries_by_page(parse_restore_entries(payload))
+    entries = sort_entries_longest_placeholder_first(parse_restore_entries(payload))
     restored_count = 0
     doc = fitz.open(in_path)
     try:
-        for page_number, entries in entries_by_page.items():
-            if page_number >= len(doc):
-                continue
-            page = doc[page_number]
+        for page in doc:
             for entry in entries:
                 for rect in page.search_for(entry.placeholder):
                     page.add_redact_annot(
