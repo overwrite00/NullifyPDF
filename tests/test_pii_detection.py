@@ -127,3 +127,86 @@ def test_person_glued_to_address_is_split():
     assert [x.text for x in clean_candidates([numbered], enabled_types=["PERSON"])] == ["Mario Rossi"]
     addr_first = Candidate(0, 13, "Via Garibaldi", "PERSON", 0.85)
     assert [x.entity_type for x in clean_candidates([addr_first])] == ["LOCATION"]
+
+def _cand(text, whole, etype="PERSON"):
+    start = whole.index(text)
+    return Candidate(start, start + len(text), text, etype, 0.85)
+
+
+def test_labels_headings_and_list_items_are_rejected():
+    from pii_detection import reject_label_like_hits
+
+    doc = "Telefono: 340 1234567\n- Presente\nConfigurazione\nMario Rossi abita a Roma."
+    for word in ("Telefono", "Presente"):
+        for etype in ("PERSON", "LOCATION"):
+            assert reject_label_like_hits([_cand(word, doc, etype)], doc) == [], (word, etype)
+    assert reject_label_like_hits([_cand("Configurazione", doc)], doc) == []
+    keep = reject_label_like_hits(
+        [_cand("Mario Rossi", doc), _cand("Roma", doc, "LOCATION")], doc
+    )
+    assert [c.text for c in keep] == ["Mario Rossi", "Roma"]
+
+
+def test_word_also_used_in_lowercase_is_a_common_noun():
+    from pii_detection import reject_label_like_hits
+
+    doc = "Il tecnico lavora. Zorbanex dei server: la zorbanex e semplice."
+    c = _cand("Zorbanex", doc, "LOCATION")
+    assert reject_label_like_hits([c], doc) == []
+
+
+def test_line_start_person_before_lowercase_word_is_dropped():
+    from pii_detection import reject_label_like_hits
+
+    doc = "Qualcuno lavora presso Acme\nMario Rossi lavora qui"
+    assert reject_label_like_hits([_cand("Qualcuno", doc)], doc) == []
+    assert len(reject_label_like_hits([_cand("Mario Rossi", doc)], doc)) == 1
+
+
+def test_ner_span_is_split_at_line_breaks_and_bullets_stripped():
+    text = "Graziano Mariella\nTelefono\n- Presente"
+    res = [R(0, len(text), "PERSON", 0.85)]
+    out = filter_results(res, text, ["PERSON"])
+    assert [c.text for c in out] == ["Graziano Mariella", "Telefono", "Presente"]
+
+
+def test_real_pipeline_ignores_cv_labels():
+    pytest.importorskip("presidio_analyzer")
+    spacy = pytest.importorskip("spacy")
+    if not spacy.util.is_package("it_core_news_md"):
+        pytest.skip("model missing")
+    from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
+    from presidio_analyzer.nlp_engine import NlpEngineProvider
+    from pii_detection import ALL_ENTITY_TYPES, reject_label_like_hits
+
+    nlp = NlpEngineProvider(nlp_configuration={"nlp_engine_name": "spacy", "models": [
+        {"lang_code": "it", "model_name": "it_core_news_md"}]}).create_engine()
+    reg = RecognizerRegistry(supported_languages=["it"])
+    reg.load_predefined_recognizers(languages=["it"], nlp_engine=nlp)
+    an = AnalyzerEngine(nlp_engine=nlp, registry=reg, supported_languages=["it"])
+    idx = _index(
+        "Graziano Mariella", "Sviluppatore software", "Telefono: 340 1234567",
+        "Email: graziano@example.com", "Esperienza", "- Presente", "Configurazione",
+        "Configurazione dei server Linux", "Competenze", "Configurazione reti",
+    )
+    res = an.analyze(text=idx.text, language="it", entities=ALL_ENTITY_TYPES)
+    cands = resolve_overlaps(reject_label_like_hits(
+        clean_candidates(
+            filter_results(res, idx.text, ALL_ENTITY_TYPES),
+            enabled_types=ALL_ENTITY_TYPES,
+        ),
+        idx.text,
+    ))
+    found = {c.text for c in cands}
+    assert "Graziano Mariella" in found
+    assert not found & {
+        "Telefono", "Presente", "Configurazione", "Sviluppatore",
+        "Esperienza", "Competenze",
+    }
+
+
+def test_identifier_names_and_role_words_are_not_flagged():
+    doc = "Partita IVA: 12345678903\nReferente Anna Verdi"
+    kept = clean_candidates([_cand("Referente Anna Verdi", doc)])
+    assert [c.text for c in kept] == ["Anna Verdi"]
+    assert clean_candidates([_cand("Partita", doc, "LOCATION")]) == []
