@@ -1,4 +1,8 @@
-name: Promote Beta to Stable Release
+name: Build and Release NullifyPDF (Stable)
+
+# The stable release is compiled from its own tag (not promoted from a beta):
+# the app embeds its version string at build time, so re-labelling a beta
+# build would leave "-beta.N" in the About dialog.
 
 on:
   push:
@@ -6,29 +10,25 @@ on:
       - 'v*'
       - '!v*-beta.*'
   workflow_dispatch:
-    inputs:
-      beta_tag:
-        description: 'Beta tag to promote (leave empty to auto-select the latest beta)'
-        required: false
-        type: string
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: stable-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  promote:
-    name: Promote latest beta artifacts to stable
+  changelog:
+    name: Verify CHANGELOG entry
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
 
       - name: Verify CHANGELOG has an entry for this version
-        if: startsWith(github.ref, 'refs/tags/')
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           VERSION="${TAG#v}"
@@ -46,58 +46,82 @@ jobs:
 
           echo "[OK] CHANGELOG.md has a clean [$VERSION] entry and an empty [Unreleased] section."
 
-      - name: Resolve target beta release
-        id: beta
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BETA_TAG_INPUT: ${{ github.event.inputs.beta_tag }}
+      - name: Verify the app version matches the tag
         run: |
-          if [ -n "$BETA_TAG_INPUT" ]; then
-            TAG="$BETA_TAG_INPUT"
-          else
-            TAG=$(gh release list --repo "${{ github.repository }}" --limit 50 --json tagName,isPrerelease,createdAt \
-              --jq '[.[] | select(.isPrerelease == true)] | sort_by(.createdAt) | last | .tagName // empty')
-          fi
-
-          if [ -z "$TAG" ]; then
-            echo "::error::No beta release found to promote. Publish a beta release first (tag v*-beta.*) or pass beta_tag explicitly."
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          BASE=$(sed -nE 's/^__version__ = "([^"]+)".*/\1/p' NullifyPDF.py)
+          PRE=$(sed -nE 's/^__version_prerelease__ = "([^"]*)".*/\1/p' NullifyPDF.py)
+          if [ "$BASE" != "$VERSION" ] || [ -n "$PRE" ]; then
+            echo "::error::NullifyPDF.py declares version '$BASE' with prerelease '$PRE', but the stable tag is '$VERSION'. Set __version__ to $VERSION and __version_prerelease__ to \"\" before tagging."
             exit 1
           fi
+          echo "[OK] NullifyPDF.py declares stable version $VERSION."
 
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Promoting beta release: $TAG"
+  build:
+    name: Build for ${{ matrix.os }}
+    needs: changelog
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04, macos-latest]
 
-      - name: Download beta release assets
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install System Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm dpkg binutils libxcb-cursor0 libxkbcommon-x11-0 libegl1 desktop-file-utils
+
+      - name: Install Python Dependencies (includes spaCy models)
         run: |
-          mkdir -p stable-assets
-          # Patterns are deliberately tolerant of a trailing "_Full"/"_Lite"
-          # suffix (no underscore pinned before the extension) so a beta
-          # built before the lite/full split was removed can still be
-          # promoted to stable.
-          gh release download "${{ steps.beta.outputs.tag }}" --repo "${{ github.repository }}" --dir stable-assets \
-            --pattern "NullifyPDF_v*_Windows*.exe" \
-            --pattern "NullifyPDF_v*_macOS*.zip" \
-            --pattern "NullifyPDF_v*_Ubuntu*.deb" \
-            --pattern "NullifyPDF_v*_Fedora*.rpm"
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: Strip beta suffix from filenames
-        run: |
-          cd stable-assets
-          # Drop any leftover "_Lite" assets from betas built before the
-          # lite/full split was removed: only the full variant is promoted.
-          rm -f *_Lite.* *_Lite
-          for f in *; do
-            # Also drops the now-redundant "_Full" variant tag.
-            new="$(echo "$f" | sed -E 's/-beta\.[0-9]+//; s/_Full//')"
-            if [ "$f" != "$new" ]; then
-              mv "$f" "$new"
-            fi
-          done
-          ls -la
+      - name: Run Smoke Tests
+        run: pytest tests/ -v
 
-      - name: Create stable release and upload assets sequentially
+      - name: Type Check (mypy)
+        shell: bash
+        run: mypy NullifyPDF.py pii_detection.py privacy_core.py PDF_Checker.py
+
+      - name: Build
+        run: python build_local.py
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: stable-build-${{ runner.os }}
+          retention-days: 5
+          path: |
+            dist/NullifyPDF_v*_Windows.exe
+            dist/NullifyPDF_v*_macOS.zip
+            dist/NullifyPDF_v*_Ubuntu.deb
+            dist/NullifyPDF_v*_Fedora.rpm
+
+  create_release:
+    name: Create GitHub Stable Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: all-builds
+          pattern: stable-build-*
+          merge-multiple: true
+
+      - name: Create release and upload assets sequentially
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -105,9 +129,7 @@ jobs:
           set -euo pipefail
           TAG="${GITHUB_REF#refs/tags/}"
           REPO="${{ github.repository }}"
-          NOTES="NullifyPDF stable release.
-          Promoted from beta \`${{ steps.beta.outputs.tag }}\` (already verified build, no rebuild).
-          Available for Windows, macOS, and Linux."
+          NOTES="NullifyPDF stable release. Available for Windows, macOS, and Linux. See CHANGELOG.md for the changes in this version."
 
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             echo "Release $TAG already exists, uploading/replacing assets."
@@ -120,7 +142,12 @@ jobs:
           # (100-300MB each) were timing out with an opaque "Error saving
           # asset" and no per-file retry (see beta-release.yml).
           shopt -s nullglob
-          files=(stable-assets/*)
+          files=(
+            all-builds/NullifyPDF_v*_Windows.exe
+            all-builds/NullifyPDF_v*_macOS.zip
+            all-builds/NullifyPDF_v*_Ubuntu.deb
+            all-builds/NullifyPDF_v*_Fedora.rpm
+          )
 
           if [ ${#files[@]} -eq 0 ]; then
             echo "No release assets found to upload" >&2

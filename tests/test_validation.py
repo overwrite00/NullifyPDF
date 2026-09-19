@@ -126,3 +126,14 @@ def test_list_manager_handles_invalid_paths(invalid_input):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+def test_about_version_text_mentions_beta_only_for_prereleases(monkeypatch):
+    import NullifyPDF
+
+    monkeypatch.setattr(NullifyPDF, "APP_VERSION", "2.3.0")
+    monkeypatch.setattr(NullifyPDF, "__version_prerelease__", "")
+    assert NullifyPDF.about_version_text() == "v2.3.0 AI Privacy"
+    monkeypatch.setattr(NullifyPDF, "APP_VERSION", "2.3.0-beta.4")
+    monkeypatch.setattr(NullifyPDF, "__version_prerelease__", "beta.4")
+    assert NullifyPDF.about_version_text() == "v2.3.0-beta.4 AI Privacy Beta"

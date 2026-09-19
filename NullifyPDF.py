@@ -91,6 +91,12 @@ APP_VERSION = (
 )
 
 
+def about_version_text() -> str:
+    """Version line of the About dialog; says "Beta" only for prereleases."""
+    suffix = " Beta" if __version_prerelease__ else ""
+    return f"v{APP_VERSION} AI Privacy{suffix}"
+
+
 class DetectionDict(TypedDict):
     text: str
     entity_type: str
@@ -1645,7 +1651,7 @@ class NullifyPDF(QMainWindow):
         lbl_title.setStyleSheet("font-size: 24px; font-weight: bold;")
         lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(lbl_title)
-        lbl_ver = QLabel(f"v{APP_VERSION} AI Privacy Beta")
+        lbl_ver = QLabel(about_version_text())
         lbl_ver.setStyleSheet("color: #0ea5e9; font-weight: bold;")
         lbl_ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(lbl_ver)

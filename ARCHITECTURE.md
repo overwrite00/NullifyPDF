@@ -261,7 +261,7 @@ GitHub Actions build one artifact per supported OS:
 - Ubuntu
 - Fedora
 
-Beta releases build and upload all artifacts. Stable releases promote the latest verified beta artifacts without recompilation.
+Beta releases (`v*-beta.N` tags) and stable releases (`vX.Y.Z` tags) are each compiled from their own tag, because the application embeds its version string at build time. The stable workflow first checks that `CHANGELOG.md` has a `[X.Y.Z]` entry with an empty `[Unreleased]` section and that `NullifyPDF.py` declares that exact version with no prerelease suffix.
 
 Expected artifact names include:
 
