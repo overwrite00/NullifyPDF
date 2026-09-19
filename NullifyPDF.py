@@ -70,6 +70,7 @@ from pii_detection import (
     filter_results,
     load_enabled_groups,
     propagate_whole_word,
+    reject_label_like_hits,
     resolve_overlaps,
     save_enabled_groups,
     span_to_rects,
@@ -883,7 +884,10 @@ class AIWorker(QObject):
                     )
                     candidates.extend(filter_results(res, index.text, targets))
                 candidates = resolve_overlaps(
-                    clean_candidates(candidates, enabled_types=targets)
+                    reject_label_like_hits(
+                        clean_candidates(candidates, enabled_types=targets),
+                        index.text,
+                    )
                 )
                 detections = []
                 seen_values: Set[Tuple[str, str]] = set()

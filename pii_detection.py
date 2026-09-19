@@ -65,6 +65,23 @@ _GENERIC_WORDS = {
     "september", "october", "november", "december",
     "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
     "italia", "italy",
+    # Labels, headings and list words that document/CV layouts capitalize.
+    "telefono", "tel", "cellulare", "cell", "fax", "email", "mail", "web",
+    "sito", "indirizzo", "residenza", "domicilio", "sede", "luogo", "data",
+    "nome", "cognome", "nato", "nata", "presente", "attuale", "configurazione",
+    "esperienza", "esperienze", "competenze", "formazione", "istruzione",
+    "lingue", "lingua", "inglese", "italiano", "francese", "tedesco",
+    "spagnolo", "profilo", "curriculum", "vitae", "obiettivo", "referenze",
+    "interessi", "hobby", "patente", "certificazioni", "progetti", "sviluppo",
+    "phone", "mobile", "address", "name", "surname", "present", "current",
+    "configuration", "experience", "skills", "education", "languages",
+    "english", "italian", "french", "german", "spanish", "profile", "summary",
+    "objective", "references", "interests", "certifications", "projects",
+    # Job titles, often capitalized at the start of a CV line.
+    "sviluppatore", "ingegnere", "analista", "responsabile", "consulente",
+    "tecnico", "direttore", "amministratore", "impiegato", "impiegata",
+    "programmatore", "progettista", "sistemista", "developer", "engineer",
+    "analyst", "manager", "consultant", "technician", "director", "administrator",
 }
 _HONORIFICS = {
     "sig", "sig.", "sig.ra", "signor", "signora", "signore", "dott", "dott.",
@@ -78,7 +95,7 @@ _STREET_WORDS = {
     "frazione", "fraz.", "borgo", "lungotevere", "c/o", "street", "st.",
     "avenue", "road", "rd.", "lane",
 }
-_EDGE_PUNCT = " \t\r\n.,;:!?()[]{}<>\"'«»“”‘’"
+_EDGE_PUNCT = " \t\r\n.,;:!?()[]{}<>\"'«»“”‘’-–—•·*▪►■"
 
 
 @dataclass
@@ -167,13 +184,74 @@ def filter_results(
             continue
         if r.score < ENTITY_SCORE_THRESHOLDS.get(etype, 0.5):
             continue
-        raw = text[r.start:r.end]
-        lead = len(raw) - len(raw.lstrip(_EDGE_PUNCT))
-        value = raw.strip(_EDGE_PUNCT)
-        if len(value) <= 2:
+        # A name or place never spans a line break; NER glues a heading or
+        # label ("Graziano Mariella\nTelefono") to the previous line, so
+        # judge each line of an NER span on its own.
+        if etype in _NER_TYPES:
+            segments = [
+                (r.start + m.start(), m.group())
+                for m in re.finditer(r"[^\r\n]+", text[r.start:r.end])
+            ]
+        else:
+            segments = [(r.start, text[r.start:r.end])]
+        for seg_start, raw in segments:
+            lead = len(raw) - len(raw.lstrip(_EDGE_PUNCT))
+            value = raw.strip(_EDGE_PUNCT)
+            if len(value) <= 2:
+                continue
+            start = seg_start + lead
+            out.append(
+                Candidate(start, start + len(value), value, etype, float(r.score))
+            )
+    return out
+
+
+def _line_bounds(text: str, start: int, end: int) -> Tuple[int, int]:
+    line_start = text.rfind("\n", 0, start) + 1
+    line_end = text.find("\n", end)
+    return line_start, len(text) if line_end == -1 else line_end
+
+
+def reject_label_like_hits(
+    candidates: Iterable[Candidate], text: str
+) -> List[Candidate]:
+    """Drop single-word PERSON/LOCATION hits that look like labels or headings.
+
+    Document layouts capitalize words that are not names, and the NER model
+    tags them ("Telefono:", "- Presente", "Configurazione"). A one-word hit
+    is rejected when it is:
+    - followed by a colon (a field label);
+    - a list item (preceded by a bullet or dash on its line);
+    - a PERSON alone on its line (a heading);
+    - also used in lowercase elsewhere on the page (a common noun, whereas a
+      real name is essentially never written in lowercase).
+    Multi-word spans such as "Mario Rossi" are left alone.
+    """
+    out: List[Candidate] = []
+    for c in candidates:
+        if c.entity_type not in _NER_TYPES or len(c.text.split()) != 1:
+            out.append(c)
             continue
-        start = r.start + lead
-        out.append(Candidate(start, start + len(value), value, etype, float(r.score)))
+        after = text[c.end:c.end + 8].lstrip(" \t")
+        if after.startswith(":"):
+            continue
+        ls, le = _line_bounds(text, c.start, c.end)
+        before_raw = text[ls:c.start].strip()
+        rest = text[c.end:le].strip(_EDGE_PUNCT)
+        if before_raw and not before_raw.strip(_EDGE_PUNCT):
+            continue  # only bullets/dashes before it: a list item
+        if c.entity_type == "PERSON" and not before_raw and not rest:
+            continue  # a lone word on its own line
+        if c.entity_type == "PERSON" and not before_raw.strip(_EDGE_PUNCT):
+            following = text[c.end:le].split()
+            if following and following[0][:1].islower():
+                continue  # capitalized only because it starts the line
+        lowered = c.text.lower()
+        if lowered != c.text and re.search(
+            r"(?<!\w)" + re.escape(lowered) + r"(?!\w)", text
+        ):
+            continue
+        out.append(c)
     return out
 
 
