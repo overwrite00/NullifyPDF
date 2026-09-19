@@ -77,6 +77,9 @@ _GENERIC_WORDS = {
     "configuration", "experience", "skills", "education", "languages",
     "english", "italian", "french", "german", "spanish", "profile", "summary",
     "objective", "references", "interests", "certifications", "projects",
+    # Names of the identifiers themselves ("Partita IVA:", "Codice fiscale").
+    "partita", "iva", "codice", "fiscale", "cf", "iban", "carta", "identità",
+    "documento", "passaporto", "referente", "contatto", "titolare",
     # Job titles, often capitalized at the start of a CV line.
     "sviluppatore", "ingegnere", "analista", "responsabile", "consulente",
     "tecnico", "direttore", "amministratore", "impiegato", "impiegata",
@@ -88,6 +91,7 @@ _HONORIFICS = {
     "dott.ssa", "dr", "dr.", "prof", "prof.", "prof.ssa", "ing", "ing.", "avv",
     "avv.", "geom", "geom.", "rag", "rag.", "mr", "mr.", "mrs", "mrs.", "ms",
     "ms.", "spett.le", "gentile", "egregio", "egregia",
+    "referente", "contatto", "titolare", "responsabile",
 }
 _STREET_WORDS = {
     "via", "viale", "v.le", "piazza", "p.za", "piazzale", "corso", "c.so",

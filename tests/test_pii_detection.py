@@ -203,3 +203,10 @@ def test_real_pipeline_ignores_cv_labels():
         "Telefono", "Presente", "Configurazione", "Sviluppatore",
         "Esperienza", "Competenze",
     }
+
+
+def test_identifier_names_and_role_words_are_not_flagged():
+    doc = "Partita IVA: 12345678903\nReferente Anna Verdi"
+    kept = clean_candidates([_cand("Referente Anna Verdi", doc)])
+    assert [c.text for c in kept] == ["Anna Verdi"]
+    assert clean_candidates([_cand("Partita", doc, "LOCATION")]) == []
