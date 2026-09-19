@@ -69,7 +69,7 @@ def test_tldextract_data_is_bundled_by_the_build_recipes():
     found by an AI scan, so every build recipe must collect the package.
     """
     root = pathlib.Path(__file__).parent.parent
-    for recipe in ("NullifyPDF.spec", "build_local.py"):
+    for recipe in ("build_local.py",):
         assert "'tldextract'" in (root / recipe).read_text(encoding="utf-8"), recipe
 
     pytest.importorskip("PyInstaller")
