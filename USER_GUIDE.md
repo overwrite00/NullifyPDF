@@ -65,7 +65,7 @@ Click the **"Auto Redact (AI)"** button. A dialog first lets you tick which data
 - UI stays responsive (no freezing)
 
 > [!TIP]
-> The AI isn't perfect. You'll review results in Step 4.
+> The AI isn't perfect. You'll review results in Step 4. If a type produces too many false positives (for example cities), untick it in the selection dialog next time. Field labels ("Telefono:"), headings and list items are ignored automatically.
 
 ---
 
@@ -283,5 +283,5 @@ python3.13 NullifyPDF.py
 
 ---
 
-*Last updated: 2026-09-18*  
+*Last updated: 2026-09-19*  
 *← [Back to README](./README.md) | [Troubleshooting →](./TROUBLESHOOTING.md)*
