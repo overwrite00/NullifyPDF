@@ -60,3 +60,20 @@ def test_build_includes_ocr_data(tmp_path, monkeypatch):
 
     assert ("ocr/tessdata/eng.traineddata", "ocr/tessdata") in datas
     assert ("ocr/tessdata/ita.traineddata", "ocr/tessdata") in datas
+
+
+def test_tldextract_data_is_bundled_by_the_build_recipes():
+    """Presidio's email recognizer needs tldextract's `.tld_set_snapshot`.
+
+    Without it the frozen app raised FileNotFoundError on the first email
+    found by an AI scan, so every build recipe must collect the package.
+    """
+    root = pathlib.Path(__file__).parent.parent
+    for recipe in ("build_local.py",):
+        assert "'tldextract'" in (root / recipe).read_text(encoding="utf-8"), recipe
+
+    pytest.importorskip("PyInstaller")
+    from PyInstaller.utils.hooks import collect_all
+
+    datas = collect_all("tldextract")[0]
+    assert any(src.endswith(".tld_set_snapshot") for src, _dest in datas)
