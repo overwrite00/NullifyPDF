@@ -212,6 +212,10 @@ AI redacted text that shouldn't be redacted (false positive).
 
 ### Solution
 
+**Option 0 — Scan only what you need**
+
+Clicking **Auto Redact (AI)** opens a dialog where you tick the data types to look for (for example untick *Luoghi e indirizzi* if cities keep being flagged). Your choice is remembered. Labels and headings such as "Telefono:" or list items are filtered automatically, and other occurrences of a value are matched as whole words only.
+
 **Option 1 — Remove and Allowlist**
 
 1. **Click once** on the black redaction box
@@ -461,5 +465,5 @@ The more details, the faster we can fix it! 🚀
 
 ---
 
-*Last updated: 2026-09-18*  
+*Last updated: 2026-09-19*  
 *← [User Guide](./USER_GUIDE.md) | [Development →](./DEVELOPMENT.md)*

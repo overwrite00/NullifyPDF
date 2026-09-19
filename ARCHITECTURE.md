@@ -99,7 +99,7 @@ Export pipeline writes a cleaned PDF copy
    - the analysis text is built by `pii_detection.build_page_index()` from `page.get_text("words")`, recording each word's rectangle so character offsets map back to exact boxes
    - if the page looks scanned, OCR is run with `page.get_textpage_ocr()` and the same index is built from the OCR words
    - Presidio analyzes the text for the enabled entity types
-   - results are filtered by per-type confidence thresholds, generic PERSON/LOCATION hits (titles, months, salutations, lowercase) are dropped, a name glued to a following address is cut at the street word, and overlapping spans are resolved
+   - results are filtered by per-type confidence thresholds; NER spans are split at line breaks; generic PERSON/LOCATION hits (titles, months, salutations, lowercase, role and identifier words) are dropped; single-word hits that look like labels or headings (followed by a colon, list items, lone heading lines, words also written in lowercase on the page, capitalized line starts) are rejected; a name glued to a following address is cut at the street word; overlapping spans are resolved
    - each surviving value is located by its offsets, and its other occurrences on the page are added as **whole words only**
    - detections are emitted with text, entity type, score, source, and their rectangles
 6. `apply_ai_to_page()` runs on the UI thread and creates pending redaction annotations from the received rectangles. Blocklist and allowlist terms are matched as whole words too.
@@ -297,7 +297,7 @@ pytest tests/ -v
 
 ## ⚠️ Known Limits
 
-- Detection is probabilistic. Presidio, spaCy, and OCR can miss data or create false positives.
+- Detection is probabilistic. Presidio, spaCy, and OCR can miss data or create false positives. Heuristics that reject label-like single-word names trade a little recall (for example a lone first name that starts a line) for precision; such values can be marked manually.
 - OCR depends on Tesseract language data and scan quality.
 - Handwriting is not reliably supported.
 - Complex PDFs may contain structures not covered by automated cleanup.
@@ -309,5 +309,5 @@ pytest tests/ -v
 
 ---
 
-*Last updated: 2026-09-18*  
+*Last updated: 2026-09-19*  
 *[Back to README](./README.md) | [Development →](./DEVELOPMENT.md)*

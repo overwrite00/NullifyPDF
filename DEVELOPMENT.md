@@ -225,11 +225,23 @@ pytest tests/ --cov=. --cov-report=html
 
 Opens `htmlcov/index.html` in browser.
 
+### Type Checking
+
+CI runs `mypy` as a blocking step. Run the same check locally before opening a PR:
+
+```bash
+mypy NullifyPDF.py pii_detection.py privacy_core.py PDF_Checker.py
+```
+
+PyMuPDF is imported as `pymupdf` (aliased to `fitz`) so it is really type-checked; its dynamically defined constants are read once near the top of `NullifyPDF.py`.
+
 ### What's Tested
 
 - ✅ **PDFListManager** — File I/O, persistence
 - ✅ **OCR Config** — Tesseract language selection and tessdata discovery
-- ✅ **Privacy Core** — Placeholder mapping and encrypted restore maps
+- ✅ **Privacy Core** — Placeholder mapping and encrypted restore maps (v1/v2/v3)
+- ✅ **AI Detection Helpers** — Offset-to-rectangle mapping, thresholds, label/heading filtering, whole-word matching
+- ✅ **Reconstruction** — Placeholder restoration, original font/size/colour on native PDFs
 - ✅ **Build Config** — OCR data bundling behavior
 - ✅ **Resource Paths** — PyInstaller compatibility
 
@@ -564,5 +576,5 @@ Ready to contribute? See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
 
 ---
 
-*Last updated: 2026-09-18*  
+*Last updated: 2026-09-19*  
 *← [Troubleshooting](./TROUBLESHOOTING.md) | [Back to README →](./README.md)*

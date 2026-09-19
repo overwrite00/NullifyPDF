@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-09-19
+
+Validated through the 2.3.0-beta.1/beta.2/beta.3 prereleases before this stable release, promoted from `v2.3.0-beta.3` without rebuilding; only the final stable version gets its own heading here.
+
 ### ✨ Added
 
 - **Choose what the AI scan looks for**: clicking "Auto Redact (AI)" now opens a dialog with one checkbox per data type (names, locations, email, phone, IBAN, credit cards, crypto wallets, fiscal code, VAT number, driver licence, ID card, passport). The choice is remembered in `~/.nullifypdf/ai_entities.json`.
