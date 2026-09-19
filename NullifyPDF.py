@@ -15,7 +15,7 @@ import importlib.util
 import json
 import math
 from typing import Optional, List, Set, Dict, Any, Tuple, TypedDict, NotRequired
-import fitz
+import pymupdf as fitz
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QGraphicsScene,
     QFileDialog,
     QDialog,
+    QDialogButtonBox,
     QLineEdit,
     QButtonGroup,
     QGraphicsRectItem,
@@ -60,8 +61,28 @@ from privacy_core import (
     parse_restore_entries,
     sort_entries_longest_placeholder_first,
 )
+from pii_detection import (
+    ALL_GROUP_IDS,
+    ENTITY_GROUPS,
+    build_page_index,
+    clean_candidates,
+    expand_group_ids,
+    filter_results,
+    load_enabled_groups,
+    propagate_whole_word,
+    reject_label_like_hits,
+    resolve_overlaps,
+    save_enabled_groups,
+    span_to_rects,
+    whole_word_rects,
+)
 
-__version__ = "2.2.0"
+# PyMuPDF defines these constants dynamically, which mypy cannot see; read
+# them once here (with the suppression) instead of at every call site.
+PDF_ANNOT_REDACT: int = fitz.PDF_ANNOT_REDACT  # type: ignore[attr-defined]
+PDF_REDACT_IMAGE_PIXELS: int = fitz.PDF_REDACT_IMAGE_PIXELS  # type: ignore[attr-defined]
+
+__version__ = "2.3.0"
 __version_prerelease__ = ""
 APP_VERSION = (
     f"{__version__}-{__version_prerelease__}"
@@ -75,6 +96,7 @@ class DetectionDict(TypedDict):
     entity_type: str
     rects: List[Tuple[float, float, float, float]]
     source: NotRequired[str]
+    score: NotRequired[float]
 
 
 def setup_logging() -> logging.Logger:
@@ -231,24 +253,164 @@ def _placeholder_rects_by_chars(page: Any, placeholder: str) -> List["fitz.Rect"
     return rects
 
 
-def _restore_targets(page: Any, entry: PlaceholderEntry) -> List["fitz.Rect"]:
-    """Return the boxes on `page` that should get `entry.original` back.
+def capture_text_style(page: Any, rect: "fitz.Rect") -> Optional[Dict[str, Any]]:
+    """Read the typography of the native text under `rect`.
+
+    Returns ``{font, size, color, flags, origin, text}`` for the dominant
+    span (most characters), where ``text`` is the text actually inside this
+    box and ``origin`` the baseline start of its first line. Returns None
+    when the box holds no real text: no span at all, or only an invisible
+    OCR layer (GlyphLessFont / render mode 3). That is what distinguishes a
+    native PDF from a scanned one.
+    """
+    try:
+        blocks = page.get_text("dict", clip=rect).get("blocks", [])
+    except Exception:
+        return None
+    spans: List[Dict[str, Any]] = []
+    for block in blocks:
+        if block.get("type") != 0:
+            continue
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                if not str(span.get("text", "")).strip():
+                    continue
+                if "glyphless" in str(span.get("font", "")).lower():
+                    continue
+                if span.get("alpha", 255) == 0:
+                    continue
+                spans.append(span)
+    if not spans:
+        return None
+    dominant = max(spans, key=lambda sp: len(str(sp["text"]).strip()))
+    text = " ".join(" ".join(str(sp["text"]) for sp in spans).split())
+    return {
+        "font": str(dominant.get("font", "")),
+        "size": float(dominant["size"]),
+        "color": int(dominant.get("color", 0)),
+        "flags": int(dominant.get("flags", 0)),
+        "origin": [float(dominant["origin"][0]), float(dominant["origin"][1])],
+        "text": text,
+    }
+
+
+_BASE14 = {
+    # (family, bold, italic) -> Base-14 font code
+    ("sans", False, False): "helv", ("sans", True, False): "hebo",
+    ("sans", False, True): "heit", ("sans", True, True): "hebi",
+    ("serif", False, False): "tiro", ("serif", True, False): "tibo",
+    ("serif", False, True): "tiit", ("serif", True, True): "tibi",
+    ("mono", False, False): "cour", ("mono", True, False): "cobo",
+    ("mono", False, True): "coit", ("mono", True, True): "cobi",
+}
+_SERIF_HINTS = (
+    "times", "serif", "georgia", "cambria", "garamond", "book", "palatino", "minion",
+)
+
+
+def _strip_subset_prefix(name: str) -> str:
+    return re.sub(r"^[A-Z]{6}\+", "", name or "").lower()
+
+
+def _same_face(basefont: str, wanted: str) -> bool:
+    """Loose font-name match: ignores subset prefix, case and punctuation."""
+    def norm(name: str) -> str:
+        n = re.sub(r"[^a-z0-9]", "", _strip_subset_prefix(name))
+        return re.sub(r"(regular|mt|ps)$", "", n)
+
+    a, b = norm(basefont), norm(wanted)
+    return bool(a) and bool(b) and (a == b or a.startswith(b) or b.startswith(a))
+
+
+def closest_base14(style: Dict[str, Any]) -> str:
+    """Pick the Base-14 font code closest to the original face."""
+    name = _strip_subset_prefix(str(style.get("font", "")))
+    flags = int(style.get("flags", 0))
+    if "mono" in name or "courier" in name or "consolas" in name or flags & 8:
+        family = "mono"
+    elif "sans" not in name and (flags & 4 or any(k in name for k in _SERIF_HINTS)):
+        family = "serif"
+    else:
+        family = "sans"
+    bold = bool(flags & 16) or any(k in name for k in ("bold", "black", "heavy"))
+    italic = bool(flags & 2) or any(k in name for k in ("italic", "oblique"))
+    return _BASE14[(family, bold, italic)]
+
+
+def resolve_font(
+    doc: Any, page: Any, style: Dict[str, Any], text: str
+) -> Tuple["fitz.Font", str]:
+    """Return ``(font, description)`` for restoring `text` in `style`.
+
+    Prefers the original embedded font when the file still carries it and it
+    has a glyph for every character; otherwise the closest Base-14 face.
+    """
+    wanted = _strip_subset_prefix(str(style.get("font", "")))
+    if wanted:
+        try:
+            for entry in page.get_fonts(full=True):
+                xref, basefont = entry[0], str(entry[3])
+                if xref <= 0 or not _same_face(basefont, wanted):
+                    continue
+                _name, ext, _type, buffer = doc.extract_font(xref)
+                if not buffer or ext in ("", "n/a"):
+                    continue
+                font = fitz.Font(fontbuffer=buffer)
+                if all(font.has_glyph(ord(ch)) for ch in text if not ch.isspace()):
+                    return font, f"embedded:{basefont}"
+        except Exception:
+            pass
+    code = closest_base14(style)
+    return fitz.Font(code), f"base14:{code}"
+
+
+def write_styled_text(
+    doc: Any, page: Any, rect: "fitz.Rect", text: str, style: Dict[str, Any]
+) -> None:
+    """Write `text` with the original size, colour, baseline and closest font."""
+    font, used = resolve_font(doc, page, style, text)
+    logging.getLogger("nullifypdf").debug(
+        "Reconstruction font: original=%s used=%s", style.get("font"), used
+    )
+    size = float(style["size"])
+    color = fitz.sRGB_to_pdf(int(style.get("color", 0)))
+    origin = fitz.Point(style["origin"][0], style["origin"][1])
+    width = font.text_length(text, fontsize=size)
+    usable = max(1.0, rect.width + 1.0)
+    writer = fitz.TextWriter(page.rect)
+    if width <= usable:
+        writer.append(origin, text, font=font, fontsize=size)
+    else:
+        # Wider in the fallback font (or a multi-line original): shrink a
+        # little, and wrap inside the box if it still does not fit.
+        scaled = max(REDACTION_MIN_FONTSIZE, size * usable / width)
+        if font.text_length(text, fontsize=scaled) <= usable:
+            writer.append(origin, text, font=font, fontsize=scaled)
+        else:
+            writer.fill_textbox(rect, text, font=font, fontsize=scaled, align=0)
+    writer.write_text(page, color=color)
+
+
+def _restore_targets(
+    page: Any, entry: PlaceholderEntry
+) -> List[Tuple["fitz.Rect", Optional[Dict[str, Any]]]]:
+    """Return the ``(box, style)`` pairs on `page` that should get `entry.original` back.
 
     Prefers the coordinates recorded in the restore map (version 2+), which
     are the boxes the original value was taken from, so the value fits back
     into them. Falls back to text search only for version 1 maps.
     """
     stored = [
-        fitz.Rect(occurrence.rect)
+        (fitz.Rect(occurrence.rect), occurrence.style)
         for occurrence in entry.occurrences
         if occurrence.page == page.number
     ]
     if stored:
         return stored
     hits = list(page.search_for(entry.placeholder))
-    if hits:
-        return hits
-    return _placeholder_rects_by_chars(page, entry.placeholder)
+    if not hits:
+        hits = _placeholder_rects_by_chars(page, entry.placeholder)
+    return [(hit, None) for hit in hits]
 
 
 def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int:
@@ -295,10 +457,11 @@ def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int
     attempted: List[Tuple[int, fitz.Rect, str]] = []
     doc = fitz.open(in_path)
     try:
-        for page in doc:
+        for page in doc.pages():
             claimed: List[fitz.Rect] = []
+            styled: List[Tuple[fitz.Rect, str, Dict[str, Any]]] = []
             for entry in entries:
-                for rect in _restore_targets(page, entry):
+                for rect, style in _restore_targets(page, entry):
                     # Entries are sorted longest-placeholder-first, so a
                     # shorter placeholder must not re-redact a box a longer
                     # one already claimed: searching for PERSON_001 also hits
@@ -310,6 +473,15 @@ def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int
                     if any(taken.contains(rect) for taken in claimed):
                         continue
                     claimed.append(fitz.Rect(rect))
+                    if style:
+                        # Native text: blank the box now, write the value in
+                        # its original typography after apply_redactions()
+                        # (which would otherwise erase it).
+                        text = style.get("text") or entry.original
+                        page.add_redact_annot(rect, fill=(1, 1, 1))
+                        styled.append((fitz.Rect(rect), text, style))
+                        attempted.append((page.number, fitz.Rect(rect), text))
+                        continue
                     page.add_redact_annot(
                         rect,
                         text=entry.original,
@@ -319,7 +491,9 @@ def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int
                         fontsize=fit_redaction_fontsize(entry.original, rect),
                     )
                     attempted.append((page.number, fitz.Rect(rect), entry.original))
-            page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_PIXELS, graphics=True)
+            page.apply_redactions(images=PDF_REDACT_IMAGE_PIXELS, graphics=True)
+            for rect, text, style in styled:
+                write_styled_text(doc, page, rect, text, style)
         doc.save(out_path, garbage=4, deflate=True, clean=True)
     finally:
         doc.close()
@@ -368,7 +542,7 @@ def _verify_restored(
                     "Reconstruction: value not restored on page %s at %s "
                     "(it did not fit its redaction box).",
                     page_number + 1,
-                    tuple(round(v, 1) for v in rect),
+                    tuple(round(v, 1) for v in (rect.x0, rect.y0, rect.x1, rect.y1)),
                 )
     finally:
         doc.close()
@@ -568,11 +742,12 @@ class AIWorker(QObject):
         except Exception as e:
             logging.getLogger("nullifypdf").debug(f"Error during AI cleanup: {e}")
 
-    @Slot(object, object, str, list, set, bool, object)
+    @Slot(object, object, str, list, set, bool, object, list)
     def run_scan(self, doc: Any, doc_mutex: Any, choice: str,
                  compiled_allowlist: List[Tuple[str, Any]],
                  allowlist_set: Set[str], use_ocr: bool,
-                 tessdata_dir: Optional[str]) -> None:
+                 tessdata_dir: Optional[str],
+                 enabled_types: List[str]) -> None:
         """Run AI scan on PDF pages and emit detected sensitive entities.
 
         Text extraction (`page.get_text()`) is performed inside this worker so
@@ -588,6 +763,7 @@ class AIWorker(QObject):
             compiled_allowlist: Pre-compiled regex patterns to skip redaction.
             allowlist_set: Set of allowlist entries (lowercase) for O(1)
                 exact-match fast-path lookup before regex any() scan.
+            enabled_types: Presidio entity types the user chose to detect.
         """
         try:
             if self._stop_requested:
@@ -660,22 +836,7 @@ class AIWorker(QObject):
                 )
                 self.loaded_langs = target_langs
             self.log_sig.emit("Scansione privacy in corso...")
-            targets = [
-                "PERSON",
-                "LOCATION",
-                "EMAIL_ADDRESS",
-                "PHONE_NUMBER",
-                "IBAN_CODE",
-                "CREDIT_CARD",
-                "CRYPTO",
-                # Italian national-ID formats (auto-loaded by Presidio only
-                # for language "it", harmless to always request).
-                "IT_FISCAL_CODE",
-                "IT_VAT_CODE",
-                "IT_DRIVER_LICENSE",
-                "IT_IDENTITY_CARD",
-                "IT_PASSPORT",
-            ]
+            targets = list(enabled_types)
 
             # Determine page count under mutex (cheap, but doc may be replaced
             # mid-flight by load_path if not for the disabled UI during scan).
@@ -694,6 +855,7 @@ class AIWorker(QObject):
                         page = doc[i]
                         text = page.get_text()
                         needs_ocr = use_ocr and self._page_needs_ocr(page, text)
+                        index = build_page_index(page.get_text("words"))
                         if needs_ocr:
                             self.log_sig.emit(f"OCR pagina {i + 1}...")
                             textpage = page.get_textpage_ocr(
@@ -703,58 +865,65 @@ class AIWorker(QObject):
                                 tessdata=tessdata_dir,
                             )
                             text = page.get_text(textpage=textpage)
+                            index = build_page_index(
+                                page.get_text("words", textpage=textpage)
+                            )
                             used_ocr = True
                     except Exception as e:
                         self.log_sig.emit(
                             f"Avviso: estrazione testo/OCR fallita pagina {i+1}: {e}"
                         )
                         text = ""
-                found: Dict[str, str] = {}
+                        index = build_page_index([])
+                candidates: List[Any] = []
                 for lang in self.loaded_langs:
+                    if not targets or not index.text:
+                        break
                     res = self.analyzer.analyze(
-                        text=text, entities=targets, language=lang
+                        text=index.text, entities=targets, language=lang
                     )
-                    for r in res:
-                        w = text[r.start : r.end].strip()
-                        if len(w) > 2:
-                            found[w] = r.entity_type
+                    candidates.extend(filter_results(res, index.text, targets))
+                candidates = resolve_overlaps(
+                    reject_label_like_hits(
+                        clean_candidates(candidates, enabled_types=targets),
+                        index.text,
+                    )
+                )
                 detections = []
-                for m, entity_type in found.items():
+                seen_values: Set[Tuple[str, str]] = set()
+                for c in candidates:
+                    m, entity_type = c.text, c.entity_type
                     clean = " ".join(m.strip(string.punctuation).lower().split())
                     if not clean:
                         continue
-                    # Fast path: exact set membership is O(1). The vast majority
-                    # of user allowlist entries are full tokens matched verbatim
-                    # against `clean`, so this short-circuits before the O(N)
-                    # regex any() scan over the whole allowlist.
+                    # Fast path: exact set membership is O(1).
                     if clean in allowlist_set:
                         continue
-                    # Cache the word-boundary regex for `clean` so we don't
-                    # rebuild and recompile it once per allowlist entry.
-                    clean_pattern = re.compile(r"\b" + re.escape(clean) + r"\b")
-                    if not any(
+                    clean_pattern = re.compile(r"" + re.escape(clean) + r"")
+                    if any(
                         f_reg.search(clean) or clean_pattern.search(a_str)
                         for a_str, f_reg in compiled_allowlist
                     ):
-                        detection: DetectionDict = {
-                            "text": m,
-                            "entity_type": entity_type,
-                            "rects": [],
-                            "source": "ocr" if used_ocr else "text",
-                        }
-                        if used_ocr and textpage is not None:
-                            with QMutexLocker(doc_mutex):
-                                try:
-                                    rects = doc[i].search_for(m, textpage=textpage)
-                                    detection["rects"] = [
-                                        (r.x0, r.y0, r.x1, r.y1) for r in rects
-                                    ]
-                                except Exception as e:
-                                    self.log_sig.emit(
-                                        f"Avviso: coordinate OCR non disponibili "
-                                        f"pagina {i+1}: {e}"
-                                    )
-                        detections.append(detection)
+                        continue
+                    rects = span_to_rects(index, c.start, c.end)
+                    if (m, entity_type) not in seen_values:
+                        seen_values.add((m, entity_type))
+                        # Other occurrences of the same value: whole words only.
+                        for extra in propagate_whole_word(
+                            index, m,
+                            case_sensitive=entity_type in ("PERSON", "LOCATION"),
+                        ):
+                            if extra not in rects:
+                                rects.append(extra)
+                    if not rects:
+                        continue
+                    detections.append({
+                        "text": m,
+                        "entity_type": entity_type,
+                        "rects": rects,
+                        "source": "ocr" if used_ocr else "text",
+                        "score": c.score,
+                    })
                 self.page_done_sig.emit(i, detections)
                 self.progress_sig.emit(i + 1, total_pages)
             if not self._stop_requested:
@@ -866,7 +1035,7 @@ class NullifyPDF(QMainWindow):
         config_dir: Path to user config directory (~/.nullifypdf).
     """
 
-    start_scan_sig = Signal(object, object, str, list, set, bool, object)
+    start_scan_sig = Signal(object, object, str, list, set, bool, object, list)
 
     def __init__(self) -> None:
         """Initialize main application window and setup UI."""
@@ -1348,7 +1517,7 @@ class NullifyPDF(QMainWindow):
             ans = [
                 a
                 for a in (p.annots() or [])
-                if a.type[0] == fitz.PDF_ANNOT_REDACT and a.rect.contains(pt)
+                if a.type[0] == PDF_ANNOT_REDACT and a.rect.contains(pt)
             ]
             if not ans:
                 return
@@ -1388,7 +1557,7 @@ class NullifyPDF(QMainWindow):
             ans = [
                 a
                 for a in (p.annots() or [])
-                if a.type[0] == fitz.PDF_ANNOT_REDACT and a.rect.contains(pt)
+                if a.type[0] == PDF_ANNOT_REDACT and a.rect.contains(pt)
             ]
             for a in ans:
                 p.delete_annot(a)
@@ -1411,7 +1580,7 @@ class NullifyPDF(QMainWindow):
             # generator returned by p.annots(), and list-comprehension-for-
             # side-effects is an anti-pattern (PEP 8 / pylint W0106).
             to_delete = [
-                a for a in (p.annots() or []) if a.type[0] == fitz.PDF_ANNOT_REDACT
+                a for a in (p.annots() or []) if a.type[0] == PDF_ANNOT_REDACT
             ]
             for a in to_delete:
                 p.delete_annot(a)
@@ -1500,6 +1669,9 @@ class NullifyPDF(QMainWindow):
         """
         if not self.doc:
             return
+        enabled_groups = self._select_ai_entities()
+        if not enabled_groups:
+            return
         self.btn_ai.setEnabled(False)
         self.prog.setValue(0)
         c_allow = [
@@ -1532,7 +1704,59 @@ class NullifyPDF(QMainWindow):
             set(self.allowlist),
             use_ocr,
             tessdata_dir,
+            expand_group_ids(enabled_groups),
         )
+
+    def _select_ai_entities(self) -> Optional[List[str]]:
+        """Ask which data types the AI scan should look for.
+
+        Returns the chosen group ids, or None if the user cancels. The
+        selection is remembered in ``ai_entities.json``.
+        """
+        store = self.config_dir / "ai_entities.json"
+        previous = set(load_enabled_groups(store))
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Tipi di dati da rilevare")
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(QLabel("Seleziona i dati da censurare / pseudonimizzare:"))
+        boxes: Dict[str, QCheckBox] = {}
+        for gid, label, _types in ENTITY_GROUPS:
+            cb = QCheckBox(label)
+            cb.setChecked(gid in previous)
+            boxes[gid] = cb
+            lay.addWidget(cb)
+        row = QHBoxLayout()
+        btn_all = QPushButton("Seleziona tutto")
+        btn_none = QPushButton("Deseleziona tutto")
+        row.addWidget(btn_all)
+        row.addWidget(btn_none)
+        lay.addLayout(row)
+        bb = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        lay.addWidget(bb)
+        ok = bb.button(QDialogButtonBox.StandardButton.Ok)
+
+        def refresh() -> None:
+            ok.setEnabled(any(cb.isChecked() for cb in boxes.values()))
+
+        for cb in boxes.values():
+            cb.toggled.connect(refresh)
+        def set_all(state: bool) -> None:
+            for cb in boxes.values():
+                cb.setChecked(state)
+
+        btn_all.clicked.connect(lambda: set_all(True))
+        btn_none.clicked.connect(lambda: set_all(False))
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        refresh()
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        chosen = [gid for gid in ALL_GROUP_IDS if boxes[gid].isChecked()]
+        save_enabled_groups(store, chosen)
+        return chosen
 
     def _select_privacy_export(self) -> Optional[PrivacyMode]:
         """Ask the user which privacy export mode to use."""
@@ -1583,7 +1807,7 @@ class NullifyPDF(QMainWindow):
         """Return redaction rectangles for a page."""
         return [
             a.rect for a in (page.annots() or [])
-            if a.type[0] == fitz.PDF_ANNOT_REDACT
+            if a.type[0] == PDF_ANNOT_REDACT
         ]
 
     def _add_privacy_redaction(
@@ -1632,14 +1856,15 @@ class NullifyPDF(QMainWindow):
                 annot.rect,
                 self._read_redaction_payload(annot),
                 page.get_text("text", clip=annot.rect).strip(),
+                capture_text_style(page, annot.rect),
             )
             for annot in (page.annots() or [])
-            if annot.type[0] == fitz.PDF_ANNOT_REDACT
+            if annot.type[0] == PDF_ANNOT_REDACT
         ]
         for annot in list(page.annots() or []):
-            if annot.type[0] == fitz.PDF_ANNOT_REDACT:
+            if annot.type[0] == PDF_ANNOT_REDACT:
                 page.delete_annot(annot)
-        for rect, payload, clipped_text in pending:
+        for rect, payload, clipped_text, style in pending:
             clean_original = " ".join(
                 (payload.get("original") or clipped_text).split()
             )
@@ -1652,6 +1877,7 @@ class NullifyPDF(QMainWindow):
                     entity_type,
                     page=page.number,
                     rect=(rect.x0, rect.y0, rect.x1, rect.y1),
+                    style=style,
                 )
                 page.add_redact_annot(
                     rect,
@@ -1700,7 +1926,7 @@ class NullifyPDF(QMainWindow):
             page = self.doc[i]
             e_rects = [
                 a.rect for a in (page.annots() or [])
-                if a.type[0] == fitz.PDF_ANNOT_REDACT
+                if a.type[0] == PDF_ANNOT_REDACT
             ]
             if self.chk_img.isChecked():
                 for img in page.get_image_info(hashes=False):
@@ -1713,8 +1939,9 @@ class NullifyPDF(QMainWindow):
                         fontsize=8,
                     )
                     e_rects.append(ir)
+            page_index = build_page_index(page.get_text("words"))
             for bw in self.blocklist:
-                for r in page.search_for(bw):
+                for r in (fitz.Rect(*t) for t in whole_word_rects(page_index, bw)):
                     if not any(
                         e.contains(fitz.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2))
                         for e in e_rects
@@ -1726,7 +1953,11 @@ class NullifyPDF(QMainWindow):
                             entity_type=self._infer_entity_type(bw),
                         )
                         e_rects.append(r)
-            p_rects = [r for aw in self.allowlist for r in page.search_for(aw)]
+            p_rects = [
+                fitz.Rect(*t)
+                for aw in self.allowlist
+                for t in whole_word_rects(page_index, aw)
+            ]
             for detection in normalized_detections:
                 word = str(detection.get("text", ""))
                 entity_type = str(detection.get("entity_type", "DATA"))
@@ -1847,7 +2078,7 @@ class NullifyPDF(QMainWindow):
             ex_doc = fitz.open(tmp_path)
 
             # Step 3: scrub on the disk-backed copy.
-            for page in ex_doc:
+            for page in ex_doc.pages():
                 if mode == PrivacyMode.PSEUDONYMIZE:
                     self._prepare_pseudonymized_page(page, registry)
                 # page.annots() may return None for pages with no annotations
@@ -1871,7 +2102,7 @@ class NullifyPDF(QMainWindow):
                 # whole-image redactions from "Oscura Immagini", including
                 # under page rotation, with no visible fringe).
                 page.apply_redactions(
-                    images=fitz.PDF_REDACT_IMAGE_PIXELS, graphics=True
+                    images=PDF_REDACT_IMAGE_PIXELS, graphics=True
                 )
                 try:
                     # Materialize first: mutating during iteration of

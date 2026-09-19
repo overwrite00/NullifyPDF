@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-09-19
+
+Validated through the 2.3.0-beta.1/beta.2/beta.3 prereleases before this stable release, promoted from `v2.3.0-beta.3` without rebuilding; only the final stable version gets its own heading here.
+
+### ✨ Added
+
+- **Choose what the AI scan looks for**: clicking "Auto Redact (AI)" now opens a dialog with one checkbox per data type (names, locations, email, phone, IBAN, credit cards, crypto wallets, fiscal code, VAT number, driver licence, ID card, passport). The choice is remembered in `~/.nullifypdf/ai_entities.json`.
+- **Reconstruction keeps the original typography on native PDFs**: for PDFs not produced by scanning (Word, Office, ...), the pseudonymization export now records the font, size, colour and baseline of each redacted value, and "Ricostruisci PDF" writes it back with that size, colour and position, reusing the original embedded font when present with all needed glyphs and otherwise the closest Base-14 font (serif/sans/mono, bold/italic). Restore maps are now version 3 (versions 1 and 2 still load); scanned pages keep the fitted-box behaviour.
+
+### 🐛 Fixed
+
+- **AI scan flagged labels and headings as names or places** ("Telefono:", "- Presente", "Configurazione"): NER hits are now judged line by line (a span no longer crosses a line break, and bullets/dashes are ignored), and a single-word PERSON/LOCATION hit is dropped when it is a field label followed by a colon, a list item, a lone heading line, a word also written in lowercase elsewhere on the page, or a capitalized line start followed by a lowercase word. A list of common label, section and job-title words (IT/EN) is also ignored. Multi-word names such as "Mario Rossi" are unaffected.
+- **AI scan crashed in packaged builds when an email was found**: Presidio's email recognizer needs `tldextract`'s `.tld_set_snapshot` data file, which PyInstaller did not bundle, so the scan aborted with `FileNotFoundError` under `_MEI...	ldextract`. The package is now collected by the spec and by `build_local.py`.
+- **AI scan selected ordinary text and parts of words**: detections were reduced to bare strings and then re-searched page-wide with a case-insensitive substring search, so one NER hit on "Rossi" also redacted "Rossini", and a stray tag spread to every occurrence on the page. Detections now use Presidio's exact character offsets mapped to word boxes, other occurrences are matched as whole words only, weak recognizers are filtered by per-type confidence thresholds, and generic PERSON/LOCATION hits (titles, months, salutations, lowercase text) are dropped. Blocklist and allowlist matching is whole-word too. A name that the NER model glues to the following address ("Rossini Marco Via Garibaldi") is now cut at the street word or number; the address part is kept as a location only when that type is enabled.
+- **A value wrapped over several boxes is restored per box**: reconstruction now restores the text that actually sat inside each box instead of writing the whole value into each one.
+
+### 🔧 Changed
+
+- **Type checking is now a blocking CI step**: `mypy` runs on `NullifyPDF.py`, `pii_detection.py`, `privacy_core.py` and `PDF_Checker.py` without `--ignore-missing-imports` or `|| true`. PyMuPDF is imported as `pymupdf` (the `fitz` alias ships no type marker), so its usage is really type-checked.
+
 ## [2.2.0] - 2026-09-18
 
 Validated through the 2.2.0-beta.1/beta.2/beta.3/beta.4 prereleases before this stable release, promoted from `v2.2.0-beta.4` without rebuilding; only the final stable version gets its own heading here.

@@ -26,7 +26,8 @@ It supports two privacy export modes:
 | 📄 File | ✨ Responsibility |
 | ------ | ----------------- |
 | `NullifyPDF.py` | Main PySide6 UI, PDF rendering, AI scan orchestration, redaction, export, reconstruction, OCR integration |
-| `privacy_core.py` | Privacy mode enum, placeholder registry, encrypted restore-map payloads, restore-map parsing |
+| `pii_detection.py` | Qt-free AI detection helpers: word-box text index, offset-to-rect mapping, per-type score thresholds, generic-word filtering, whole-word propagation, entity selection persistence |
+| `privacy_core.py` | Privacy mode enum, placeholder registry, encrypted restore-map payloads (version 3, optional per-occurrence text style), restore-map parsing |
 | `PDF_Checker.py` | Heuristic post-export inspection helper |
 | `build_local.py` | PyInstaller build script |
 | `scripts/download_ocr_data.py` | Downloads EN/IT Tesseract `tessdata_fast` files bundled into every build |
@@ -88,18 +89,20 @@ Export pipeline writes a cleaned PDF copy
 
 ### 🤖 AI Scan
 
-1. User selects language: `EN`, `IT`, or `BOTH`.
-2. User optionally enables:
+1. User clicks **Auto Redact (AI)** and, in a dialog, picks which data types to look for (names, locations, email, phone, IBAN, cards, crypto, fiscal code, VAT, licence, ID card, passport). The selection is remembered in `~/.nullifypdf/ai_entities.json`.
+2. User selects language (`EN`, `IT`, or `BOTH`) and optionally enables:
    - `OCR PDF scansionati`
    - `Oscura Immagini`
 3. `cmd_auto_ai()` checks OCR configuration if OCR is enabled.
 4. `AIWorker.run_scan()` processes pages in a background thread.
 5. For each page:
-   - digital text is extracted with `page.get_text()`
-   - if the page looks scanned, OCR is run with `page.get_textpage_ocr()`
-   - Presidio analyzes the extracted/OCR text
-   - detected entities are emitted with text, entity type, source, and optional OCR rectangles
-6. `apply_ai_to_page()` runs on the UI thread and creates pending redaction annotations.
+   - the analysis text is built by `pii_detection.build_page_index()` from `page.get_text("words")`, recording each word's rectangle so character offsets map back to exact boxes
+   - if the page looks scanned, OCR is run with `page.get_textpage_ocr()` and the same index is built from the OCR words
+   - Presidio analyzes the text for the enabled entity types
+   - results are filtered by per-type confidence thresholds; NER spans are split at line breaks; generic PERSON/LOCATION hits (titles, months, salutations, lowercase, role and identifier words) are dropped; single-word hits that look like labels or headings (followed by a colon, list items, lone heading lines, words also written in lowercase on the page, capitalized line starts) are rejected; a name glued to a following address is cut at the street word; overlapping spans are resolved
+   - each surviving value is located by its offsets, and its other occurrences on the page are added as **whole words only**
+   - detections are emitted with text, entity type, score, source, and their rectangles
+6. `apply_ai_to_page()` runs on the UI thread and creates pending redaction annotations from the received rectangles. Blocklist and allowlist terms are matched as whole words too.
 
 ### 🖊️ Manual Review
 
@@ -185,6 +188,8 @@ The restore map contains:
 - original values
 - entity types
 - page numbers
+- the redaction box of every occurrence
+- for native (non-scanned) PDFs, the typography of the redacted text: font, size, colour, flags and baseline (map version 3, optional)
 
 The map is encrypted with `cryptography` using Fernet and a key derived from the user password with PBKDF2-HMAC-SHA256.
 
@@ -292,7 +297,7 @@ pytest tests/ -v
 
 ## ⚠️ Known Limits
 
-- Detection is probabilistic. Presidio, spaCy, and OCR can miss data or create false positives.
+- Detection is probabilistic. Presidio, spaCy, and OCR can miss data or create false positives. Heuristics that reject label-like single-word names trade a little recall (for example a lone first name that starts a line) for precision; such values can be marked manually.
 - OCR depends on Tesseract language data and scan quality.
 - Handwriting is not reliably supported.
 - Complex PDFs may contain structures not covered by automated cleanup.
@@ -304,5 +309,5 @@ pytest tests/ -v
 
 ---
 
-*Last updated: 2026-09-18*  
+*Last updated: 2026-09-19*  
 *[Back to README](./README.md) | [Development →](./DEVELOPMENT.md)*

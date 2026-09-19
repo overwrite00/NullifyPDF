@@ -4,7 +4,7 @@ Performs deep forensic analysis on redacted PDFs to detect remaining
 traces of sensitive data in text layers, metadata, and binary data.
 """
 
-import fitz
+import pymupdf as fitz
 import os
 import logging
 from typing import Optional
@@ -66,7 +66,7 @@ def inspect_pdf(file_path: str, target_word: str) -> None:
                 alerts += 1
 
         # 1B. Text Layer Check
-        for i, page in enumerate(doc):
+        for i, page in enumerate(doc.pages()):
             text = page.get_text().lower()
             if word_lower in text:
                 print(

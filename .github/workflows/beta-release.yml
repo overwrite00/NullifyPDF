@@ -47,7 +47,7 @@ jobs:
 
       - name: Type Check (mypy)
         shell: bash
-        run: mypy NullifyPDF.py --ignore-missing-imports --no-error-summary 2>&1 | head -50 || true
+        run: mypy NullifyPDF.py pii_detection.py privacy_core.py PDF_Checker.py
 
       - name: Resolve beta suffix from tag
         if: startsWith(github.ref, 'refs/tags/')

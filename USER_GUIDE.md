@@ -48,7 +48,7 @@ Your step-by-step guide to redacting sensitive data from PDFs safely and securel
 
 ## Step 3️⃣ — Automatic Redaction (AI Scan)
 
-Click the **"Auto Redact (AI)"** button. NullifyPDF will automatically find and flag:
+Click the **"Auto Redact (AI)"** button. A dialog first lets you tick which data types to look for (your choice is remembered). NullifyPDF will then automatically find and flag the selected types; other occurrences of a detected value are matched as whole words only ("Rossi" does not match "Rossini"):
 
 - 🧑 **Names & Surnames**
 - 🏙️ **Cities & Addresses**
@@ -65,7 +65,7 @@ Click the **"Auto Redact (AI)"** button. NullifyPDF will automatically find and 
 - UI stays responsive (no freezing)
 
 > [!TIP]
-> The AI isn't perfect. You'll review results in Step 4.
+> The AI isn't perfect. You'll review results in Step 4. If a type produces too many false positives (for example cities), untick it in the selection dialog next time. Field labels ("Telefono:"), headings and list items are ignored automatically.
 
 ---
 
@@ -139,7 +139,7 @@ If you exported a PDF with **Pseudonimizzazione reversibile**, you can later res
 NullifyPDF checks the SHA-256 hash recorded in the restore map against the selected PDF and refuses to proceed if they don't match, to avoid applying the wrong mapping to a document.
 
 > [!NOTE]
-> Reconstruction restores the original *content*, not the original *layout*: since placeholders like `PERSON_001` are usually shorter than the original values, restored text may be clipped or visually crowd its redaction box.
+> For PDFs created by other applications (Word, Office, etc. — not scans), the restore map also records each value's font, size, colour and baseline, and reconstruction writes the text back with the same size, colour and position, reusing the original embedded font when the file still carries it and otherwise the closest standard font (serif/sans/mono, bold/italic). Glyph shapes may therefore differ slightly from the original when the font cannot be reused. For scanned PDFs there is no font to restore, so the value is fitted into its box: it may be clipped or visually crowd it. Maps created by earlier versions keep the previous behaviour.
 
 ---
 
@@ -283,5 +283,5 @@ python3.13 NullifyPDF.py
 
 ---
 
-*Last updated: 2026-09-18*  
+*Last updated: 2026-09-19*  
 *← [Back to README](./README.md) | [Troubleshooting →](./TROUBLESHOOTING.md)*

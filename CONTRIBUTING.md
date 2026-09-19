@@ -219,9 +219,10 @@ thread when scanning large PDFs concurrently."
 ### Before Opening PR
 
 1. ✅ Run tests: `pytest tests/ -v`
-2. ✅ Build locally: `python build_local.py`
-3. ✅ Update CHANGELOG.md with your changes
-4. ✅ Self-review your code (would you understand this in 6 months?)
+2. ✅ Type check (blocking in CI): `mypy NullifyPDF.py pii_detection.py privacy_core.py PDF_Checker.py`
+3. ✅ Build locally: `python build_local.py`
+4. ✅ Update CHANGELOG.md with your changes
+5. ✅ Self-review your code (would you understand this in 6 months?)
 5. ✅ Check links in documentation
 
 ### PR Description Template
@@ -378,5 +379,5 @@ Every contribution — code, docs, bug reports, ideas — helps make NullifyPDF 
 
 ---
 
-*Last updated: 2026-09-18*  
+*Last updated: 2026-09-19*  
 *← [Back to README](./README.md) | [Architecture →](./ARCHITECTURE.md)*

@@ -3,7 +3,7 @@
 import pathlib
 import sys
 
-import fitz
+import pymupdf as fitz
 import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
@@ -374,3 +374,110 @@ def test_reconstruct_uses_stored_boxes_across_pages(tmp_path):
     text = "\n".join(p.get_text("text") for p in result)
     result.close()
     assert text.count("Mario Rossi") == 2
+
+
+def _styled_roundtrip(tmp_path, fontname, fontsize, color, value="Maria Bianchi", extra_font=None):
+    """Export (capture style + placeholder) then reconstruct a native PDF."""
+    from NullifyPDF import capture_text_style, sha256_file
+
+    doc = fitz.open()
+    page = doc.new_page()
+    kwargs = {"fontname": fontname, "fontsize": fontsize, "color": color}
+    if extra_font is not None:
+        page.insert_font(fontname=fontname, fontbuffer=extra_font)
+    page.insert_text((72, 100), f"Cliente {value} residente.", **kwargs)
+    page.insert_text((72, 130), "Altro testo del documento.", **kwargs)
+    rect = page.search_for(value)[0]
+    style = capture_text_style(page, rect)
+    registry = PlaceholderRegistry()
+    placeholder = registry.placeholder_for(
+        value, "PERSON", page=0, rect=tuple(rect), style=style
+    )
+    page.add_redact_annot(rect, text=placeholder, fill=(1, 1, 1), fontsize=8)
+    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_PIXELS, graphics=True)
+    pseudo = tmp_path / "pseudo.pdf"
+    doc.save(str(pseudo), garbage=4, deflate=True, clean=True)
+    doc.close()
+    payload = build_restore_payload(
+        source_name="o.pdf",
+        source_sha256="a" * 64,
+        output_sha256=sha256_file(str(pseudo)),
+        entries=registry.entries(),
+    )
+    out = tmp_path / "out.pdf"
+    count = reconstruct_pdf(str(pseudo), str(out), payload)
+    return style, count, out
+
+
+def _span_for(path, needle):
+    doc = fitz.open(str(path))
+    try:
+        for block in doc[0].get_text("dict")["blocks"]:
+            for line in block.get("lines", []):
+                for span in line["spans"]:
+                    if needle in span["text"].replace("\u00a0", " "):
+                        return span
+    finally:
+        doc.close()
+    return None
+
+
+def test_native_reconstruction_keeps_size_color_and_serif(tmp_path):
+    grey = (0.4, 0.4, 0.4)
+    style, count, out = _styled_roundtrip(tmp_path, "tiro", 11, grey)
+    assert style is not None and style["origin"]
+    assert count == 1
+    span = _span_for(out, "Maria Bianchi")
+    assert span is not None
+    assert span["size"] == pytest.approx(11, abs=0.1)
+    assert span["color"] == 0x666666
+    assert "times" in span["font"].lower() or span["flags"] & 4
+    assert span["origin"][1] == pytest.approx(style["origin"][1], abs=0.5)
+
+
+def test_native_reconstruction_uses_bold_face(tmp_path):
+    style, count, out = _styled_roundtrip(tmp_path, "hebo", 12, (0, 0, 0))
+    assert count == 1
+    span = _span_for(out, "Maria Bianchi")
+    assert span["size"] == pytest.approx(12, abs=0.1)
+    assert span["flags"] & 16 or "bold" in span["font"].lower()
+
+
+def test_native_reconstruction_reuses_embedded_font(tmp_path):
+    font_file = pathlib.Path("C:/Windows/Fonts/arial.ttf")
+    if not font_file.exists():
+        pytest.skip("no system TrueType font available")
+    buf = font_file.read_bytes()
+    style, count, out = _styled_roundtrip(tmp_path, "F0", 10, (0, 0, 0), extra_font=buf)
+    assert count == 1
+    span = _span_for(out, "Maria Bianchi")
+    assert span is not None
+    assert span["size"] == pytest.approx(10, abs=0.1)
+
+
+def test_scanned_style_is_none_and_fallback_still_restores(tmp_path):
+    from NullifyPDF import capture_text_style
+
+    doc = fitz.open()
+    page = doc.new_page()
+    assert capture_text_style(page, fitz.Rect(50, 50, 200, 80)) is None
+
+
+def test_closest_base14_mapping():
+    from NullifyPDF import closest_base14
+
+    assert closest_base14({"font": "ABCDEF+Calibri", "flags": 0}) == "helv"
+    assert closest_base14({"font": "TimesNewRomanPS-BoldMT", "flags": 20}) == "tibo"
+    assert closest_base14({"font": "Consolas", "flags": 8}) == "cour"
+    assert closest_base14({"font": "Arial-ItalicMT", "flags": 2}) == "heit"
+
+
+def test_embedded_font_is_actually_reused(tmp_path):
+    font_file = pathlib.Path("C:/Windows/Fonts/arial.ttf")
+    if not font_file.exists():
+        pytest.skip("no system TrueType font available")
+    style, count, out = _styled_roundtrip(
+        tmp_path, "F0", 10, (0, 0, 0), extra_font=font_file.read_bytes()
+    )
+    span = _span_for(out, "Maria Bianchi")
+    assert "arial" in span["font"].lower()
