@@ -1,12 +1,14 @@
 version: 2
+# NOTE: `schedule` below only governs routine version updates (minor/patch/major bumps).
+# Dependabot security updates (triggered by GitHub Security Advisories) are independent
+# of this schedule and are opened automatically in near real-time regardless of interval.
 updates:
   # Python dependencies via pip
   - package-ecosystem: "pip"
     directory: "/"
     target-branch: "develop"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
       time: "04:00"
     open-pull-requests-limit: 5
     labels:
@@ -44,8 +46,7 @@ updates:
     directory: "/"
     target-branch: "develop"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
       time: "04:00"
     labels:
       - "dependencies"
