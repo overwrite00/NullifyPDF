@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔧 Changed
+
+- **Dependency updates**: PySide6 6.12.0, presidio-analyzer 2.2.366, spaCy 3.8.18, cryptography 50.0.2, pytest 9.2.0. Verified with the full test suite, `mypy` and an offscreen end-to-end scan/redaction run.
+- **PyMuPDF stays on 1.28.x**: PyMuPDF 2.0 makes `import pymupdf` load the layout analyzer (`pymupdf-layout`, ONNX Runtime, NumPy) at start-up, which raised the import time from well under a second to about 1.7 s and would add those packages to the installers. NullifyPDF does not use layout analysis, so Dependabot now ignores PyMuPDF major updates.
+
 ## [2.3.0] - 2026-09-19
 
 Validated through the 2.3.0-beta.1/beta.2/beta.3 prereleases before this stable release, promoted from `v2.3.0-beta.3` without rebuilding; only the final stable version gets its own heading here.
