@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-22.04, macos-latest]
+        os: [windows-latest, macos-latest]
 
     steps:
       - name: Checkout Code
@@ -32,10 +32,6 @@ jobs:
         with:
           python-version: '3.13'
           cache: 'pip'
-
-      - name: Install System Dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y rpm dpkg binutils libxcb-cursor0 libxkbcommon-x11-0 libegl1 desktop-file-utils
 
       - name: Install Python Dependencies (includes spaCy models)
         run: |
@@ -67,12 +63,18 @@ jobs:
           path: |
             dist/NullifyPDF_v*_Windows.exe
             dist/NullifyPDF_v*_macOS.zip
-            dist/NullifyPDF_v*_Ubuntu.deb
-            dist/NullifyPDF_v*_Fedora.rpm
+
+  linux:
+    name: Linux packages
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      artifact_prefix: beta-build
+      is_beta: true
+      retention_days: 5
 
   create_beta_release:
     name: Create GitHub Beta Release
-    needs: build
+    needs: [build, linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
@@ -123,6 +125,11 @@ jobs:
             echo "No release assets found to upload" >&2
             exit 1
           fi
+
+          # A release must carry every platform package; never ship a partial one.
+          for suffix in _Windows.exe _macOS.zip _Ubuntu.deb _Fedora.rpm; do
+            ls all-builds/NullifyPDF_v*"$suffix" >/dev/null 2>&1 || { echo "Missing release asset *$suffix" >&2; exit 1; }
+          done
 
           for f in "${files[@]}"; do
             echo "Uploading $f ..."

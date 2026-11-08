@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-22.04, macos-latest]
+        os: [windows-latest, macos-latest]
 
     steps:
       - name: Checkout Code
@@ -32,10 +32,6 @@ jobs:
         with:
           python-version: '3.13'
           cache: 'pip' # CACHE RIPRISTINATA!
-
-      - name: Install System Dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y rpm dpkg binutils libxcb-cursor0 libxkbcommon-x11-0 libegl1 desktop-file-utils
 
       - name: Install Python Dependencies (includes spaCy models)
         run: |
@@ -59,6 +55,12 @@ jobs:
           path: |
             dist/NullifyPDF_v*_Windows.exe
             dist/NullifyPDF_v*_macOS.zip
-            dist/NullifyPDF_v*_Ubuntu.deb
-            dist/NullifyPDF_v*_Fedora.rpm
           retention-days: 3
+
+  linux:
+    name: Linux packages
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      artifact_prefix: test-build
+      is_beta: false
+      retention_days: 3

@@ -1,0 +1,204 @@
+name: Build Linux packages (reusable)
+
+# Shared by the stable release, the beta release and the test build.
+#
+# The PyInstaller binary embeds the glibc of the machine that builds it, so it
+# is built ONCE inside a RHEL 9 container (glibc 2.34, rpm 4.16). The result
+# runs on every distribution with glibc >= 2.34 (Ubuntu 22.04+, Debian 12+,
+# RHEL/Rocky/Alma 9-10, current Fedora). Do NOT build it on ubuntu-latest:
+# ubuntu-24.04/26.04 produce a binary that does not start on older systems.
+#
+#   build-linux : tests + type check + PyInstaller + .rpm   (rockylinux:9)
+#   build-deb   : wraps the same binary into a .deb          (needs dpkg-deb)
+#   smoke       : installs each package in a clean container of every
+#                 supported distribution and starts the application there.
+#
+# Runners are pinned (not ubuntu-latest) so the GitHub migration of
+# ubuntu-latest to 26.04 cannot change the build environment.
+
+on:
+  workflow_call:
+    inputs:
+      artifact_prefix:
+        description: Prefix of the uploaded artifacts (stable-build, beta-build, test-build)
+        required: true
+        type: string
+      is_beta:
+        description: Derive NULLIFYPDF_BETA_SUFFIX from the pushed beta tag
+        required: false
+        default: false
+        type: boolean
+      retention_days:
+        required: false
+        default: 5
+        type: number
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    name: Build binary and .rpm (RHEL 9)
+    runs-on: ubuntu-24.04
+    container: rockylinux:9
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Install system dependencies
+        # Build tools + the libraries PySide6 needs to import under pytest.
+        run: |
+          dnf install -y git tar gzip which findutils binutils python3-pip rpm-build \
+            xcb-util-cursor xcb-util-image xcb-util-keysyms xcb-util-renderutil xcb-util-wm \
+            libxkbcommon libxkbcommon-x11 mesa-libEGL mesa-libGL fontconfig dbus-libs glib2
+
+      - uses: actions/checkout@v7
+
+      - name: Set up Python 3.13 (uv)
+        run: |
+          # RHEL 9 AppStream has no python3.13; uv installs a python-build-standalone one.
+          python3 -m pip install uv==0.8.0
+          uv python install 3.13
+          uv venv --python 3.13 /opt/venv
+          echo "/opt/venv/bin" >> "$GITHUB_PATH"
+          echo "VIRTUAL_ENV=/opt/venv" >> "$GITHUB_ENV"
+
+      - name: Show toolchain
+        run: |
+          python --version
+          ldd --version | head -1
+          rpmbuild --version
+
+      - name: Install Python dependencies (includes spaCy models)
+        run: uv pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest tests/ -v
+
+      - name: Type check (mypy)
+        run: mypy NullifyPDF.py pii_detection.py privacy_core.py update_check.py PDF_Checker.py
+
+      - name: Resolve beta suffix from tag
+        if: inputs.is_beta && startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "NULLIFYPDF_BETA_SUFFIX=${TAG#*-}" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: python build_local.py
+
+      - name: Check the build output
+        run: |
+          ls -l dist
+          ls dist/NullifyPDF_v*_Linux_Portable dist/NullifyPDF_v*_Fedora.rpm
+
+      - name: Upload binary (input of the .deb job)
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-portable
+          path: dist/NullifyPDF_v*_Linux_Portable
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Upload .rpm
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_prefix }}-Linux-rpm
+          path: dist/NullifyPDF_v*_Fedora.rpm
+          retention-days: ${{ inputs.retention_days }}
+          if-no-files-found: error
+
+  build-deb:
+    name: Build .deb
+    needs: build-linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: linux-portable
+          path: dist
+
+      - name: Resolve beta suffix from tag
+        if: inputs.is_beta && startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "NULLIFYPDF_BETA_SUFFIX=${TAG#*-}" >> "$GITHUB_ENV"
+
+      - name: Package .deb
+        run: |
+          chmod +x dist/NullifyPDF_v*_Linux_Portable
+          python3 build_local.py --deb-only
+          ls -l dist
+          ls dist/NullifyPDF_v*_Ubuntu.deb
+          dpkg-deb --info dist/NullifyPDF_v*_Ubuntu.deb
+
+      - name: Upload .deb
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_prefix }}-Linux-deb
+          path: dist/NullifyPDF_v*_Ubuntu.deb
+          retention-days: ${{ inputs.retention_days }}
+          if-no-files-found: error
+
+  smoke:
+    name: Smoke test ${{ matrix.name }}
+    needs: [build-linux, build-deb]
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.image }}
+    # Supported LTS / long-lived distributions. Review this list when one
+    # approaches its end of support (same policy as MetaLens). Ubuntu 22.04 and
+    # Debian 12 still run the binary (glibc 2.34 baseline) but are not tested.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: ubuntu-24.04 deb, image: 'ubuntu:24.04', kind: deb }
+          - { name: ubuntu-26.04 deb, image: 'ubuntu:26.04', kind: deb }
+          - { name: debian-13 deb, image: 'debian:13', kind: deb }
+          - { name: rocky-9 rpm, image: 'rockylinux:9', kind: rpm }
+          - { name: rocky-10 rpm, image: 'rockylinux/rockylinux:10', kind: rpm }
+          - { name: fedora-latest rpm, image: 'fedora:latest', kind: rpm }
+    steps:
+      - name: Install the tools the smoke test needs
+        run: |
+          if command -v apt-get >/dev/null; then
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ca-certificates xvfb xauth >/dev/null
+          else
+            dnf install -y -q xorg-x11-server-Xvfb xorg-x11-xauth --allowerasing >/dev/null || echo "::warning::Xvfb not available, falling back to the offscreen Qt platform"
+          fi
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: ${{ inputs.artifact_prefix }}-Linux-*
+          merge-multiple: true
+          path: pkgs
+
+      - name: Install the package
+        run: |
+          ls -l pkgs
+          case "${{ matrix.kind }}" in
+            deb) DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ./pkgs/*.deb ;;
+            rpm) dnf install -y -q ./pkgs/*.rpm ;;
+          esac
+
+      - name: The installed binary resolves its shared libraries
+        run: |
+          MISSING=$(ldd /usr/bin/nullify-pdf 2>&1 | grep 'not found' || true)
+          if [ -n "$MISSING" ]; then echo "::error::missing libraries:"; echo "$MISSING"; exit 1; fi
+          test -f /usr/share/applications/nullify-pdf.desktop
+          echo "ok"
+
+      - name: The application starts and stays up
+        run: |
+          # PyInstaller one-file: the first start unpacks Python, Qt and the
+          # spaCy models, so give it time. Exit status 124 = still running
+          # when the timeout stopped it = it started correctly.
+          if command -v xvfb-run >/dev/null; then RUN="xvfb-run -a"; else export QT_QPA_PLATFORM=offscreen; RUN=""; fi
+          set +e
+          timeout 45 $RUN /usr/bin/nullify-pdf > /tmp/app.log 2>&1
+          RC=$?
+          set -e
+          echo "exit status: $RC"; cat /tmp/app.log
+          [ "$RC" -eq 124 ] || { echo "::error::NullifyPDF did not stay running (exit $RC)"; exit 1; }
