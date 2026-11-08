@@ -26,6 +26,7 @@ It supports two privacy export modes:
 | 📄 File | ✨ Responsibility |
 | ------ | ----------------- |
 | `NullifyPDF.py` | Main PySide6 UI, PDF rendering, AI scan orchestration, redaction, export, reconstruction, OCR integration |
+| `update_check.py` | Qt-free update logic: version comparison (SemVer, stable/beta channels), GitHub release lookup, per-OS asset selection, trusted-host download, startup-check preference (`~/.nullifypdf/update_check.json`). Only runs on user click or if the user enabled the startup check |
 | `pii_detection.py` | Qt-free AI detection helpers: word-box text index, offset-to-rect mapping, per-type score thresholds, generic-word filtering, whole-word propagation, entity selection persistence |
 | `privacy_core.py` | Privacy mode enum, placeholder registry, encrypted restore-map payloads (version 3, optional per-occurrence text style), restore-map parsing |
 | `PDF_Checker.py` | Heuristic post-export inspection helper |
@@ -89,7 +90,7 @@ Export pipeline writes a cleaned PDF copy
 
 ### 🤖 AI Scan
 
-1. User clicks **Auto Redact (AI)** and, in a dialog, picks which data types to look for (names, locations, email, phone, IBAN, cards, crypto, fiscal code, VAT, licence, ID card, passport). The selection is remembered in `~/.nullifypdf/ai_entities.json`.
+1. User clicks **Auto Redact** and, in a dialog, picks which data types to look for (names, locations, email, phone, IBAN, cards, crypto, fiscal code, VAT, licence, ID card, passport). The selection is remembered in `~/.nullifypdf/ai_entities.json`.
 2. User selects language (`EN`, `IT`, or `BOTH`) and optionally enables:
    - `OCR PDF scansionati`
    - `Oscura Immagini`
@@ -309,5 +310,5 @@ pytest tests/ -v
 
 ---
 
-*Last updated: 2026-09-19*  
+*Last updated: 2026-11-08*  
 *[Back to README](./README.md) | [Development →](./DEVELOPMENT.md)*

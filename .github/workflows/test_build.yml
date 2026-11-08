@@ -47,7 +47,7 @@ jobs:
 
       - name: Type Check (mypy)
         shell: bash
-        run: mypy NullifyPDF.py pii_detection.py privacy_core.py PDF_Checker.py
+        run: mypy NullifyPDF.py pii_detection.py privacy_core.py update_check.py PDF_Checker.py
 
       - name: Build
         run: python build_local.py

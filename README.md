@@ -1,4 +1,4 @@
-# NullifyPDF - AI Privacy Edition
+# NullifyPDF - Privacy Edition
 
 ![GitHub Release](https://img.shields.io/github/v/release/overwrite00/NullifyPDF?style=flat-square&color=1fb2e0&label=stable)
 ![GitHub Release (beta)](https://img.shields.io/github/v/release/overwrite00/NullifyPDF?include_prereleases&style=flat-square&color=orange&label=beta)
@@ -23,7 +23,7 @@ NullifyPDF goes beyond simple text covering. It uses **Natural Language Processi
 
 | 🎯 Feature            | ✨ Benefit                             |
 | -------------------- | ------------------------------------- |
-| 🧠 **AI-Powered**     | Bilingual (EN/IT) automatic detection |
+| 🧠 **Auto-detection** | Bilingual (EN/IT) automatic detection |
 | 🔐 **Local-first**    | No cloud uploads during PDF processing |
 | ⚡ **Responsive UI**  | Background scanning with live preview |
 | 🛡️ **Privacy Export** | Irreversible redaction or reversible placeholders |
@@ -32,7 +32,8 @@ NullifyPDF goes beyond simple text covering. It uses **Natural Language Processi
 
 ## ✨ Key Features
 
-- 🧠 **AI-Powered Redaction** — Automatic bilingual (EN/IT) detection of PII: names, locations, emails, phones, IBANs, credit cards, crypto addresses, Italian fiscal codes and IDs. A dialog lets you choose which data types to scan for, and matching is whole-word so ordinary text is not caught
+- 🧠 **Automatic Redaction** — Automatic bilingual (EN/IT) detection of PII: names, locations, emails, phones, IBANs, credit cards, crypto addresses, Italian fiscal codes and IDs. A dialog lets you choose which data types to scan for, and matching is whole-word so ordinary text is not caught
+- 🔄 **Update Check** — Optional, user-triggered check for new releases (stable builds see stable only, beta builds see both) showing the release notes and a one-click download into your Downloads folder; can be enabled at every start from the Info dialog (off by default)
 - 🗄️ **Fluid UI & Thread-Safe** — PySide6 modern dark-mode interface with zero UI freezing. Text extraction in worker thread with QMutex serialization
 - 📖 **Persistent Dictionaries** — Blocklist and Allowlist synchronized to disk (`~/.nullifypdf`) with O(1) fast-path matching
 - 🛡️ **Privacy Export Modes** — Choose irreversible anonymization or reversible pseudonymization with a separately encrypted restore map
@@ -261,5 +262,5 @@ Want to help improve NullifyPDF? See [CONTRIBUTING.md](./CONTRIBUTING.md) for gu
 
 ---
 
-*Last updated: 2026-09-18*  
+*Last updated: 2026-11-08*  
 *[User Guide →](./USER_GUIDE.md)*

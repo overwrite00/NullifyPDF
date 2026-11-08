@@ -133,7 +133,7 @@ def test_about_version_text_mentions_beta_only_for_prereleases(monkeypatch):
 
     monkeypatch.setattr(NullifyPDF, "APP_VERSION", "2.3.0")
     monkeypatch.setattr(NullifyPDF, "__version_prerelease__", "")
-    assert NullifyPDF.about_version_text() == "v2.3.0 AI Privacy"
+    assert NullifyPDF.about_version_text() == "v2.3.0"
     monkeypatch.setattr(NullifyPDF, "APP_VERSION", "2.3.0-beta.4")
     monkeypatch.setattr(NullifyPDF, "__version_prerelease__", "beta.4")
-    assert NullifyPDF.about_version_text() == "v2.3.0-beta.4 AI Privacy Beta"
+    assert NullifyPDF.about_version_text() == "v2.3.0-beta.4 Beta"

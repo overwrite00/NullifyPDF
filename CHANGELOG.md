@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Added
+
+- **Check for updates**: the Info dialog has a new "Controlla aggiornamenti" button. It queries the GitHub releases of this repository (only when clicked, never automatically) and, if a newer version exists, shows the release link, the release notes and a **Download** button that saves the installer for the running OS into the user's system Downloads folder (resolved per platform). Stable builds are only offered newer stable releases; beta builds are offered both stable and beta releases.
+- **Optional check at every start**: a "Controlla ad ogni avvio" checkbox in the Info dialog (off by default, stored in `~/.nullifypdf/update_check.json`) runs the same check silently at startup and opens the update window, with the release notes, only when a newer version exists. Failures are logged, never shown.
+- **Repository link in the Info dialog**.
+- **Release notes taken from the changelog**: the release workflows now fill the GitHub release body with the matching `CHANGELOG.md` section (`## [X.Y.Z]` for stable tags, `## [Unreleased]` for beta tags), which is the text the update check displays.
+
 ### 🐛 Fixed
 
 - **Redacted text could remain in the PDF content stream**: with PyMuPDF 1.28.x, `apply_redactions()` did not remove text drawn with the `'` operator after `TL`/`Td`; the text disappeared from the extracted text but was still stored in the file. Fixed by PyMuPDF 2.x; covered by a regression test that scans every stream of the exported file.
@@ -15,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Dependency updates**: PySide6 6.12.0, presidio-analyzer 2.2.366, spaCy 3.8.18, cryptography 50.0.2, pytest 9.2.0. Verified with the full test suite, `mypy` and an offscreen end-to-end scan/redaction run.
 - **PyMuPDF 2.1**: required for the redaction fix above. Version 2.1 no longer loads the layout analyzer on import, so start-up time and installer size are unaffected (verified with a PyInstaller bundle).
+- **Removed the "AI" wording from the GUI and packaging metadata** (sidebar subtitle, language-model label, the "Auto Redact" button, the Info version line, installer descriptions): detection relies on Presidio/spaCy NLP and rules, not on a generative AI model, so the label was misleading.
+
 
 ## [2.3.0] - 2026-09-19
 

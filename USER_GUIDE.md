@@ -48,7 +48,7 @@ Your step-by-step guide to redacting sensitive data from PDFs safely and securel
 
 ## Step 3️⃣ — Automatic Redaction (AI Scan)
 
-Click the **"Auto Redact (AI)"** button. A dialog first lets you tick which data types to look for (your choice is remembered). NullifyPDF will then automatically find and flag the selected types; other occurrences of a detected value are matched as whole words only ("Rossi" does not match "Rossini"):
+Click the **"Auto Redact"** button. A dialog first lets you tick which data types to look for (your choice is remembered). NullifyPDF will then automatically find and flag the selected types; other occurrences of a detected value are matched as whole words only ("Rossi" does not match "Rossini"):
 
 - 🧑 **Names & Surnames**
 - 🏙️ **Cities & Addresses**
@@ -102,7 +102,7 @@ Make small text larger:
 Remove logos, signatures, or scanned photos:
 
 1. **Enable** the toggle: **"Oscura Immagini"** (sidebar)
-2. Click **"Auto Redact (AI)"** again
+2. Click **"Auto Redact"** again
 3. All images replaced with gray placeholder: `[ IMAGE REMOVED ]`
 
 > [!NOTE]
@@ -161,6 +161,7 @@ Your redaction preferences are saved automatically:
 .nullifypdf/
 ├── blocklist.txt     ← Words to ALWAYS redact
 ├── allowlist.txt     ← Words to NEVER redact
+├── update_check.json ← "Check at every start" preference (Info dialog)
 ├── logs/
 │   └── nullifypdf.log
 ```
@@ -270,7 +271,13 @@ python3.13 NullifyPDF.py
 **A:** Irreversible anonymization cannot be undone from the exported PDF. Pseudonymization can be restored using **"Ricostruisci PDF"** together with the encrypted restore map and its password (see [Step 7](#step-7%EF%B8%8F%E2%83%A3--reconstruct-a-pseudonymized-pdf) below).
 
 ### Q: Does NullifyPDF send data to the cloud?
-**A:** **No.** PDF processing is local. OCR data may be downloaded during build time, not while processing your PDFs.
+**A:** **No.** PDF processing is local and no document data ever leaves your machine. The only network access is the optional update check (see below), and OCR data is downloaded at build time, not while processing your PDFs.
+
+### Q: How do I check for new versions?
+**A:** Open **Info** and click **Controlla aggiornamenti**. NullifyPDF asks the public GitHub releases of this repository whether a newer version exists (no PDF content or personal data is sent). If one does, a window shows the version, the link to the release, the **release notes** (taken from the matching section of `CHANGELOG.md`) and a **Download** button that saves the installer for your operating system into your system **Downloads** folder (the location configured in your OS). Nothing is installed automatically.
+
+- **Stable** builds are only offered newer *stable* releases; **beta** builds are offered both stable and beta releases.
+- Tick **Controlla ad ogni avvio** in the Info dialog to run the same check silently each time the app starts. It is **off by default**; when enabled, a window appears only if a newer version exists, and a failed check (for example offline) is silently logged. Untick it to go back to fully manual checks.
 
 ---
 
@@ -283,5 +290,5 @@ python3.13 NullifyPDF.py
 
 ---
 
-*Last updated: 2026-09-19*  
+*Last updated: 2026-11-08*  
 *← [Back to README](./README.md) | [Troubleshooting →](./TROUBLESHOOTING.md)*

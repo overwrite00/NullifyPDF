@@ -148,12 +148,12 @@ def build_rpm(
 Name: nullify-pdf
 Version: {version}
 Release: 1
-Summary: AI-Powered PDF Anonymization Tool
+Summary: PDF Anonymization Tool
 License: MIT
 BuildArch: x86_64
 
 %description
-Professional forensic tool for PDF anonymization using AI.
+Professional forensic tool for PDF anonymization.
 
 %install
 mkdir -p %{{buildroot}}/usr/bin
@@ -248,7 +248,7 @@ def build_deb(
 
     with open(f"{pkg_dir}/DEBIAN/control", "w", encoding="utf-8") as f:
         f.write(
-            f"Package: nullify-pdf\nVersion: {version}\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: Graziano\nDescription: AI PDF Redaction Tool\n"
+            f"Package: nullify-pdf\nVersion: {version}\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: Graziano\nDescription: PDF Redaction Tool\n"
         )
 
     postinst_content = "#!/bin/sh\nset -e\nupdate-desktop-database -q || true\ngtk-update-icon-cache -f -t /usr/share/icons/hicolor || true\n"
