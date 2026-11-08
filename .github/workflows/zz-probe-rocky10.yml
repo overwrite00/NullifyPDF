@@ -17,7 +17,7 @@ jobs:
           github-token: ${{ github.token }}
           path: pkgs
       - name: Tools
-        run: dnf install -y -q xwayland-run mutter dbus-daemon xorg-x11-xauth --allowerasing 2>&1 | tail -5; which xwfb-run mutter
+        run: dnf install -y -q xwayland-run mutter dbus-daemon xorg-x11-xauth --allowerasing 2>&1 | tail -5; command -v xwfb-run; command -v mutter
       - name: Install
         run: dnf install -y -q ./pkgs/*.rpm 2>&1 | tail -5
       - name: Run
