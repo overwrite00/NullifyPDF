@@ -7,10 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Fixed
+
+- **Redacted text could remain in the PDF content stream**: with PyMuPDF 1.28.x, `apply_redactions()` did not remove text drawn with the `'` operator after `TL`/`Td`; the text disappeared from the extracted text but was still stored in the file. Fixed by PyMuPDF 2.x; covered by a regression test that scans every stream of the exported file.
+
 ### 🔧 Changed
 
 - **Dependency updates**: PySide6 6.12.0, presidio-analyzer 2.2.366, spaCy 3.8.18, cryptography 50.0.2, pytest 9.2.0. Verified with the full test suite, `mypy` and an offscreen end-to-end scan/redaction run.
-- **PyMuPDF stays on 1.28.x**: PyMuPDF 2.0 makes `import pymupdf` load the layout analyzer (`pymupdf-layout`, ONNX Runtime, NumPy) at start-up, which raised the import time from well under a second to about 1.7 s and would add those packages to the installers. NullifyPDF does not use layout analysis, so Dependabot now ignores PyMuPDF major updates.
+- **PyMuPDF 2.1**: required for the redaction fix above. Version 2.1 no longer loads the layout analyzer on import, so start-up time and installer size are unaffected (verified with a PyInstaller bundle).
 
 ## [2.3.0] - 2026-09-19
 
