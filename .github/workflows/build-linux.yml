@@ -173,9 +173,9 @@ jobs:
             apt-get update -qq
             DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ca-certificates xvfb xauth >/dev/null
           else
-            # RHEL 10 dropped the Xorg server from its own repositories:
-            # Xvfb then comes from EPEL.
-            dnf install -y -q xorg-x11-server-Xvfb xorg-x11-xauth --allowerasing >/dev/null               || { dnf install -y -q epel-release >/dev/null                    && dnf install -y -q xorg-x11-server-Xvfb xorg-x11-xauth --allowerasing >/dev/null; }
+            # RHEL 10 dropped the Xorg server (no Xvfb): there X11 clients run
+            # on Xwayland inside a headless mutter (xwfb-run).
+            dnf install -y -q xorg-x11-server-Xvfb xorg-x11-xauth --allowerasing >/dev/null               || dnf install -y -q xwayland-run mutter dbus-daemon xorg-x11-xauth --allowerasing >/dev/null
           fi
 
       - uses: actions/download-artifact@v8
@@ -211,6 +211,8 @@ jobs:
           export QT_QPA_PLATFORM=xcb
           if command -v xvfb-run >/dev/null; then
             RUN="xvfb-run -a"
+          elif command -v xwfb-run >/dev/null; then
+            RUN="xwfb-run -c mutter --"
           elif command -v Xvfb >/dev/null; then
             Xvfb :99 -screen 0 1280x1024x24 >/tmp/xvfb.log 2>&1 &
             sleep 3; export DISPLAY=:99; RUN=""
