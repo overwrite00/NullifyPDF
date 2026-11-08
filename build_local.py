@@ -20,7 +20,9 @@ DEB_DEPENDS = (
     "libc6 (>= 2.34), libegl1, libgl1, libfontconfig1, libxkbcommon0, "
     "libxkbcommon-x11-0, libxcb-cursor0, libxcb-icccm4, libxcb-image0, "
     "libxcb-keysyms1, libxcb-render-util0, libxcb-shape0, libxcb-xkb1, "
-    "libxcb-xinerama0, libdbus-1-3, libglib2.0-0t64 | libglib2.0-0"
+    "libxcb-xinerama0, libxcb1, libx11-6, libx11-xcb1, libxcb-randr0, "
+    "libxcb-render0, libxcb-shm0, libxcb-sync1, libxcb-xfixes0, "
+    "libdbus-1-3, libglib2.0-0t64 | libglib2.0-0"
 )
 RPM_REQUIRES = (
     "xcb-util-cursor",
@@ -36,6 +38,10 @@ RPM_REQUIRES = (
     "dbus-libs",
     "glib2",
 )
+
+
+class PackagingError(OSError):
+    """A Linux package could not be produced (fatal for the build)."""
 
 
 def deb_version(version: str, prerelease: str) -> str:
@@ -174,7 +180,7 @@ def build_rpm(
         prerelease: Prerelease label (e.g. "beta.1"), or empty for stable.
 
     Raises:
-        subprocess.CalledProcessError: if rpmbuild fails.
+        PackagingError: if rpmbuild fails.
         FileNotFoundError: if no .rpm was produced.
     """
     print("\n[INFO] Creazione pacchetto RPM per Fedora/RHEL...")
@@ -244,11 +250,14 @@ EOF
         )
 
     try:
-        subprocess.run(
-            ["rpmbuild", "--define", f"_topdir {rpm_dir}", "-bb", spec_path],
-            check=True,
-            stdout=subprocess.DEVNULL,
-        )
+        try:
+            subprocess.run(
+                ["rpmbuild", "--define", f"_topdir {rpm_dir}", "-bb", spec_path],
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+        except subprocess.CalledProcessError as e:
+            raise PackagingError(f"rpmbuild failed (exit {e.returncode})") from e
         built = [
             os.path.join(root, file)
             for root, _, files in os.walk(os.path.join(rpm_dir, "RPMS"))
@@ -276,7 +285,7 @@ def build_deb(
         prerelease: Prerelease label (e.g. "beta.1"), or empty for stable.
 
     Raises:
-        subprocess.CalledProcessError: if dpkg-deb fails.
+        PackagingError: if dpkg-deb fails.
     """
     print("\n[INFO] Creazione pacchetto DEB per Ubuntu/Debian...")
     pkg_dir = "deb_build_tmp"
@@ -318,17 +327,20 @@ def build_deb(
     os.chmod(f"{pkg_dir}/DEBIAN/postrm", 0o755)
 
     try:
-        subprocess.run(
-            [
-                "dpkg-deb",
-                "--root-owner-group",
-                "--build",
-                pkg_dir,
-                f"dist/NullifyPDF_v{file_version}_Ubuntu.deb",
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL,
-        )
+        try:
+            subprocess.run(
+                [
+                    "dpkg-deb",
+                    "--root-owner-group",
+                    "--build",
+                    pkg_dir,
+                    f"dist/NullifyPDF_v{file_version}_Ubuntu.deb",
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+        except subprocess.CalledProcessError as e:
+            raise PackagingError(f"dpkg-deb failed (exit {e.returncode})") from e
         print("[OK] DEB creato con successo.")
     finally:
         shutil.rmtree(pkg_dir, ignore_errors=True)

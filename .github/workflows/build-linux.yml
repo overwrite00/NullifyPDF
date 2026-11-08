@@ -173,7 +173,7 @@ jobs:
             apt-get update -qq
             DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ca-certificates xvfb xauth >/dev/null
           else
-            dnf install -y -q xorg-x11-server-Xvfb xorg-x11-xauth --allowerasing >/dev/null || echo "::warning::Xvfb not available, falling back to the offscreen Qt platform"
+            dnf install -y -q xorg-x11-server-Xvfb xorg-x11-xauth --allowerasing >/dev/null
           fi
 
       - uses: actions/download-artifact@v8
@@ -190,22 +190,37 @@ jobs:
             rpm) dnf install -y -q ./pkgs/*.rpm ;;
           esac
 
-      - name: The installed binary resolves its shared libraries
+      - name: The package is installed correctly
         run: |
-          MISSING=$(ldd /usr/bin/nullify-pdf 2>&1 | grep 'not found' || true)
-          if [ -n "$MISSING" ]; then echo "::error::missing libraries:"; echo "$MISSING"; exit 1; fi
+          test -x /usr/bin/nullify-pdf
           test -f /usr/share/applications/nullify-pdf.desktop
-          echo "ok"
+          case "${{ matrix.kind }}" in
+            deb) dpkg -s nullify-pdf | grep -E '^(Version|Depends)' ;;
+            rpm) rpm -q --qf '%{VERSION}-%{RELEASE}\n' nullify-pdf; rpm -q --requires nullify-pdf ;;
+          esac
 
       - name: The application starts and stays up
         run: |
           # PyInstaller one-file: the first start unpacks Python, Qt and the
           # spaCy models, so give it time. Exit status 124 = still running
           # when the timeout stopped it = it started correctly.
-          if command -v xvfb-run >/dev/null; then RUN="xvfb-run -a"; else export QT_QPA_PLATFORM=offscreen; RUN=""; fi
+          # A real X server is mandatory: the offscreen Qt platform would not
+          # load the xcb plugin and could not detect a missing xcb-* dependency.
+          export QT_QPA_PLATFORM=xcb
+          if command -v xvfb-run >/dev/null; then
+            RUN="xvfb-run -a"
+          elif command -v Xvfb >/dev/null; then
+            Xvfb :99 -screen 0 1280x1024x24 >/tmp/xvfb.log 2>&1 &
+            sleep 3; export DISPLAY=:99; RUN=""
+          else
+            echo "::error::no Xvfb available in this image, cannot test the xcb platform"; exit 1
+          fi
           set +e
-          timeout 45 $RUN /usr/bin/nullify-pdf > /tmp/app.log 2>&1
+          timeout 60 $RUN /usr/bin/nullify-pdf > /tmp/app.log 2>&1
           RC=$?
           set -e
           echo "exit status: $RC"; cat /tmp/app.log
+          if grep -qiE "could not (load|find) the Qt platform plugin|xcb-cursor|no Qt platform plugin" /tmp/app.log; then
+            echo "::error::Qt could not load the xcb platform plugin (missing system library?)"; exit 1
+          fi
           [ "$RC" -eq 124 ] || { echo "::error::NullifyPDF did not stay running (exit $RC)"; exit 1; }

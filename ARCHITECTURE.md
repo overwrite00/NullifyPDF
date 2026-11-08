@@ -259,10 +259,12 @@ GitHub Actions build one artifact per supported OS:
 
 - Windows
 - macOS
-- Ubuntu
-- Fedora
+- Ubuntu / Debian (`.deb`)
+- Fedora / RHEL (`.rpm`)
 
 Beta releases (`v*-beta.N` tags) and stable releases (`vX.Y.Z` tags) are each compiled from their own tag, because the application embeds its version string at build time. The stable workflow first checks that `CHANGELOG.md` has a `[X.Y.Z]` entry with an empty `[Unreleased]` section and that `NullifyPDF.py` declares that exact version with no prerelease suffix.
+
+**Linux packages** are built by the reusable workflow `build-linux.yml`, shared by the stable, beta and test builds. The PyInstaller binary and the `.rpm` are built once inside a `rockylinux:9` container (glibc 2.34, rpm 4.16), the `.deb` is wrapped from the same binary on `ubuntu-24.04`, and each package is then installed and started under Xvfb in clean Ubuntu 24.04, Ubuntu 26.04, Debian 13, Rocky 9, Rocky 10 and Fedora containers. A release is published only if this smoke test passes. Runners are pinned, so the move of `ubuntu-latest` to a new Ubuntu release does not change the build. When a distribution approaches end of support, update the matrix in `build-linux.yml` (and the list in the README).
 
 Expected artifact names include:
 

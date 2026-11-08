@@ -73,7 +73,7 @@ To keep NullifyPDF lightweight, 100% offline, and secure, be aware of these tech
 **Operating System Support:**
 - ✅ Windows 10/11
 - ✅ macOS 11+
-- ✅ Linux (Ubuntu 20.04+, Fedora 33+)
+- ✅ Linux: Ubuntu 24.04 / 26.04 and Debian 13 (`.deb`), RHEL / Rocky / Alma 9-10 and current Fedora (`.rpm`). The packages are built against glibc 2.34, so Ubuntu 22.04 and Debian 12 also run them, but these are no longer tested
 
 ### ⚙️ Installation
 
@@ -84,8 +84,8 @@ Download the latest pre-compiled executable from [Releases](https://github.com/o
 
 - **Windows:** `NullifyPDF_vX.Y.Z_Windows.exe`
 - **macOS:** `NullifyPDF_vX.Y.Z_macOS.zip`
-- **Ubuntu:** `NullifyPDF_vX.Y.Z_Ubuntu.deb`
-- **Fedora:** `NullifyPDF_vX.Y.Z_Fedora.rpm`
+- **Ubuntu / Debian:** `NullifyPDF_vX.Y.Z_Ubuntu.deb`
+- **Fedora / RHEL:** `NullifyPDF_vX.Y.Z_Fedora.rpm`
 
 No installation needed on Windows/macOS - just run or unzip. Linux users can install the `.deb` or `.rpm` package.
 

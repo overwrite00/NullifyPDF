@@ -273,7 +273,7 @@ python build_local.py
 | ----------- | --------------------------------- |
 | **Windows** | `.exe` executable                 |
 | **macOS**   | `.app` bundle ZIP                 |
-| **Linux**   | Portable binary + `.deb` + `.rpm` packages |
+| **Linux**   | Portable binary + `.deb` + `.rpm` packages (CI builds them in a RHEL 9 container, see `build-linux.yml`; `python build_local.py --deb-only` re-packages an existing binary as `.deb`) |
 
 ### Troubleshooting Build Issues
 

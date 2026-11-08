@@ -88,10 +88,9 @@ def test_notes_from_correct_section():
     assert extract_notes(CHANGELOG, "v9.9.9") == ""
 
 
-def test_downloads_folder_exists():
-    from PySide6.QtWidgets import QApplication  # noqa: F401
+def test_downloads_folder_resolves_without_side_effects():
     import NullifyPDF
-    assert NullifyPDF.downloads_folder().is_dir()
+    assert NullifyPDF.downloads_folder().name
 
 
 def test_auto_check_preference(tmp_path):
@@ -103,3 +102,86 @@ def test_auto_check_preference(tmp_path):
     assert uc.load_auto_check(f) is False
     f.write_text("garbage")
     assert uc.load_auto_check(f) is False
+
+
+# --- Linux family / download hardening ---------------------------------------
+
+@pytest.mark.parametrize("osrel,suffix", [
+    ('ID=ubuntu\nID_LIKE=debian\n', "_Ubuntu.deb"),
+    ('ID=debian\n', "_Ubuntu.deb"),
+    ('ID="rocky"\nID_LIKE="rhel centos fedora"\n', "_Fedora.rpm"),
+    ('ID=fedora\n', "_Fedora.rpm"),
+    ('ID=opensuse-leap\nID_LIKE="suse opensuse"\n', None),
+    ('ID=arch\n', None),
+])
+def test_linux_family_from_os_release(monkeypatch, osrel, suffix):
+    monkeypatch.setattr(pathlib.Path, "read_text", lambda self, **kw: osrel)
+    assert uc.asset_suffix_for_platform("Linux") == suffix
+
+
+def test_unknown_distribution_gets_no_asset(monkeypatch):
+    monkeypatch.setattr(pathlib.Path, "read_text", lambda self, **kw: "ID=arch\n")
+    release = rel("v2.3.1", assets=[{
+        "name": "NullifyPDF_v2.3.1_Ubuntu.deb",
+        "browser_download_url": "https://github.com/overwrite00/NullifyPDF/releases/download/v2.3.1/NullifyPDF_v2.3.1_Ubuntu.deb"}])
+    assert uc.select_asset(release, "Linux") is None
+
+
+class _FakeResp:
+    def __init__(self, data, url="https://github.com/x/NullifyPDF_v1_Windows.exe"):
+        self._d, self._url, self.headers = data, url, {"Content-Length": str(len(data))}
+
+    def read(self, n):
+        out, self._d = self._d[:n], self._d[n:]
+        return out
+
+    def geturl(self):
+        return self._url
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def _patch_open(monkeypatch, data, url="https://github.com/x/f.exe"):
+    monkeypatch.setattr(uc._OPENER, "open", lambda req, timeout=0: _FakeResp(data, url))
+
+
+def test_download_ok_and_digest_checked(tmp_path, monkeypatch):
+    import hashlib
+    data = b"installer" * 1000
+    _patch_open(monkeypatch, data)
+    dest = tmp_path / "f.exe"
+    uc.download_file("https://github.com/x/f.exe", dest, len(data),
+                     digest="sha256:" + hashlib.sha256(data).hexdigest())
+    assert dest.read_bytes() == data and not (tmp_path / "f.exe.part").exists()
+
+
+def test_download_bad_digest_or_size_leaves_nothing(tmp_path, monkeypatch):
+    _patch_open(monkeypatch, b"abc")
+    dest = tmp_path / "f.exe"
+    with pytest.raises(IOError):
+        uc.download_file("https://github.com/x/f.exe", dest, 3, digest="sha256:" + "0" * 64)
+    with pytest.raises(IOError):
+        uc.download_file("https://github.com/x/f.exe", dest, 99)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_download_cancel_and_untrusted(tmp_path, monkeypatch):
+    _patch_open(monkeypatch, b"abc" * 10)
+    with pytest.raises(InterruptedError):
+        uc.download_file("https://github.com/x/f.exe", tmp_path / "f.exe", cancelled=lambda: True)
+    assert list(tmp_path.iterdir()) == []
+    with pytest.raises(ValueError):
+        uc.download_file("https://evil.example/f.exe", tmp_path / "f.exe")
+    _patch_open(monkeypatch, b"abc", url="https://evil.example/f.exe")
+    with pytest.raises(ValueError):
+        uc.download_file("https://github.com/x/f.exe", tmp_path / "g.exe")
+
+
+def test_redirect_handler_refuses_untrusted_hosts():
+    h = uc._TrustedRedirects()
+    with pytest.raises(ValueError):
+        h.redirect_request(None, None, 302, "Found", {}, "http://github.com/x")

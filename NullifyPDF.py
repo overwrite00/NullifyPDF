@@ -135,8 +135,9 @@ class UpdateDownloadWorker(QThread):
     done_sig = Signal(str)
     error_sig = Signal(str)
 
-    def __init__(self, url: str, dest: pathlib.Path, size: int) -> None:
+    def __init__(self, url: str, dest: pathlib.Path, size: int, digest: str = "") -> None:
         super().__init__()
+        self._digest = digest
         self._url = url
         self._dest = dest
         self._size = size
@@ -151,6 +152,7 @@ class UpdateDownloadWorker(QThread):
                 self._url,
                 self._dest,
                 expected_size=self._size,
+                digest=self._digest,
                 progress=lambda d, t: self.progress_sig.emit(d, t),
                 cancelled=lambda: self._cancel,
             )
@@ -166,12 +168,11 @@ def downloads_folder() -> pathlib.Path:
     """The user's Downloads folder as configured in the running OS.
 
     Qt resolves it per platform (Windows known folder, XDG user-dirs on
-    Linux, ~/Downloads on macOS); fall back to ~/Downloads.
+    Linux, ~/Downloads on macOS); fall back to ~/Downloads. The folder is
+    not created here: the caller does it when it actually downloads.
     """
     path = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DownloadLocation)
-    folder = pathlib.Path(path) if path else pathlib.Path.home() / "Downloads"
-    folder.mkdir(parents=True, exist_ok=True)
-    return folder
+    return pathlib.Path(path) if path else pathlib.Path.home() / "Downloads"
 
 
 class DetectionDict(TypedDict):
@@ -1139,6 +1140,9 @@ class NullifyPDF(QMainWindow):
         # thread (text extraction) and the UI thread (render, apply redactions).
         self.doc_mutex = QMutex()
         self.config_dir = pathlib.Path.home() / ".nullifypdf"
+        # Update-check threads outlive their dialogs: keep them referenced
+        # until they finish so a QThread is never destroyed while running.
+        self._bg_threads: Set[QThread] = set()
         self.list_manager = PDFListManager(self.config_dir)
         self.blocklist = self.list_manager.load_blocklist()
         self.allowlist = self.list_manager.load_allowlist()
@@ -1187,9 +1191,12 @@ class NullifyPDF(QMainWindow):
         - All connections
         """
         self.logger.info("Starting resource cleanup")
-        w = getattr(self, "_auto_update_worker", None)
-        if w is not None and w.isRunning():
-            w.wait(5000)
+        for t in list(self._bg_threads):
+            cancel = getattr(t, "cancel", None)
+            if cancel is not None:
+                cancel()
+            if t.isRunning():
+                t.wait(12000)
         try:
             # Stop AI worker from processing
             if hasattr(self, 'ai_worker'):
@@ -1709,6 +1716,17 @@ class NullifyPDF(QMainWindow):
         lay.addWidget(btn)
         d.exec()
 
+    def _start_bg_thread(self, w: QThread) -> None:
+        """Start ``w`` and keep it referenced until it has finished."""
+        self._bg_threads.add(w)
+
+        def done() -> None:
+            self._bg_threads.discard(w)
+            w.deleteLater()
+
+        w.finished.connect(done)
+        w.start()
+
     def auto_check_updates(self) -> None:
         """Silent check at startup, only if the user enabled it in Info.
 
@@ -1719,8 +1737,7 @@ class NullifyPDF(QMainWindow):
             return
         w = UpdateCheckWorker()
         w.result_sig.connect(self._on_auto_update_result)
-        self._auto_update_worker = w
-        w.start()
+        self._start_bg_thread(w)
 
     def _on_auto_update_result(self, release: Any) -> None:
         if release is not None:
@@ -1781,7 +1798,7 @@ class NullifyPDF(QMainWindow):
         btn.clicked.connect(d.accept)
         lay.addWidget(btn)
 
-        state: Dict[str, Any] = {"worker": None, "closed": False}
+        state: Dict[str, Any] = {"closed": False}
 
         def on_result(release: Any) -> None:
             if state["closed"]:
@@ -1803,15 +1820,11 @@ class NullifyPDF(QMainWindow):
             w = UpdateCheckWorker()
             w.result_sig.connect(on_result)
             w.error_sig.connect(on_error)
-            state["worker"] = w
-            w.start()
+            self._start_bg_thread(w)
 
         btn_upd.clicked.connect(start_check)
         d.exec()
         state["closed"] = True
-        w = state["worker"]
-        if w is not None:
-            w.wait(20000)
 
     def _show_update_dialog(self, release: Dict[str, Any], parent: QWidget) -> None:
         """Release notes, link to the release and a [Download] button."""
@@ -1857,7 +1870,7 @@ class NullifyPDF(QMainWindow):
                 "Nessun file per questo sistema operativo: usa il link alla release."
             )
 
-        state: Dict[str, Any] = {"worker": None}
+        state: Dict[str, Any] = {"worker": None, "closed": False}
 
         def on_progress(done: int, total: int) -> None:
             if total > 0:
@@ -1867,12 +1880,16 @@ class NullifyPDF(QMainWindow):
                 bar.setMaximum(0)
 
         def on_done(path: str) -> None:
+            if state["closed"]:
+                return
             bar.setVisible(False)
             btn_dl.setEnabled(False)
             lbl_status.setText(f"Scaricato in: {path}")
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(pathlib.Path(path).parent)))
 
         def on_error(msg: str) -> None:
+            if state["closed"]:
+                return
             bar.setVisible(False)
             btn_dl.setEnabled(True)
             lbl_status.setText(f"Download non riuscito: {msg}" if msg else "Download annullato.")
@@ -1880,26 +1897,35 @@ class NullifyPDF(QMainWindow):
         def start_download() -> None:
             if asset is None:
                 return
-            dest = update_check.unique_path(downloads_folder(), str(asset.get("name", "")))
+            try:
+                folder = downloads_folder()
+                folder.mkdir(parents=True, exist_ok=True)
+                dest = update_check.unique_path(folder, str(asset.get("name", "")))
+            except OSError as e:
+                lbl_status.setText(f"Cartella Download non accessibile: {e}")
+                return
             btn_dl.setEnabled(False)
             bar.setValue(0)
             bar.setVisible(True)
             lbl_status.setText(f"Download in {dest.parent} ...")
             w = UpdateDownloadWorker(
-                str(asset["browser_download_url"]), dest, int(asset.get("size") or 0)
+                str(asset["browser_download_url"]),
+                dest,
+                int(asset.get("size") or 0),
+                str(asset.get("digest") or ""),
             )
             w.progress_sig.connect(on_progress)
             w.done_sig.connect(on_done)
             w.error_sig.connect(on_error)
             state["worker"] = w
-            w.start()
+            self._start_bg_thread(w)
 
         btn_dl.clicked.connect(start_download)
         d.exec()
+        state["closed"] = True
         w = state["worker"]
         if w is not None and w.isRunning():
-            w.cancel()
-            w.wait(20000)
+            w.cancel()  # the thread stops by itself; the window never blocks
 
     def cmd_auto_ai(self) -> None:
         """Start AI scan for sensitive entities.

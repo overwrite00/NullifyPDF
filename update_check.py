@@ -1,13 +1,15 @@
 """Qt-free helpers for the "check for updates" feature.
 
-The check is only ever started by an explicit click in the About dialog; the
-application never contacts the network on its own.
+The check runs only on an explicit click in the About dialog, or at startup
+if the user enabled "Controlla ad ogni avvio" (off by default). The application
+never contacts the network otherwise.
 
 Stable builds only look at stable releases, beta builds look at both.
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
 import pathlib
 import platform
@@ -93,30 +95,41 @@ def find_update(
     return best[1] if best else None
 
 
-def _linux_family() -> str:
-    """'deb' or 'rpm' from /etc/os-release (defaults to deb)."""
+def _linux_family() -> Optional[str]:
+    """'deb', 'rpm' or None (unknown distribution) from /etc/os-release.
+
+    Only Debian/Ubuntu-family and Fedora/RHEL-family systems get an automatic
+    asset: the packages' dependency names do not resolve elsewhere (Arch,
+    openSUSE, NixOS, ...), where the release link is shown instead.
+    """
     try:
         text = pathlib.Path("/etc/os-release").read_text(encoding="utf-8").lower()
     except OSError:
+        return None
+    ids = set()
+    for line in text.splitlines():
+        if line.startswith(("id=", "id_like=")):
+            ids.update(line.split("=", 1)[1].strip().strip("\"'").split())
+    if ids & {"debian", "ubuntu"}:
         return "deb"
-    ids = " ".join(
-        line.split("=", 1)[1]
-        for line in text.splitlines()
-        if line.startswith(("id=", "id_like="))
-    )
-    if any(w in ids for w in ("fedora", "rhel", "centos", "suse")):
+    if ids & {"fedora", "rhel", "centos"}:
         return "rpm"
-    return "deb"
+    return None
 
 
-def asset_suffix_for_platform(system: Optional[str] = None) -> str:
-    """Release-asset suffix matching the running OS."""
+def asset_suffix_for_platform(system: Optional[str] = None) -> Optional[str]:
+    """Release-asset suffix matching the running OS (None if unsupported)."""
     system = system or platform.system()
     if system == "Windows":
         return "_Windows.exe"
     if system == "Darwin":
         return "_macOS.zip"
-    return "_Fedora.rpm" if _linux_family() == "rpm" else "_Ubuntu.deb"
+    family = _linux_family()
+    if family == "rpm":
+        return "_Fedora.rpm"
+    if family == "deb":
+        return "_Ubuntu.deb"
+    return None
 
 
 def select_asset(
@@ -124,6 +137,8 @@ def select_asset(
 ) -> Optional[Dict[str, Any]]:
     """The release asset to download for this OS, or None."""
     suffix = asset_suffix_for_platform(system)
+    if suffix is None:
+        return None
     for asset in release.get("assets", []):
         name = str(asset.get("name", ""))
         if name.startswith("NullifyPDF_v") and name.endswith(suffix):
@@ -148,7 +163,19 @@ def unique_path(folder: pathlib.Path, name: str) -> pathlib.Path:
     return target
 
 
-def fetch_releases(timeout: float = 15.0) -> List[Dict[str, Any]]:
+class _TrustedRedirects(urllib.request.HTTPRedirectHandler):
+    """Refuse any redirect that leaves the trusted GitHub https hosts."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        if not is_trusted_url(newurl):
+            raise ValueError("Redirected to an untrusted address")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER = urllib.request.build_opener(_TrustedRedirects)
+
+
+def fetch_releases(timeout: float = 10.0) -> List[Dict[str, Any]]:
     """Download the release list from the GitHub API."""
     import json
 
@@ -159,7 +186,7 @@ def fetch_releases(timeout: float = 15.0) -> List[Dict[str, Any]]:
             "User-Agent": "NullifyPDF-update-check",
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+    with _OPENER.open(req, timeout=timeout) as resp:
         data = json.loads(resp.read().decode("utf-8"))
     if not isinstance(data, list):
         raise ValueError("Unexpected response from GitHub")
@@ -172,16 +199,22 @@ def download_file(
     expected_size: int = 0,
     progress: Optional[Callable[[int, int], None]] = None,
     cancelled: Optional[Callable[[], bool]] = None,
-    timeout: float = 30.0,
+    timeout: float = 10.0,
+    digest: str = "",
 ) -> None:
-    """Stream ``url`` to ``dest`` (via a .part file) and check the size."""
+    """Stream ``url`` to ``dest`` (via a .part file); check size and SHA-256.
+
+    ``digest`` is the ``sha256:<hex>`` value GitHub publishes for each release
+    asset; when present the file must match it.
+    """
     if not is_trusted_url(url):
         raise ValueError("Refusing to download from an untrusted address")
     req = urllib.request.Request(url, headers={"User-Agent": "NullifyPDF-update-check"})
     part = dest.with_name(dest.name + ".part")
     done = 0
+    sha = hashlib.sha256()
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp, open(part, "wb") as out:  # noqa: S310
+        with _OPENER.open(req, timeout=timeout) as resp, open(part, "wb") as out:
             if not is_trusted_url(resp.geturl()):
                 raise ValueError("Download redirected to an untrusted address")
             total = int(resp.headers.get("Content-Length") or expected_size or 0)
@@ -192,11 +225,14 @@ def download_file(
                 if not chunk:
                     break
                 out.write(chunk)
+                sha.update(chunk)
                 done += len(chunk)
                 if progress:
                     progress(done, total)
         if expected_size and done != expected_size:
             raise IOError(f"Incomplete download ({done} of {expected_size} bytes)")
+        if digest.startswith("sha256:") and sha.hexdigest() != digest[7:].lower():
+            raise IOError("Checksum mismatch: the downloaded file is not the published one")
         part.replace(dest)
     except BaseException:
         try:
