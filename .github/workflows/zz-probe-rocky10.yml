@@ -13,7 +13,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: test-build-Linux-rpm
-          run-id: 42473920947
+          run-id: 42474712842
           github-token: ${{ github.token }}
           path: pkgs
       - name: Tools
