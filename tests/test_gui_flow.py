@@ -5,6 +5,8 @@ real window with Qt's offscreen platform and stubbed modal dialogs. HOME is
 isolated so the user's real ~/.nullifypdf is never touched.
 """
 
+import atexit
+import gc
 import json
 import os
 
@@ -45,7 +47,13 @@ def window(tmp_path, monkeypatch):
         w._cleanup_resources()
     except Exception:
         pass
+    # Every window registers an atexit cleanup; left registered, they run on
+    # already destroyed Qt objects at interpreter exit and crash the process
+    # (seen as a segmentation fault after the last test on Linux).
+    atexit.unregister(w._cleanup_on_exit)
+    w.deleteLater()
     qapp.processEvents()
+    gc.collect()
 
 
 def _rect_of(w, word):
