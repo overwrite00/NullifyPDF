@@ -7,14 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Added
+
+- **Check for updates**: the Info dialog has a new "Controlla aggiornamenti" button. It queries the GitHub releases of this repository (on click, or at startup only if the user enabled the opt-in startup check) and, if a newer version exists, shows the release link, the release notes and a **Download** button that saves the installer for the running OS into the user's system Downloads folder (resolved per platform), verifying its size and the SHA-256 published by GitHub. Linux distributions outside the Debian/Ubuntu and Fedora/RHEL families only get the release link. Stable builds are only offered newer stable releases; beta builds are offered both stable and beta releases.
+- **Optional check at every start**: a "Controlla ad ogni avvio" checkbox in the Info dialog (off by default, stored in `~/.nullifypdf/update_check.json`) runs the same check silently at startup and opens the update window, with the release notes, only when a newer version exists. Failures are logged, never shown.
+- **Repository link in the Info dialog**.
+- **Release notes taken from the changelog**: the release workflows now fill the GitHub release body with the matching `CHANGELOG.md` section (`## [X.Y.Z]` for stable tags, `## [Unreleased]` for beta tags), which is the text the update check displays.
+
 ### 🐛 Fixed
 
+- **A failed package build no longer ships a release with fewer files**: `.deb`/`.rpm` errors now fail the build, and the release jobs refuse to publish unless the Windows, macOS, Ubuntu and Fedora packages all exist. Dependency installation also retries when github.com answers 504 while downloading the spaCy models.
 - **Redacted text could remain in the PDF content stream**: with PyMuPDF 1.28.x, `apply_redactions()` did not remove text drawn with the `'` operator after `TL`/`Td`; the text disappeared from the extracted text but was still stored in the file. Fixed by PyMuPDF 2.x; covered by a regression test that scans every stream of the exported file.
 
 ### 🔧 Changed
 
+- **Linux packages are built once in a RHEL 9 container and smoke-tested on every supported distribution**: the PyInstaller binary and the `.rpm` are built in `rockylinux:9` (glibc 2.34, rpm 4.16) by a new reusable workflow (`build-linux.yml`) shared by the stable, beta and test builds, so they run on Ubuntu 22.04+/Debian 12+/RHEL 9-10/Fedora and no longer depend on the `ubuntu-latest` image (migrating to Ubuntu 26.04) or on the retired `ubuntu-22.04` runner. The `.deb` is wrapped on `ubuntu-24.04`. Each package is installed in clean Ubuntu 24.04, Ubuntu 26.04, Debian 13, Rocky 9, Rocky 10 and Fedora containers and the application is started under Xvfb; releases are gated on this test.
+- **Linux packages declare their runtime libraries**: `.deb` `Depends` and `.rpm` `Requires` (xcb, EGL/GL, fontconfig, D-Bus, glib; `libglib2.0-0t64 | libglib2.0-0` for Ubuntu 24.04+), the `.deb` files are owned by root, and the `.rpm` no longer strips the PyInstaller executable.
+- **Beta packages sort before the stable one** (`2.4.0~beta.1` for `.deb`, Release `0.beta.1.1` for `.rpm`).
 - **Dependency updates**: PySide6 6.12.0, presidio-analyzer 2.2.366, spaCy 3.8.18, cryptography 50.0.2, pytest 9.2.0. Verified with the full test suite, `mypy` and an offscreen end-to-end scan/redaction run.
 - **PyMuPDF 2.1**: required for the redaction fix above. Version 2.1 no longer loads the layout analyzer on import, so start-up time and installer size are unaffected (verified with a PyInstaller bundle).
+- **Removed the "AI" wording from the GUI and packaging metadata** (sidebar subtitle, language-model label, the "Auto Redact" button, the Info version line, installer descriptions): detection relies on Presidio/spaCy NLP and rules, not on a generative AI model, so the label was misleading.
 
 ## [2.3.0] - 2026-09-19
 

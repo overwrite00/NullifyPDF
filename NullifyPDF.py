@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QGraphicsRectItem,
     QMessageBox,
     QInputDialog,
+    QTextBrowser,
 )
 from PySide6.QtGui import (
     QIcon,
@@ -49,7 +50,21 @@ from PySide6.QtGui import (
     QDragEnterEvent,
     QDropEvent,
 )
-from PySide6.QtCore import Qt, QThread, QObject, Signal, Slot, QRectF, QPointF, QMutex, QMutexLocker
+from PySide6.QtCore import (
+    Qt,
+    QThread,
+    QObject,
+    Signal,
+    Slot,
+    QRectF,
+    QPointF,
+    QMutex,
+    QMutexLocker,
+    QStandardPaths,
+    QTimer,
+    QUrl,
+)
+from PySide6.QtGui import QDesktopServices
 
 from privacy_core import (
     PlaceholderEntry,
@@ -76,14 +91,15 @@ from pii_detection import (
     span_to_rects,
     whole_word_rects,
 )
+import update_check
 
 # PyMuPDF defines these constants dynamically, which mypy cannot see; read
 # them once here (with the suppression) instead of at every call site.
 PDF_ANNOT_REDACT: int = fitz.PDF_ANNOT_REDACT  # type: ignore[attr-defined]
 PDF_REDACT_IMAGE_PIXELS: int = fitz.PDF_REDACT_IMAGE_PIXELS  # type: ignore[attr-defined]
 
-__version__ = "2.3.0"
-__version_prerelease__ = ""
+__version__ = "2.4.0"
+__version_prerelease__ = "beta.1"
 APP_VERSION = (
     f"{__version__}-{__version_prerelease__}"
     if __version_prerelease__
@@ -94,7 +110,69 @@ APP_VERSION = (
 def about_version_text() -> str:
     """Version line of the About dialog; says "Beta" only for prereleases."""
     suffix = " Beta" if __version_prerelease__ else ""
-    return f"v{APP_VERSION} AI Privacy{suffix}"
+    return f"v{APP_VERSION}{suffix}"
+
+
+class UpdateCheckWorker(QThread):
+    """Fetch the GitHub release list and pick the update (if any)."""
+
+    result_sig = Signal(object)  # release dict, or None when up to date
+    error_sig = Signal(str)
+
+    def run(self) -> None:
+        try:
+            releases = update_check.fetch_releases()
+            self.result_sig.emit(update_check.find_update(releases, APP_VERSION))
+        except Exception as e:  # network errors, bad JSON, rate limit...
+            logging.getLogger("nullifypdf").warning(f"Update check failed: {e}")
+            self.error_sig.emit(f"{type(e).__name__}: {e}")
+
+
+class UpdateDownloadWorker(QThread):
+    """Download a release asset into the user's Downloads folder."""
+
+    progress_sig = Signal(int, int)
+    done_sig = Signal(str)
+    error_sig = Signal(str)
+
+    def __init__(self, url: str, dest: pathlib.Path, size: int, digest: str = "") -> None:
+        super().__init__()
+        self._digest = digest
+        self._url = url
+        self._dest = dest
+        self._size = size
+        self._cancel = False
+
+    def cancel(self) -> None:
+        self._cancel = True
+
+    def run(self) -> None:
+        try:
+            update_check.download_file(
+                self._url,
+                self._dest,
+                expected_size=self._size,
+                digest=self._digest,
+                progress=lambda d, t: self.progress_sig.emit(d, t),
+                cancelled=lambda: self._cancel,
+            )
+            self.done_sig.emit(str(self._dest))
+        except InterruptedError:
+            self.error_sig.emit("")
+        except Exception as e:
+            logging.getLogger("nullifypdf").warning(f"Update download failed: {e}")
+            self.error_sig.emit(f"{type(e).__name__}: {e}")
+
+
+def downloads_folder() -> pathlib.Path:
+    """The user's Downloads folder as configured in the running OS.
+
+    Qt resolves it per platform (Windows known folder, XDG user-dirs on
+    Linux, ~/Downloads on macOS); fall back to ~/Downloads. The folder is
+    not created here: the caller does it when it actually downloads.
+    """
+    path = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DownloadLocation)
+    return pathlib.Path(path) if path else pathlib.Path.home() / "Downloads"
 
 
 class DetectionDict(TypedDict):
@@ -797,7 +875,7 @@ class AIWorker(QObject):
             target_langs = ["en", "it"] if choice == "BOTH" else [choice.lower()]
             ocr_language = ocr_language_for_choice(choice, tessdata_dir)
             if not self.analyzer or sorted(self.loaded_langs) != sorted(target_langs):
-                self.log_sig.emit(f"Inizializzazione AI ({choice})...")
+                self.log_sig.emit(f"Inizializzazione motore di rilevamento ({choice})...")
                 from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
                 from presidio_analyzer.nlp_engine import NlpEngineProvider
                 from presidio_analyzer.predefined_recognizers import PhoneRecognizer
@@ -939,7 +1017,7 @@ class AIWorker(QObject):
             logging.getLogger("nullifypdf").error(
                 f"AI scan error: {traceback.format_exc()}"
             )
-            self.log_sig.emit(f"ERRORE AI: {type(e).__name__}: {str(e)}")
+            self.log_sig.emit(f"ERRORE rilevamento: {type(e).__name__}: {str(e)}")
         finally:
             self.finished_sig.emit()
 
@@ -1062,6 +1140,9 @@ class NullifyPDF(QMainWindow):
         # thread (text extraction) and the UI thread (render, apply redactions).
         self.doc_mutex = QMutex()
         self.config_dir = pathlib.Path.home() / ".nullifypdf"
+        # Update-check threads outlive their dialogs: keep them referenced
+        # until they finish so a QThread is never destroyed while running.
+        self._bg_threads: Set[QThread] = set()
         self.list_manager = PDFListManager(self.config_dir)
         self.blocklist = self.list_manager.load_blocklist()
         self.allowlist = self.list_manager.load_allowlist()
@@ -1110,6 +1191,12 @@ class NullifyPDF(QMainWindow):
         - All connections
         """
         self.logger.info("Starting resource cleanup")
+        for t in list(self._bg_threads):
+            cancel = getattr(t, "cancel", None)
+            if cancel is not None:
+                cancel()
+            if t.isRunning():
+                t.wait(12000)
         try:
             # Stop AI worker from processing
             if hasattr(self, 'ai_worker'):
@@ -1171,13 +1258,13 @@ class NullifyPDF(QMainWindow):
         lbl_title = QLabel("NullifyPDF")
         lbl_title.setStyleSheet("font-size: 24px; font-weight: bold; color: #0ea5e9;")
         s_lay.addWidget(lbl_title)
-        s_lay.addWidget(QLabel("AI Privacy Edition\n"))
+        s_lay.addWidget(QLabel("Privacy Edition\n"))
         btn_open = QPushButton("Apri PDF")
         btn_open.setObjectName("Primary")
         btn_open.clicked.connect(self.cmd_open)
         s_lay.addWidget(btn_open)
         s_lay.addSpacing(20)
-        s_lay.addWidget(QLabel("Modello Lingua AI:"))
+        s_lay.addWidget(QLabel("Modello lingua:"))
         lang_lay = QHBoxLayout()
         self.rb_en = QRadioButton("EN")
         self.rb_it = QRadioButton("IT")
@@ -1198,7 +1285,7 @@ class NullifyPDF(QMainWindow):
         btn_dict = QPushButton("Dizionari")
         btn_dict.clicked.connect(self.cmd_dict)
         s_lay.addWidget(btn_dict)
-        self.btn_ai = QPushButton("Auto Redact (AI)")
+        self.btn_ai = QPushButton("Auto Redact")
         self.btn_ai.setObjectName("Danger")
         self.btn_ai.clicked.connect(self.cmd_auto_ai)
         s_lay.addWidget(self.btn_ai)
@@ -1387,7 +1474,7 @@ class NullifyPDF(QMainWindow):
                 f"nelle pagine {preview}{suffix}).\n\n"
                 'Puoi comunque selezionare manualmente le aree da censurare. '
                 'Per il riconoscimento automatico dei dati personali, attiva '
-                'prima "OCR PDF scansionati" e poi avvia "Auto Redact (AI)".',
+                'prima "OCR PDF scansionati" e poi avvia "Auto Redact".',
             )
 
     def render_page(self) -> None:
@@ -1629,11 +1716,38 @@ class NullifyPDF(QMainWindow):
         lay.addWidget(btn)
         d.exec()
 
+    def _start_bg_thread(self, w: QThread) -> None:
+        """Start ``w`` and keep it referenced until it has finished."""
+        self._bg_threads.add(w)
+
+        def done() -> None:
+            self._bg_threads.discard(w)
+            w.deleteLater()
+
+        w.finished.connect(done)
+        w.start()
+
+    def auto_check_updates(self) -> None:
+        """Silent check at startup, only if the user enabled it in Info.
+
+        Nothing is shown unless a newer release exists; failures (offline,
+        rate limit) are only logged.
+        """
+        if not update_check.load_auto_check(self.config_dir / "update_check.json"):
+            return
+        w = UpdateCheckWorker()
+        w.result_sig.connect(self._on_auto_update_result)
+        self._start_bg_thread(w)
+
+    def _on_auto_update_result(self, release: Any) -> None:
+        if release is not None:
+            self._show_update_dialog(release, self)
+
     def cmd_about(self) -> None:
         """Show about dialog."""
         d = QDialog(self)
         d.setWindowTitle("Info")
-        d.setFixedSize(340, 440)
+        d.setFixedSize(340, 560)
         lay = QVBoxLayout(d)
         lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ip = resource_path(os.path.join("images", "NullifyPDF_icon.png"))
@@ -1660,11 +1774,158 @@ class NullifyPDF(QMainWindow):
         )
         desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(desc)
-        lay.addSpacing(20)
+        lbl_repo = QLabel(
+            f'<a href="{update_check.REPO_URL}">{update_check.REPO_URL}</a>'
+        )
+        lbl_repo.setTextFormat(Qt.TextFormat.RichText)
+        lbl_repo.setOpenExternalLinks(True)
+        lbl_repo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(lbl_repo)
+        lay.addSpacing(10)
+        btn_upd = QPushButton("Controlla aggiornamenti")
+        lay.addWidget(btn_upd)
+        chk_auto = QCheckBox("Controlla ad ogni avvio")
+        pref_path = self.config_dir / "update_check.json"
+        chk_auto.setChecked(update_check.load_auto_check(pref_path))
+        chk_auto.toggled.connect(lambda on: update_check.save_auto_check(pref_path, on))
+        lay.addWidget(chk_auto, alignment=Qt.AlignmentFlag.AlignCenter)
+        lbl_upd = QLabel("")
+        lbl_upd.setWordWrap(True)
+        lbl_upd.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(lbl_upd)
+        lay.addSpacing(10)
         btn = QPushButton("Chiudi")
         btn.clicked.connect(d.accept)
         lay.addWidget(btn)
+
+        state: Dict[str, Any] = {"closed": False}
+
+        def on_result(release: Any) -> None:
+            if state["closed"]:
+                return
+            btn_upd.setEnabled(True)
+            if release is None:
+                lbl_upd.setText("Nessun aggiornamento disponibile: la versione è aggiornata.")
+                return
+            lbl_upd.setText(f"Disponibile: {release.get('tag_name', '')}")
+            self._show_update_dialog(release, d)
+
+        def on_error(msg: str) -> None:
+            btn_upd.setEnabled(True)
+            lbl_upd.setText(f"Controllo non riuscito (connessione assente?)\n{msg}")
+
+        def start_check() -> None:
+            btn_upd.setEnabled(False)
+            lbl_upd.setText("Controllo in corso...")
+            w = UpdateCheckWorker()
+            w.result_sig.connect(on_result)
+            w.error_sig.connect(on_error)
+            self._start_bg_thread(w)
+
+        btn_upd.clicked.connect(start_check)
         d.exec()
+        state["closed"] = True
+
+    def _show_update_dialog(self, release: Dict[str, Any], parent: QWidget) -> None:
+        """Release notes, link to the release and a [Download] button."""
+        tag = str(release.get("tag_name", ""))
+        url = str(release.get("html_url", ""))
+        if not update_check.is_trusted_url(url):
+            url = f"{update_check.REPO_URL}/releases"
+        asset = update_check.select_asset(release)
+
+        d = QDialog(parent)
+        d.setWindowTitle("Aggiornamento disponibile")
+        d.resize(560, 480)
+        lay = QVBoxLayout(d)
+        kind = " (beta)" if release.get("prerelease") else ""
+        lay.addWidget(QLabel(f"<b>Nuova versione: {html.escape(tag)}{kind}</b>"))
+        lbl_link = QLabel(f'<a href="{html.escape(url)}">{html.escape(url)}</a>')
+        lbl_link.setTextFormat(Qt.TextFormat.RichText)
+        lbl_link.setOpenExternalLinks(True)
+        lay.addWidget(lbl_link)
+        notes = QTextBrowser()
+        notes.setOpenExternalLinks(True)
+        body = str(release.get("body") or "").strip()
+        notes.setMarkdown(body or "_Nessuna nota di rilascio disponibile._")
+        lay.addWidget(notes)
+        bar = QProgressBar()
+        bar.setVisible(False)
+        lay.addWidget(bar)
+        lbl_status = QLabel("")
+        lbl_status.setWordWrap(True)
+        lay.addWidget(lbl_status)
+        row = QHBoxLayout()
+        btn_dl = QPushButton("Download")
+        btn_dl.setObjectName("Primary")
+        btn_close = QPushButton("Chiudi")
+        row.addWidget(btn_dl)
+        row.addWidget(btn_close)
+        lay.addLayout(row)
+        btn_close.clicked.connect(d.reject)
+
+        if asset is None:
+            btn_dl.setEnabled(False)
+            lbl_status.setText(
+                "Nessun file per questo sistema operativo: usa il link alla release."
+            )
+
+        state: Dict[str, Any] = {"worker": None, "closed": False}
+
+        def on_progress(done: int, total: int) -> None:
+            if total > 0:
+                bar.setMaximum(total)
+                bar.setValue(done)
+            else:
+                bar.setMaximum(0)
+
+        def on_done(path: str) -> None:
+            if state["closed"]:
+                return
+            bar.setVisible(False)
+            btn_dl.setEnabled(False)
+            lbl_status.setText(f"Scaricato in: {path}")
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(pathlib.Path(path).parent)))
+
+        def on_error(msg: str) -> None:
+            if state["closed"]:
+                return
+            bar.setVisible(False)
+            btn_dl.setEnabled(True)
+            lbl_status.setText(f"Download non riuscito: {msg}" if msg else "Download annullato.")
+
+        def start_download() -> None:
+            if asset is None:
+                return
+            try:
+                folder = downloads_folder()
+                folder.mkdir(parents=True, exist_ok=True)
+                dest = update_check.unique_path(folder, str(asset.get("name", "")))
+            except OSError as e:
+                lbl_status.setText(f"Cartella Download non accessibile: {e}")
+                return
+            btn_dl.setEnabled(False)
+            bar.setValue(0)
+            bar.setVisible(True)
+            lbl_status.setText(f"Download in {dest.parent} ...")
+            w = UpdateDownloadWorker(
+                str(asset["browser_download_url"]),
+                dest,
+                int(asset.get("size") or 0),
+                str(asset.get("digest") or ""),
+            )
+            w.progress_sig.connect(on_progress)
+            w.done_sig.connect(on_done)
+            w.error_sig.connect(on_error)
+            state["worker"] = w
+            self._start_bg_thread(w)
+
+        btn_dl.clicked.connect(start_download)
+        d.exec()
+        state["closed"] = True
+        w = state["worker"]
+        if w is not None and w.isRunning():
+            w.cancel()  # the thread stops by itself; the window never blocks
 
     def cmd_auto_ai(self) -> None:
         """Start AI scan for sensitive entities.
@@ -2252,6 +2513,7 @@ if __name__ == "__main__":
     try:
         window = NullifyPDF()
         window.show()
+        QTimer.singleShot(1500, window.auto_check_updates)
         exit_code = app.exec()
     except Exception as e:
         logger = setup_logging()

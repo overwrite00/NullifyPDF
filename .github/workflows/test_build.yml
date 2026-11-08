@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-22.04, macos-latest]
+        os: [windows-latest, macos-latest]
 
     steps:
       - name: Checkout Code
@@ -33,21 +33,24 @@ jobs:
           python-version: '3.13'
           cache: 'pip' # CACHE RIPRISTINATA!
 
-      - name: Install System Dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y rpm dpkg binutils libxcb-cursor0 libxkbcommon-x11-0 libegl1 desktop-file-utils
-
       - name: Install Python Dependencies (includes spaCy models)
+        shell: bash
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          # The spaCy models come from github.com release assets, which
+          # occasionally answer 504: retry instead of failing the release.
+          for attempt in 1 2 3 4 5; do
+            pip install -r requirements.txt && exit 0
+            echo "Attempt $attempt failed, retrying in 30s..."; sleep 30
+          done
+          exit 1
 
       - name: Run Smoke Tests
         run: pytest tests/ -v
 
       - name: Type Check (mypy)
         shell: bash
-        run: mypy NullifyPDF.py pii_detection.py privacy_core.py PDF_Checker.py
+        run: mypy NullifyPDF.py pii_detection.py privacy_core.py update_check.py PDF_Checker.py
 
       - name: Build
         run: python build_local.py
@@ -59,6 +62,12 @@ jobs:
           path: |
             dist/NullifyPDF_v*_Windows.exe
             dist/NullifyPDF_v*_macOS.zip
-            dist/NullifyPDF_v*_Ubuntu.deb
-            dist/NullifyPDF_v*_Fedora.rpm
           retention-days: 3
+
+  linux:
+    name: Linux packages
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      artifact_prefix: test-build
+      is_beta: false
+      retention_days: 3

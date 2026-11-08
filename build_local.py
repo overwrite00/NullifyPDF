@@ -12,6 +12,47 @@ from scripts.download_ocr_data import download_ocr_data
 
 OCR_TESSDATA_FILES = ("eng.traineddata", "ita.traineddata")
 
+# Runtime libraries the PySide6 (Qt xcb/EGL) GUI needs on a Linux desktop. The
+# PyInstaller binary bundles Python and Qt but not these system libraries.
+# Names are checked on Ubuntu 24.04/26.04, Debian 13, RHEL/Rocky 9-10 and
+# Fedora by the "Smoke test packages" workflow.
+DEB_DEPENDS = (
+    "libc6 (>= 2.34), libegl1, libgl1, libfontconfig1, libxkbcommon0, "
+    "libxkbcommon-x11-0, libxcb-cursor0, libxcb-icccm4, libxcb-image0, "
+    "libxcb-keysyms1, libxcb-render-util0, libxcb-shape0, libxcb-xkb1, "
+    "libxcb-xinerama0, libxcb1, libx11-6, libx11-xcb1, libxcb-randr0, "
+    "libxcb-render0, libxcb-shm0, libxcb-sync1, libxcb-xfixes0, "
+    "libdbus-1-3, libglib2.0-0t64 | libglib2.0-0"
+)
+RPM_REQUIRES = (
+    "xcb-util-cursor",
+    "xcb-util-image",
+    "xcb-util-keysyms",
+    "xcb-util-renderutil",
+    "xcb-util-wm",
+    "libxkbcommon",
+    "libxkbcommon-x11",
+    "mesa-libEGL",
+    "mesa-libGL",
+    "fontconfig",
+    "dbus-libs",
+    "glib2",
+)
+
+
+class PackagingError(OSError):
+    """A Linux package could not be produced (fatal for the build)."""
+
+
+def deb_version(version: str, prerelease: str) -> str:
+    """Debian version; a prerelease sorts BEFORE the final one (``~``)."""
+    return f"{version}~{prerelease}" if prerelease else version
+
+
+def rpm_release(prerelease: str) -> str:
+    """RPM Release; a prerelease sorts before the final ``1``."""
+    return f"0.{prerelease.replace('-', '.')}.1" if prerelease else "1"
+
 
 def get_version_info() -> Tuple[str, str]:
     """Extract base version and optional prerelease label from NullifyPDF.py.
@@ -123,9 +164,12 @@ def pyinstaller_datas(download_missing_ocr: bool = True) -> List[Tuple[str, str]
 
 
 def build_rpm(
-    version: str, file_version: str, executable_name: str
+    version: str, file_version: str, executable_name: str, prerelease: str = ""
 ) -> None:
     """Build RPM package for Fedora/RHEL.
+
+    Built inside a RHEL 9 container (rpm 4.16, glibc 2.34) by CI, so the
+    package installs on RHEL/Rocky/Alma 9-10 and current Fedora.
 
     Args:
         version: Application version used for the RPM package metadata
@@ -133,6 +177,11 @@ def build_rpm(
         file_version: Version string used for the output artifact filename
             (may include a beta suffix, e.g. "2.1.0-beta.2").
         executable_name: Name of compiled executable.
+        prerelease: Prerelease label (e.g. "beta.1"), or empty for stable.
+
+    Raises:
+        PackagingError: if rpmbuild fails.
+        FileNotFoundError: if no .rpm was produced.
     """
     print("\n[INFO] Creazione pacchetto RPM per Fedora/RHEL...")
     rpm_dir = os.path.abspath("rpm_build_tmp")
@@ -141,19 +190,30 @@ def build_rpm(
 
     icon_source = os.path.abspath("images/NullifyPDF_icon.png")
     spec_path = os.path.join(rpm_dir, "SPECS", "nullify.spec")
+    requires = "\n".join(f"Requires: {r}" for r in RPM_REQUIRES)
 
+    # No debuginfo/strip/build-id processing: stripping would corrupt the
+    # archive appended to the PyInstaller executable. Requires are explicit
+    # (AutoReqProv off) because the bundled libraries must not be scanned.
     with open(spec_path, "w", encoding="utf-8") as f:
         f.write(
             f"""
+%global debug_package %{{nil}}
+%global __os_install_post %{{nil}}
+%global _build_id_links none
+AutoReqProv: no
+
 Name: nullify-pdf
 Version: {version}
-Release: 1
-Summary: AI-Powered PDF Anonymization Tool
+Release: {rpm_release(prerelease)}
+Summary: PDF Anonymization Tool
 License: MIT
+URL: https://github.com/overwrite00/NullifyPDF
 BuildArch: x86_64
+{requires}
 
 %description
-Professional forensic tool for PDF anonymization using AI.
+Professional forensic tool for PDF anonymization.
 
 %install
 mkdir -p %{{buildroot}}/usr/bin
@@ -183,34 +243,37 @@ EOF
 /usr/bin/gtk-update-icon-cache %{{_datadir}}/icons/hicolor &> /dev/null || :
 
 %files
-/usr/bin/nullify-pdf
+%attr(0755,root,root) /usr/bin/nullify-pdf
 /usr/share/applications/nullify-pdf.desktop
 /usr/share/icons/hicolor/256x256/apps/nullify-pdf.png
 """
         )
 
     try:
-        subprocess.run(
-            ["rpmbuild", "--define", f"_topdir {rpm_dir}", "-bb", spec_path],
-            check=True,
-            stdout=subprocess.DEVNULL,
-        )
-        for root, _, files in os.walk(os.path.join(rpm_dir, "RPMS")):
-            for file in files:
-                if file.endswith(".rpm"):
-                    shutil.move(
-                        os.path.join(root, file),
-                        f"dist/NullifyPDF_v{file_version}_Fedora.rpm",
-                    )
+        try:
+            subprocess.run(
+                ["rpmbuild", "--define", f"_topdir {rpm_dir}", "-bb", spec_path],
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+        except subprocess.CalledProcessError as e:
+            raise PackagingError(f"rpmbuild failed (exit {e.returncode})") from e
+        built = [
+            os.path.join(root, file)
+            for root, _, files in os.walk(os.path.join(rpm_dir, "RPMS"))
+            for file in files
+            if file.endswith(".rpm")
+        ]
+        if not built:
+            raise FileNotFoundError("rpmbuild produced no .rpm")
+        shutil.move(built[0], f"dist/NullifyPDF_v{file_version}_Fedora.rpm")
         print("[OK] RPM creato con successo.")
-    except Exception as e:
-        print(f"[ERROR] Errore RPM: {e}")
     finally:
         shutil.rmtree(rpm_dir, ignore_errors=True)
 
 
 def build_deb(
-    version: str, file_version: str, executable_name: str
+    version: str, file_version: str, executable_name: str, prerelease: str = ""
 ) -> None:
     """Build DEB package for Ubuntu/Debian.
 
@@ -219,6 +282,10 @@ def build_deb(
         file_version: Version string used for the output artifact filename
             (may include a beta suffix, e.g. "2.1.0-beta.2").
         executable_name: Name of compiled executable.
+        prerelease: Prerelease label (e.g. "beta.1"), or empty for stable.
+
+    Raises:
+        PackagingError: if dpkg-deb fails.
     """
     print("\n[INFO] Creazione pacchetto DEB per Ubuntu/Debian...")
     pkg_dir = "deb_build_tmp"
@@ -248,7 +315,7 @@ def build_deb(
 
     with open(f"{pkg_dir}/DEBIAN/control", "w", encoding="utf-8") as f:
         f.write(
-            f"Package: nullify-pdf\nVersion: {version}\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: Graziano\nDescription: AI PDF Redaction Tool\n"
+            f"Package: nullify-pdf\nVersion: {deb_version(version, prerelease)}\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: Graziano Mariella <grazianomar@gmail.com>\nHomepage: https://github.com/overwrite00/NullifyPDF\nDepends: {DEB_DEPENDS}\nDescription: PDF Redaction Tool\n Offline PDF anonymization: detect and redact personal data.\n"
         )
 
     postinst_content = "#!/bin/sh\nset -e\nupdate-desktop-database -q || true\ngtk-update-icon-cache -f -t /usr/share/icons/hicolor || true\n"
@@ -260,19 +327,21 @@ def build_deb(
     os.chmod(f"{pkg_dir}/DEBIAN/postrm", 0o755)
 
     try:
-        subprocess.run(
-            [
-                "dpkg-deb",
-                "--build",
-                pkg_dir,
-                f"dist/NullifyPDF_v{file_version}_Ubuntu.deb",
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL,
-        )
+        try:
+            subprocess.run(
+                [
+                    "dpkg-deb",
+                    "--root-owner-group",
+                    "--build",
+                    pkg_dir,
+                    f"dist/NullifyPDF_v{file_version}_Ubuntu.deb",
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+        except subprocess.CalledProcessError as e:
+            raise PackagingError(f"dpkg-deb failed (exit {e.returncode})") from e
         print("[OK] DEB creato con successo.")
-    except Exception as e:
-        print(f"[ERROR] Errore DEB: {e}")
     finally:
         shutil.rmtree(pkg_dir, ignore_errors=True)
 
@@ -290,6 +359,21 @@ def build_app() -> None:
     beta_suffix = os.environ.get("NULLIFYPDF_BETA_SUFFIX", "").strip()
     file_version = get_file_version(version, code_prerelease, beta_suffix)
     sys_os = platform.system()
+    prerelease = (beta_suffix or code_prerelease).strip()
+
+    if "--deb-only" in sys.argv:
+        # Re-package an already built Linux binary (CI builds it once inside
+        # a RHEL 9 container, where dpkg-deb is not available).
+        binary = f"NullifyPDF_v{file_version}_Linux_Portable"
+        if not os.path.exists(f"dist/{binary}"):
+            print(f"[ERROR] dist/{binary} not found")
+            sys.exit(1)
+        try:
+            build_deb(version, file_version, binary, prerelease)
+        except (subprocess.CalledProcessError, OSError) as e:
+            print(f"[ERROR] DEB build failed: {e}")
+            sys.exit(1)
+        return
 
     for item in ["build", "dist", "NullifyPDF.spec"]:
         if os.path.exists(item):
@@ -363,12 +447,17 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, name='NullifyPDF', debug=False, c
         else:  # Linux
             os.rename("dist/NullifyPDF", f"dist/{final_name}")
             print(f"[OK] Eseguibile portatile pronto: dist/{final_name}")
+            # Packaging failures are fatal: a release must never silently
+            # ship without one of its Linux packages.
             if shutil.which("rpmbuild"):
-                build_rpm(version, file_version, final_name)
+                build_rpm(version, file_version, final_name, prerelease)
             if shutil.which("dpkg-deb"):
-                build_deb(version, file_version, final_name)
+                build_deb(version, file_version, final_name, prerelease)
 
-    except subprocess.CalledProcessError as e:
+    except (OSError, subprocess.CalledProcessError) as e:
+        if not isinstance(e, subprocess.CalledProcessError):
+            print(f"\n[ERROR] Packaging failed: {e}")
+            sys.exit(1)
         print(f"\n[ERROR] ERRORE CRITICO: Compilazione fallita (exit {e.returncode}).")
         sys.exit(1)
 

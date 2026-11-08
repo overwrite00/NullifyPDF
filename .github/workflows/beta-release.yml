@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-22.04, macos-latest]
+        os: [windows-latest, macos-latest]
 
     steps:
       - name: Checkout Code
@@ -33,21 +33,24 @@ jobs:
           python-version: '3.13'
           cache: 'pip'
 
-      - name: Install System Dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y rpm dpkg binutils libxcb-cursor0 libxkbcommon-x11-0 libegl1 desktop-file-utils
-
       - name: Install Python Dependencies (includes spaCy models)
+        shell: bash
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          # The spaCy models come from github.com release assets, which
+          # occasionally answer 504: retry instead of failing the release.
+          for attempt in 1 2 3 4 5; do
+            pip install -r requirements.txt && exit 0
+            echo "Attempt $attempt failed, retrying in 30s..."; sleep 30
+          done
+          exit 1
 
       - name: Run Smoke Tests
         run: pytest tests/ -v
 
       - name: Type Check (mypy)
         shell: bash
-        run: mypy NullifyPDF.py pii_detection.py privacy_core.py PDF_Checker.py
+        run: mypy NullifyPDF.py pii_detection.py privacy_core.py update_check.py PDF_Checker.py
 
       - name: Resolve beta suffix from tag
         if: startsWith(github.ref, 'refs/tags/')
@@ -67,15 +70,24 @@ jobs:
           path: |
             dist/NullifyPDF_v*_Windows.exe
             dist/NullifyPDF_v*_macOS.zip
-            dist/NullifyPDF_v*_Ubuntu.deb
-            dist/NullifyPDF_v*_Fedora.rpm
+
+  linux:
+    name: Linux packages
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      artifact_prefix: beta-build
+      is_beta: true
+      retention_days: 5
 
   create_beta_release:
     name: Create GitHub Beta Release
-    needs: build
+    needs: [build, linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
       - name: Download All Artifacts
         uses: actions/download-artifact@v8
         with:
@@ -91,12 +103,17 @@ jobs:
           set -euo pipefail
           TAG="${GITHUB_REF#refs/tags/}"
           REPO="${{ github.repository }}"
-          NOTES="NullifyPDF beta release (build from develop). Do not use in production."
+          # Release body = the matching CHANGELOG section (shown by the in-app
+          # update check); fall back to a generic text if it is empty.
+          NOTES_FILE="$(mktemp)"
+          if ! python3 scripts/extract_release_notes.py "$TAG" > "$NOTES_FILE"; then
+            echo "NullifyPDF beta release (build from develop). Do not use in production." > "$NOTES_FILE"
+          fi
 
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             echo "Release $TAG already exists, uploading/replacing assets."
           else
-            gh release create "$TAG" --repo "$REPO" --title "$TAG" --prerelease --notes "$NOTES"
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --prerelease --notes-file "$NOTES_FILE"
           fi
 
           # Uploaded one at a time (not via softprops/action-gh-release's
@@ -115,6 +132,11 @@ jobs:
             echo "No release assets found to upload" >&2
             exit 1
           fi
+
+          # A release must carry every platform package; never ship a partial one.
+          for suffix in _Windows.exe _macOS.zip _Ubuntu.deb _Fedora.rpm; do
+            ls all-builds/NullifyPDF_v*"$suffix" >/dev/null 2>&1 || { echo "Missing release asset *$suffix" >&2; exit 1; }
+          done
 
           for f in "${files[@]}"; do
             echo "Uploading $f ..."

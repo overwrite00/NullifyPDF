@@ -16,7 +16,7 @@ NullifyPDF follows a **privacy-first architecture**:
 | Principle                   | Implementation                                    |
 | --------------------------- | ------------------------------------------------- |
 | **100% Local**              | All PDF processing happens on your machine        |
-| **No Cloud**                | No file uploads, no network transmission          |
+| **No Cloud**                | No file uploads; the only network access is the optional update check (Info → Controlla aggiornamenti, or at every start if the user enables it; off by default), which sends no document data |
 | **No Telemetry**            | Zero user tracking or analytics                   |
 | **Open Source**             | Full code transparency, auditable by anyone       |
 | **Privacy Export**          | Irreversible redaction or encrypted reversible pseudonymization |
@@ -279,5 +279,5 @@ For **security vulnerabilities only**:
 
 ---
 
-*Last updated: 2026-07-23*  
+*Last updated: 2026-11-08*  
 *← [Contributing](./CONTRIBUTING.md) | [Back to README →](./README.md)*

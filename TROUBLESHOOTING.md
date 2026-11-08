@@ -184,7 +184,7 @@ If you can't copy → it's an image → enable **OCR PDF scansionati**
 For scanned PDFs:
 1. Enable **"OCR PDF scansionati"** in the sidebar
 2. Make sure OCR data is present (bundled by default) or you have local Tesseract `tessdata`
-3. Run **"Auto Redact (AI)"** again
+3. Run **"Auto Redact"** again
 
 Use image redaction only when you intentionally want to remove whole images or
 scanned photo blocks.
@@ -214,7 +214,7 @@ AI redacted text that shouldn't be redacted (false positive).
 
 **Option 0 — Scan only what you need**
 
-Clicking **Auto Redact (AI)** opens a dialog where you tick the data types to look for (for example untick *Luoghi e indirizzi* if cities keep being flagged). Your choice is remembered. Labels and headings such as "Telefono:" or list items are filtered automatically, and other occurrences of a value are matched as whole words only.
+Clicking **Auto Redact** opens a dialog where you tick the data types to look for (for example untick *Luoghi e indirizzi* if cities keep being flagged). Your choice is remembered. Labels and headings such as "Telefono:" or list items are filtered automatically, and other occurrences of a value are matched as whole words only.
 
 **Option 1 — Remove and Allowlist**
 
@@ -465,5 +465,5 @@ The more details, the faster we can fix it! 🚀
 
 ---
 
-*Last updated: 2026-09-19*  
+*Last updated: 2026-11-08*  
 *← [User Guide](./USER_GUIDE.md) | [Development →](./DEVELOPMENT.md)*

@@ -106,6 +106,7 @@ If the GUI opens → **You're ready to develop!** 🎉
 NullifyPDF/
 |-- NullifyPDF.py              # Main PySide6 application
 |-- privacy_core.py            # Privacy modes and encrypted restore maps
+|-- update_check.py            # Qt-free update check: versions, GitHub releases, asset choice, download
 |-- pii_detection.py           # Qt-free AI detection helpers (offsets, filters, whole-word matching)
 |-- PDF_Checker.py             # Heuristic verification utility
 |-- setup_env.py               # Environment setup script
@@ -230,7 +231,7 @@ Opens `htmlcov/index.html` in browser.
 CI runs `mypy` as a blocking step. Run the same check locally before opening a PR:
 
 ```bash
-mypy NullifyPDF.py pii_detection.py privacy_core.py PDF_Checker.py
+mypy NullifyPDF.py pii_detection.py privacy_core.py update_check.py PDF_Checker.py
 ```
 
 PyMuPDF is imported as `pymupdf` (aliased to `fitz`) so it is really type-checked; its dynamically defined constants are read once near the top of `NullifyPDF.py`.
@@ -272,7 +273,7 @@ python build_local.py
 | ----------- | --------------------------------- |
 | **Windows** | `.exe` executable                 |
 | **macOS**   | `.app` bundle ZIP                 |
-| **Linux**   | Portable binary + `.deb` + `.rpm` packages |
+| **Linux**   | Portable binary + `.deb` + `.rpm` packages (CI builds them in a RHEL 9 container, see `build-linux.yml`; `python build_local.py --deb-only` re-packages an existing binary as `.deb`) |
 
 ### Troubleshooting Build Issues
 
@@ -573,6 +574,10 @@ Ready to contribute? See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
 - 🤝 **Contributing:** [CONTRIBUTING.md](./CONTRIBUTING.md)
 - 💬 **GitHub Discussions:** [Discussions](https://github.com/overwrite00/NullifyPDF/discussions)
 - 🐛 **GitHub Issues:** [Issues](https://github.com/overwrite00/NullifyPDF/issues)
+
+### Release notes and the update check
+
+The release workflows fill each GitHub release body with `scripts/extract_release_notes.py`: the `## [X.Y.Z]` section for stable tags, `## [Unreleased]` for beta tags. The in-app update check displays that body, so keep the changelog sections accurate before tagging.
 
 ---
 
