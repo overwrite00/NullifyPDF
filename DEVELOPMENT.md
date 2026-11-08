@@ -137,7 +137,7 @@ NullifyPDF/
 | Package               | Version | Purpose                      |
 | --------------------- | ------- | ---------------------------- |
 | **PySide6**           | 6.12.0  | GUI framework (Qt6 bindings) |
-| **PyMuPDF**           | 1.28.2  | PDF manipulation and OCR bridge |
+| **PyMuPDF**           | 2.1     | PDF manipulation and OCR bridge |
 | **presidio-analyzer** | 2.2.366 | PII detection                |
 | **spaCy**             | 3.8.18  | NLP for entity recognition   |
 | **cryptography**      | 50.0.2  | Encrypted restore maps       |

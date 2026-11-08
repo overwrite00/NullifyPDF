@@ -40,10 +40,6 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "pyinstaller"
         update-types: ["version-update:semver-major"]
-      # PyMuPDF 2.x loads the layout analyzer (ONNX Runtime, NumPy) on import:
-      # slower start-up and larger installers, with no feature used by this app.
-      - dependency-name: "pymupdf"
-        update-types: ["version-update:semver-major"]
 
   # GitHub Actions — no major version ignore (CI/CD security-critical)
   - package-ecosystem: "github-actions"
