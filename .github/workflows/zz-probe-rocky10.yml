@@ -1,5 +1,7 @@
 name: probe rocky10
-on: workflow_dispatch
+on:
+  push:
+    branches: ["ci/probe-rocky10"]
 permissions:
   contents: read
   actions: read
