@@ -248,9 +248,11 @@ def test_reconstruct_v1_map_finds_wrapped_placeholder(tmp_path):
     assert "MarioRossi" in "".join(text.split())
 
 
-def test_reconstruct_does_not_report_values_it_failed_to_write(tmp_path):
-    """An original too long for its box is dropped by `apply_redactions()`.
-    That must never be counted as a restored value."""
+def test_reconstruct_shrinks_a_long_value_instead_of_dropping_it(tmp_path):
+    """An original too long for its box used to be dropped by
+    `apply_redactions()` (no text below 4 pt). It is now written after the
+    redactions with TextWriter, so it is back in the file (and counted only
+    because it really is)."""
     from NullifyPDF import sha256_file
 
     doc = fitz.open()
@@ -276,8 +278,10 @@ def test_reconstruct_does_not_report_values_it_failed_to_write(tmp_path):
         ],
     }
     out_path = tmp_path / "reconstructed.pdf"
-    # The value cannot fit the tight box; the honest answer is zero.
-    assert reconstruct_pdf(str(pseudonymized), str(out_path), payload) == 0
+    assert reconstruct_pdf(str(pseudonymized), str(out_path), payload) == 1
+    back = fitz.open(str(out_path))
+    assert "UNBREAKABLE" in "".join(back[0].get_text().split())
+    back.close()
 
 
 def test_expected_restore_count_counts_occurrences_not_entries(tmp_path):
@@ -481,3 +485,34 @@ def test_embedded_font_is_actually_reused(tmp_path):
     )
     span = _span_for(out, "Maria Bianchi")
     assert "arial" in span["font"].lower()
+
+
+def test_compact_labels_chain_and_tiny_box_placeholder_survives(tmp_path):
+    """A box too small for the full placeholder still gets a legible label."""
+    from NullifyPDF import compact_labels, write_label
+
+    assert compact_labels("PERSON_9F2A") == ["PERSON_9F2A", "P9F2A", "9F2A", "#9F"]
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "Re", fontsize=11)
+    rect = fitz.Rect(page.get_text("words")[0][:4])
+    page.add_redact_annot(rect, fill=(1, 1, 1))
+    page.apply_redactions()
+    drawn = write_label(page, rect, compact_labels("PERSON_9F2A"))
+    assert drawn != "PERSON_9F2A"
+    assert drawn in page.get_text()
+
+
+def test_v4_map_keeps_label_and_v3_still_loads():
+    from privacy_core import parse_restore_entries
+
+    reg = PlaceholderRegistry()
+    ph = reg.placeholder_for("Re", "PERSON", rect=(1, 2, 3, 4))
+    reg.set_label(ph, (1, 2, 3, 4), "P001")
+    payload = build_restore_payload(
+        source_name="", source_sha256="", output_sha256=None, entries=reg.entries()
+    )
+    assert payload["version"] == 4
+    assert parse_restore_entries(payload)[0].occurrences[0].label == "P001"
+    payload["version"] = 3
+    assert parse_restore_entries(payload)[0].original == "Re"
