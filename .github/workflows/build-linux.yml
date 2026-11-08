@@ -173,7 +173,9 @@ jobs:
             apt-get update -qq
             DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ca-certificates xvfb xauth >/dev/null
           else
-            dnf install -y -q xorg-x11-server-Xvfb xorg-x11-xauth --allowerasing >/dev/null
+            # RHEL 10 dropped the Xorg server from its own repositories:
+            # Xvfb then comes from EPEL.
+            dnf install -y -q xorg-x11-server-Xvfb xorg-x11-xauth --allowerasing >/dev/null               || { dnf install -y -q epel-release >/dev/null                    && dnf install -y -q xorg-x11-server-Xvfb xorg-x11-xauth --allowerasing >/dev/null; }
           fi
 
       - uses: actions/download-artifact@v8
