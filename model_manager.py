@@ -267,7 +267,8 @@ def _windows_memory_bytes() -> Optional[int]:
 
         status = Status()
         status.length = ctypes.sizeof(Status)
-        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+        windll = getattr(ctypes, "windll", None)
+        if windll is not None and windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
             return int(status.total)
     except (AttributeError, OSError, TypeError):
         pass
