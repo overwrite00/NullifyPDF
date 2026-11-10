@@ -114,7 +114,6 @@ jobs:
       - name: Diagnose exit status per test (temporary)
         shell: bash {0}
         run: |
-          for t in e1_text_only e2_checkstate_only e3_keep_dialog_alive e4_held_item_ref e5_cell_helper_twice e6_delete_later; do
-            pytest "tests/test_zz_diag.py::test_$t" -q >/dev/null 2>&1; echo "DIAG rc=$? $t"
-          done
+          pytest tests/ -q >/dev/null 2>&1; echo "FULL rc=$?"
+          pytest tests/ -q >/dev/null 2>&1; echo "FULL again rc=$?"
           echo "diagnosis finished"

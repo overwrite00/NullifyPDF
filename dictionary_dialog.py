@@ -71,14 +71,16 @@ class DictionaryDialog(QDialog):
             self.tables[kind] = table
             tl.addWidget(table)
             row = QHBoxLayout()
-            for label, slot in (
-                ("Aggiungi", lambda _=False, k=kind: self.add_row(k)),
-                ("Rimuovi", lambda _=False, k=kind: self.remove_selected(k)),
-                ("Importa da testo…", lambda _=False, k=kind: self.import_text(k)),
-                ("Esporta in chiaro…", lambda _=False, k=kind: self.export_plain(k)),
+            for label, action in (
+                ("Aggiungi", "add"),
+                ("Rimuovi", "remove"),
+                ("Importa da testo…", "import"),
+                ("Esporta in chiaro…", "export"),
             ):
                 b = QPushButton(label)
-                b.clicked.connect(slot)
+                b.setProperty("kind", kind)
+                b.setProperty("action", action)
+                b.clicked.connect(self._on_button)  # bound method: no self-referencing lambda
                 row.addWidget(b)
             tl.addLayout(row)
             self.tabs.addTab(tab, title)
@@ -100,6 +102,14 @@ class DictionaryDialog(QDialog):
         btn.setObjectName("Primary")
         btn.clicked.connect(self.save)
         lay.addWidget(btn)
+
+    def _on_button(self) -> None:
+        sender = self.sender()
+        if sender is None:
+            return
+        kind, action = str(sender.property("kind")), str(sender.property("action"))
+        {"add": self.add_row, "remove": self.remove_selected,
+         "import": self.import_text, "export": self.export_plain}[action](kind)
 
     # -- rows ---------------------------------------------------------
     def _append(self, kind: str, entry: ListEntry) -> None:

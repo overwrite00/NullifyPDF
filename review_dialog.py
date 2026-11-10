@@ -115,8 +115,11 @@ class ReviewDialog(QDialog):
         self.spin.setSingleStep(0.05)
         self.spin.setValue(0.6)
         btn_thr = QPushButton("Seleziona ≥ soglia")
-        btn_all.clicked.connect(lambda: self._set_all(True))
-        btn_none.clicked.connect(lambda: self._set_all(False))
+        # Bound methods, not lambdas capturing `self`: a lambda makes a
+        # reference cycle that keeps the dialog alive until the garbage
+        # collector runs, possibly after QApplication is gone.
+        btn_all.clicked.connect(self._select_all)
+        btn_none.clicked.connect(self._select_none)
         btn_thr.clicked.connect(self._select_threshold)
         for w in (btn_all, btn_none, self.spin, btn_thr):
             bar.addWidget(w)
@@ -148,6 +151,12 @@ class ReviewDialog(QDialog):
                 self._cell(row, COL_VALUE).setText("(area grafica)")
                 continue
             self._cell(row, COL_VALUE).setText(text if show else mask_value(text))
+
+    def _select_all(self) -> None:
+        self._set_all(True)
+
+    def _select_none(self) -> None:
+        self._set_all(False)
 
     def _set_all(self, state: bool) -> None:
         for row in range(self.table.rowCount()):
