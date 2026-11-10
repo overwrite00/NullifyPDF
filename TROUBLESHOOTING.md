@@ -199,9 +199,31 @@ If AI still misses something:
 ### Allowlist Issue?
 
 If an entity should be detected but isn't:
-1. Check `~/.nullifypdf/allowlist.txt`
+1. Open **Dizionari** and look at the *Allowlist* tab
 2. If the word is there, it's intentionally ignored
-3. Remove it from allowlist to re-enable detection
+3. Remove it from the allowlist to re-enable detection
+
+---
+
+## 🔐 Dictionaries Are Empty on a New Computer
+
+The blocklist and allowlist are encrypted for the user account that created them. After copying `~/.nullifypdf` to another account or PC the Dizionari dialog shows a warning and empty lists; the encrypted files are not modified. Restore the original profile, or export the lists to text (*Esporta in chiaro...*) on the old computer and import them on the new one. The pseudonym key can be exported and imported with *Gestisci chiave...* in the placeholder style dialog.
+
+---
+
+## 🔍 Ordinary Words Proposed for Redaction
+
+### Symptom
+
+The scan proposes plain words ("Certifico", "Prescrivo", section headings) or fragments of letters of neighbouring lines.
+
+### Solution
+
+- Use the **IT** language model (or **BOTH**) for Italian documents; the English model adds false hits on Italian text.
+- Uncertain hits appear in **Rivedi suggerimenti** instead of being applied: leave them unticked to discard them.
+- Add words you never want redacted to the allowlist (**Dizionari**); matching is by whole word.
+- If black boxes cover parts of the lines above or below the redacted word, update to a build that includes rectangle trimming and re-run the scan. With very tight line spacing (roughly half the font size or less) no safe band exists: a warning "interlinea molto stretta" is shown and neighbouring words can be damaged, never left unredacted.
+- For medical documents tick **Profilo documenti sanitari**, which keeps uncertain hits as suggestions instead of dropping them.
 
 ---
 
@@ -232,10 +254,9 @@ Clicking **Auto Redact** opens a dialog where you tick the data types to look fo
 
 For repeated false positives:
 
-1. Open `~/.nullifypdf/allowlist.txt`
-2. Add the word (one per line, lowercase)
-3. Restart NullifyPDF
-4. Run AI scan again
+1. Open **Dizionari** and add the word in the *Allowlist* tab
+2. Save
+3. Run the scan again
 
 Example:
 ```

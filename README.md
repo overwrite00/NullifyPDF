@@ -36,7 +36,8 @@ NullifyPDF goes beyond simple text covering. It uses **Natural Language Processi
 - 🔄 **Update Check** — Optional, user-triggered check for new releases (stable builds see stable only, beta builds see both) showing the release notes and a one-click download into your Downloads folder; can be enabled at every start from the Info dialog (off by default)
 - 🗄️ **Fluid UI & Thread-Safe** — PySide6 modern dark-mode interface with zero UI freezing. Text extraction in worker thread with QMutex serialization
 - 📖 **Persistent Dictionaries** — Blocklist and Allowlist synchronized to disk (`~/.nullifypdf`) with O(1) fast-path matching
-- 🛡️ **Privacy Export Modes** — Choose irreversible anonymization or reversible pseudonymization with a separately encrypted restore map
+- 🛡️ **Privacy Export Modes** — Choose irreversible removal or reversible pseudonymization with a separately encrypted restore map; the exported file is sanitised (annotations, attachments, scripts, metadata, hidden text) and verified
+- 🔍 **Review of uncertain hits** — Detections without enough evidence are suggested for review instead of being applied or lost silently
 - 🔎 **OCR Support** — Bundled EN/IT Tesseract language data for scanned PDFs
 - 🖼️ **Blindfold Mode** — One-click image/logo censoring with professional placeholder: `[ IMAGE REMOVED ]`
 - 📦 **Native Cross-Platform** — Automated build scripts generate Windows `.exe`, macOS ZIP bundles, and Linux `.deb`/`.rpm` packages
@@ -227,7 +228,7 @@ pytest tests/ -v
 ✅ **No Telemetry** — Zero user tracking  
 
 > [!IMPORTANT]
-> Irreversible anonymization cannot be undone from the exported PDF. Always keep backups of original documents. Pseudonymization requires the encrypted restore map and its password.
+> Irreversible removal cannot be undone from the exported PDF, and it does not by itself guarantee anonymisation: indirect identifiers can remain. A pseudonymized PDF and its restore map are personal data. Always keep backups of original documents. Pseudonymization requires the encrypted restore map and its password.
 
 See [SECURITY.md](./SECURITY.md) for responsible disclosure and privacy details.
 

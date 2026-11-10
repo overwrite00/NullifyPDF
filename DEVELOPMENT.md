@@ -163,7 +163,7 @@ These are downloaded automatically by `setup_env.py`.
 
 ```python
 NullifyPDF(QMainWindow)
-|-- PDFListManager          # Manages blocklist/allowlist
+|-- PDFListManager          # (word_lists.py) encrypted blocklist/allowlist
 |-- AIWorker(QObject)       # NLP/OCR scanning in thread
 |-- PDFView(QGraphicsView)  # PDF rendering and rectangle drawing
 |-- privacy_core.py         # Privacy modes and encrypted restore maps
@@ -453,7 +453,15 @@ isort NullifyPDF.py
 | ------------------ | ----------------------- |
 | `NullifyPDF.py`    | Main app, GUI, OCR, export logic |
 | `privacy_core.py`  | Placeholder and restore-map logic |
-| `pii_detection.py` | AI detection precision: word-box index, thresholds, filters, entity selection |
+| `pii_detection.py` | AI detection precision: word-box index, rectangle clamping, thresholds, pattern validation, evidence scoring, entity selection |
+| `lexicon_it.py`    | Italian word lists used to reject ordinary words / confirm names and places |
+| `pdf_sanitize.py`  | Export sanitiser and output verification |
+| `export_engine.py` | Qt-free export pipeline, audit record, local-data hygiene |
+| `review_dialog.py` | Review dialog for suggested detections |
+| `secure_store.py`  | Master key protection (DPAPI / keyring / key file), AES-GCM sealing |
+| `word_lists.py`    | Encrypted blocklist/allowlist with expiry |
+| `dictionary_dialog.py` | Dictionary editor dialog |
+| `scripts/build_lexicon_data.py` | Generates `lexicon_data_it.py` from ISTAT open data (development only) |
 | `setup_env.py`     | Environment setup |
 | `build_local.py`   | PyInstaller build |
 | `PDF_Checker.py`   | Post-processing utility |
@@ -469,7 +477,7 @@ isort NullifyPDF.py
 | AI Processing       | `NullifyPDF.py` | `AIWorker.run_scan()` |
 | Export              | `NullifyPDF.py` | `cmd_export()`        |
 | Reconstruct         | `NullifyPDF.py` | `cmd_reconstruct()`   |
-| Blocklist/Allowlist | `NullifyPDF.py` | `PDFListManager`      |
+| Blocklist/Allowlist | `word_lists.py` | `PDFListManager`      |
 
 ---
 

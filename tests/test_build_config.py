@@ -117,3 +117,17 @@ def test_build_workflows_use_the_shared_linux_build(name):
     assert "uses: ./.github/workflows/build-linux.yml" in text
     # Linux must not be built on the old ubuntu-22.04 runner image.
     assert "ubuntu-22.04" not in text
+
+
+def test_mypy_module_lists_are_identical_across_workflows():
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parent.parent / ".github" / "workflows"
+    sets = {}
+    for name in ("beta-release.yml", "build-linux.yml", "release.yml", "test_build.yml"):
+        text = (root / name).read_text(encoding="utf-8")
+        m = re.search(r"run: mypy ([^\n]+)", text)
+        assert m, name
+        sets[name] = frozenset(m.group(1).split())
+    assert len(set(sets.values())) == 1, sets

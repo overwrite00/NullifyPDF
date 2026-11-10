@@ -7,6 +7,7 @@ import pathlib
 import string
 import platform
 import logging
+import logging.handlers
 import traceback
 import atexit
 import hashlib
@@ -51,6 +52,7 @@ from PySide6.QtGui import (
     QDropEvent,
 )
 from PySide6.QtCore import (
+    QLocale,
     Qt,
     QThread,
     QObject,
@@ -67,9 +69,15 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QDesktopServices
 
 from privacy_core import (
+    PSEUDONYM_STYLES,
     PlaceholderEntry,
+    export_pseudonym_key,
+    generate_recovery_key,
+    import_pseudonym_key,
+    parse_recovery_key,
     PlaceholderRegistry,
     PrivacyMode,
+    password_strength,
     build_restore_payload,
     decrypt_restore_payload,
     encrypt_restore_payload,
@@ -79,19 +87,42 @@ from privacy_core import (
 from pii_detection import (
     ALL_GROUP_IDS,
     ENTITY_GROUPS,
+    NON_PRESIDIO_TYPES,
+    build_detections,
     build_page_index,
-    clean_candidates,
+    classify_page,
+    covered_fraction,
     expand_group_ids,
-    filter_results,
     load_enabled_groups,
-    propagate_whole_word,
-    reject_label_like_hits,
-    resolve_overlaps,
     save_enabled_groups,
-    span_to_rects,
     whole_word_rects,
 )
 import update_check
+from export_engine import (
+    build_audit_record,
+    cleanup_stale_temp,
+    collect_removed_values,
+    export_document,
+    name_leaks_value,
+    neutral_map_name,
+    neutral_output_name,
+    private_temp_dir,
+    purge_old_logs,
+    wipe_local_data,
+    write_audit_record,
+    write_private_file,
+)
+from pii_detection import GLYPH_CORE_INSET
+from pdf_sanitize import (
+    SanitizePolicy,
+    page_image_coverage,
+    reveal_hidden_layers,
+    suggest_signature_areas,
+)
+from review_dialog import ReviewDialog
+from dictionary_dialog import DictionaryDialog
+from word_lists import PDFListManager
+import secure_store
 
 # PyMuPDF defines these constants dynamically, which mypy cannot see; read
 # them once here (with the suppression) instead of at every call site.
@@ -99,7 +130,7 @@ PDF_ANNOT_REDACT: int = fitz.PDF_ANNOT_REDACT  # type: ignore[attr-defined]
 PDF_REDACT_IMAGE_PIXELS: int = fitz.PDF_REDACT_IMAGE_PIXELS  # type: ignore[attr-defined]
 
 __version__ = "2.4.0"
-__version_prerelease__ = "beta.1"
+__version_prerelease__ = "beta.2"
 APP_VERSION = (
     f"{__version__}-{__version_prerelease__}"
     if __version_prerelease__
@@ -181,6 +212,9 @@ class DetectionDict(TypedDict):
     rects: List[Tuple[float, float, float, float]]
     source: NotRequired[str]
     score: NotRequired[float]
+    state: NotRequired[str]
+    reasons: NotRequired[List[str]]
+    glued: NotRequired[bool]
 
 
 def setup_logging() -> logging.Logger:
@@ -193,6 +227,7 @@ def setup_logging() -> logging.Logger:
     """
     log_dir = pathlib.Path.home() / ".nullifypdf" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
+    purge_old_logs(log_dir, max_age_days=30)
 
     logger = logging.getLogger("nullifypdf")
     debug_mode = os.environ.get("NULLIFYPDF_DEBUG", "").lower() == "true"
@@ -202,9 +237,13 @@ def setup_logging() -> logging.Logger:
         return logger
 
     try:
-        handler = logging.FileHandler(
+        # Rotating, so diagnostics are not kept indefinitely (storage
+        # limitation); old rotated files are also purged above.
+        handler = logging.handlers.RotatingFileHandler(
             log_dir / "nullifypdf.log",
-            encoding="utf-8"
+            maxBytes=512 * 1024,
+            backupCount=3,
+            encoding="utf-8",
         )
         handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter(
@@ -250,7 +289,12 @@ class RestoreMapMismatch(ValueError):
 
 REDACTION_FONTNAME = "helv"
 REDACTION_MAX_FONTSIZE = 8.0
-REDACTION_MIN_FONTSIZE = 3.0
+# PyMuPDF's apply_redactions() never inserts replacement text below 4 pt, so
+# a smaller floor would only produce text that is silently dropped.
+REDACTION_MIN_FONTSIZE = 4.0
+# Text written with TextWriter has no such floor.
+LABEL_MIN_FONTSIZE = 1.0
+LABEL_PREFERRED_MIN_FONTSIZE = 4.0
 
 
 def fit_redaction_fontsize(
@@ -337,45 +381,146 @@ def _placeholder_rects_by_chars(page: Any, placeholder: str) -> List["fitz.Rect"
     return rects
 
 
+def glyph_core(bbox: Tuple[float, float, float, float]) -> Tuple[float, float, float, float]:
+    """The part of a character box that decides whether a redaction deletes it.
+
+    Measured on PyMuPDF 2.1 (MuPDF 1.28): a glyph is removed when the
+    redaction rectangle intersects its box shrunk by 10% of its width on
+    each side and 10% of its height at top and bottom.
+    """
+    x0, y0, x1, y1 = bbox
+    dx, dy = (x1 - x0) * GLYPH_CORE_INSET, (y1 - y0) * GLYPH_CORE_INSET
+    return (x0 + dx, y0 + dy, x1 - dx, y1 - dy)
+
+
+def _core_hits(bbox: Tuple[float, float, float, float], rect: "fitz.Rect") -> bool:
+    c = glyph_core(bbox)
+    return c[0] < rect.x1 and c[2] > rect.x0 and c[1] < rect.y1 and c[3] > rect.y0
+
+
 def capture_text_style(page: Any, rect: "fitz.Rect") -> Optional[Dict[str, Any]]:
     """Read the typography of the native text under `rect`.
 
-    Returns ``{font, size, color, flags, origin, text}`` for the dominant
-    span (most characters), where ``text`` is the text actually inside this
-    box and ``origin`` the baseline start of its first line. Returns None
-    when the box holds no real text: no span at all, or only an invisible
-    OCR layer (GlyphLessFont / render mode 3). That is what distinguishes a
-    native PDF from a scanned one.
+    Returns ``{font, size, color, flags, origin, text}`` for the line the
+    box was taken from, where ``text`` is the text of that line inside the
+    box and ``origin`` the baseline start of its first character. Only
+    characters on a single baseline whose deletion core the box intersects
+    are used, so with tight leading the text of the lines above and below
+    (whose boxes overlap this one) is never captured. Returns None when the
+    box holds no real text: no span at all, or only an invisible OCR layer
+    (GlyphLessFont / render mode 3). That is what distinguishes a native PDF
+    from a scanned one.
     """
     try:
-        blocks = page.get_text("dict", clip=rect).get("blocks", [])
+        blocks = page.get_text("rawdict", clip=rect).get("blocks", [])
     except Exception:
         return None
-    spans: List[Dict[str, Any]] = []
+    # (baseline y rounded, span, char)
+    hits: List[Tuple[float, Dict[str, Any], Dict[str, Any]]] = []
     for block in blocks:
         if block.get("type") != 0:
             continue
         for line in block.get("lines", []):
             for span in line.get("spans", []):
-                if not str(span.get("text", "")).strip():
-                    continue
                 if "glyphless" in str(span.get("font", "")).lower():
                     continue
                 if span.get("alpha", 255) == 0:
                     continue
-                spans.append(span)
-    if not spans:
+                for ch in span.get("chars", []):
+                    if not str(ch.get("c", "")).strip():
+                        continue
+                    if not _core_hits(tuple(ch["bbox"]), rect):
+                        continue
+                    hits.append((round(float(ch["origin"][1]), 1), span, ch))
+    if not hits:
         return None
-    dominant = max(spans, key=lambda sp: len(str(sp["text"]).strip()))
-    text = " ".join(" ".join(str(sp["text"]) for sp in spans).split())
+    centre = (rect.y0 + rect.y1) / 2
+    counts: Dict[float, int] = {}
+    for base, _sp, _ch in hits:
+        counts[base] = counts.get(base, 0) + 1
+    # The target line is the baseline nearest the middle of the box among
+    # those inside it; with tight leading a neighbour's baseline can also
+    # fall inside the box, but never closer to its middle.
+    inside = [k for k in counts if rect.y0 <= k <= rect.y1] or list(counts)
+    base = min(inside, key=lambda k: (abs(k - centre), -counts[k]))
+    chosen = [(sp, ch) for b_, sp, ch in hits if b_ == base]
+    chosen.sort(key=lambda t: t[1]["origin"][0])
+    spans_used: Dict[int, int] = {}
+    for sp, _ch in chosen:
+        spans_used[id(sp)] = spans_used.get(id(sp), 0) + 1
+    dominant = next(sp for sp, _ in chosen if spans_used[id(sp)] == max(spans_used.values()))
+    # Spaces between the selected characters are not in `hits` (they were
+    # filtered out above); rebuild them from the horizontal gaps.
+    pieces: List[str] = []
+    prev_x1: Optional[float] = None
+    for _sp, ch in chosen:
+        x0, _y0, x1, _y1 = ch["bbox"]
+        if prev_x1 is not None and x0 - prev_x1 > 0.25 * float(dominant["size"]):
+            pieces.append(" ")
+        pieces.append(str(ch["c"]))
+        prev_x1 = x1
+    first = chosen[0][1]
     return {
         "font": str(dominant.get("font", "")),
         "size": float(dominant["size"]),
         "color": int(dominant.get("color", 0)),
         "flags": int(dominant.get("flags", 0)),
-        "origin": [float(dominant["origin"][0]), float(dominant["origin"][1])],
-        "text": text,
+        "origin": [float(first["origin"][0]), float(first["origin"][1])],
+        "text": "".join(pieces).strip(),
     }
+
+
+def target_chars(page: Any, full: "fitz.Rect") -> List[Dict[str, Any]]:
+    """Characters of the line a word box was taken from (single baseline)."""
+    try:
+        blocks = page.get_text("rawdict", clip=full).get("blocks", [])
+    except Exception:
+        return []
+    chars: List[Tuple[float, Dict[str, Any]]] = []
+    for block in blocks:
+        if block.get("type") != 0:
+            continue
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                for ch in span.get("chars", []):
+                    if not str(ch.get("c", "")).strip():
+                        continue
+                    bx0, by0, bx1, by1 = ch["bbox"]
+                    cx, cy = (bx0 + bx1) / 2, (by0 + by1) / 2
+                    if full.x0 <= cx <= full.x1 and full.y0 <= cy <= full.y1:
+                        chars.append((round(float(ch["origin"][1]), 1), ch))
+    if not chars:
+        return []
+    centre = (full.y0 + full.y1) / 2
+    bases = {b for b, _ in chars}
+    inside = [b for b in bases if full.y0 <= b <= full.y1] or list(bases)
+    base = min(inside, key=lambda b: abs(b - centre))
+    return [ch for b, ch in chars if b == base]
+
+
+def band_covers_target(page: Any, band: "fitz.Rect", full: "fitz.Rect") -> bool:
+    """True when `band` reaches the deletion core of every target character.
+
+    A glyph that is smaller or higher than the rest of its word (a
+    superscript, a trailing digit) could keep its core outside a thin band
+    and survive the redaction.
+    """
+    chars = target_chars(page, full)
+    return all(_core_hits(tuple(ch["bbox"]), band) for ch in chars)
+
+
+def text_under_rect(page: Any, rect: "fitz.Rect") -> str:
+    """The text a box was drawn over, without neighbouring lines' fragments.
+
+    `get_text(clip=...)` follows a different rule from glyph deletion and, with
+    tight leading, returns pieces of the lines above and below. Native text is
+    read from a single baseline (see capture_text_style); the plain clip text
+    is only the fallback for scanned / image pages.
+    """
+    style = capture_text_style(page, rect)
+    if style and style.get("text"):
+        return " ".join(str(style["text"]).split())
+    return " ".join(page.get_text("text", clip=rect).split())
 
 
 _BASE14 = {
@@ -467,12 +612,79 @@ def write_styled_text(
     else:
         # Wider in the fallback font (or a multi-line original): shrink a
         # little, and wrap inside the box if it still does not fit.
-        scaled = max(REDACTION_MIN_FONTSIZE, size * usable / width)
+        scaled = max(LABEL_MIN_FONTSIZE, size * usable / width)
         if font.text_length(text, fontsize=scaled) <= usable:
             writer.append(origin, text, font=font, fontsize=scaled)
         else:
             writer.fill_textbox(rect, text, font=font, fontsize=scaled, align=0)
     writer.write_text(page, color=color)
+
+
+def compact_labels(placeholder: str) -> List[str]:
+    """Shorter stand-ins for a placeholder, longest first (full one first)."""
+    head, _, tail = placeholder.rpartition("_")
+    if not head or not tail:
+        return [placeholder]
+    out = [placeholder, f"{head[:1]}{tail}", tail, f"#{tail[:2]}"]
+    seen: List[str] = []
+    for item in out:
+        if item not in seen:
+            seen.append(item)
+    return seen
+
+
+def write_label(
+    page: Any,
+    rect: "fitz.Rect",
+    labels: List[str],
+    *,
+    style: Optional[Dict[str, Any]] = None,
+    allowance: float = 0.0,
+    max_size: float = REDACTION_MAX_FONTSIZE,
+) -> str:
+    """Draw the first of `labels` that is legible inside the box; return it.
+
+    Drawn with TextWriter after apply_redactions(), so there is no 4 pt
+    floor and no silent drop. A label may extend past the box to the right by
+    `allowance` points (free space on the same line). Preference: the longest
+    label that fits at 4 pt or more; otherwise the shortest at whatever size
+    fits (down to 1 pt).
+    """
+    font = fitz.Font(REDACTION_FONTNAME)
+    # A band squeezed between tight lines is short: keep the label inside it.
+    max_size = min(max_size, max(LABEL_MIN_FONTSIZE, rect.height * 0.9))
+    usable = max(1.0, rect.width - 1.0 + allowance)
+    chosen = labels[-1]
+    size = LABEL_MIN_FONTSIZE
+    for lab in labels:
+        full = font.text_length(lab, fontsize=1.0)
+        fit = min(max_size, usable / full) if full > 0 else max_size
+        if fit >= LABEL_PREFERRED_MIN_FONTSIZE:
+            chosen, size = lab, fit
+            break
+    else:
+        full = font.text_length(chosen, fontsize=1.0)
+        size = max(LABEL_MIN_FONTSIZE, min(max_size, usable / full if full else max_size))
+    if style and style.get("origin"):
+        base_y = float(style["origin"][1])
+    else:
+        base_y = rect.y0 + (rect.height + size * 0.7) / 2
+    writer = fitz.TextWriter(page.rect)
+    writer.append(fitz.Point(rect.x0 + 0.5, base_y), chosen, font=font, fontsize=size)
+    writer.write_text(page, color=(0, 0, 0))
+    return chosen
+
+
+def free_space_right(page: Any, rect: "fitz.Rect", limit: float = 40.0) -> float:
+    """Free width to the right of `rect` on the same line (after redaction)."""
+    gap = limit
+    for w in page.get_text("words"):
+        overlap = min(rect.y1, w[3]) - max(rect.y0, w[1])
+        if overlap < 0.5 * min(rect.height, w[3] - w[1]):
+            continue
+        if w[0] >= rect.x1 - 0.5:
+            gap = min(gap, w[0] - rect.x1 - 1.0)
+    return max(0.0, gap)
 
 
 def _restore_targets(
@@ -544,6 +756,7 @@ def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int
         for page in doc.pages():
             claimed: List[fitz.Rect] = []
             styled: List[Tuple[fitz.Rect, str, Dict[str, Any]]] = []
+            plain: List[Tuple[fitz.Rect, str]] = []
             for entry in entries:
                 for rect, style in _restore_targets(page, entry):
                     # Entries are sorted longest-placeholder-first, so a
@@ -561,23 +774,19 @@ def reconstruct_pdf(in_path: str, out_path: str, payload: Dict[str, Any]) -> int
                         # Native text: blank the box now, write the value in
                         # its original typography after apply_redactions()
                         # (which would otherwise erase it).
-                        text = style.get("text") or entry.original
+                        text = entry.original  # never the captured clip text
                         page.add_redact_annot(rect, fill=(1, 1, 1))
                         styled.append((fitz.Rect(rect), text, style))
                         attempted.append((page.number, fitz.Rect(rect), text))
                         continue
-                    page.add_redact_annot(
-                        rect,
-                        text=entry.original,
-                        fill=(1, 1, 1),
-                        text_color=(0, 0, 0),
-                        align=1,
-                        fontsize=fit_redaction_fontsize(entry.original, rect),
-                    )
+                    page.add_redact_annot(rect, fill=(1, 1, 1))
+                    plain.append((fitz.Rect(rect), entry.original))
                     attempted.append((page.number, fitz.Rect(rect), entry.original))
             page.apply_redactions(images=PDF_REDACT_IMAGE_PIXELS, graphics=True)
             for rect, text, style in styled:
                 write_styled_text(doc, page, rect, text, style)
+            for rect, text in plain:
+                write_label(page, rect, [text])
         doc.save(out_path, garbage=4, deflate=True, clean=True)
     finally:
         doc.close()
@@ -674,93 +883,6 @@ def ocr_language_for_choice(choice: str, tessdata_dir: Optional[str]) -> str:
     return "+".join(available or requested)
 
 
-class PDFListManager:
-    """Manages blocklist/allowlist persistence to disk.
-
-    Handles loading and saving word lists with automatic path management
-    and UTF-8 encoding.
-    """
-
-    def __init__(self, config_dir: pathlib.Path) -> None:
-        """Initialize list manager with config directory.
-
-        Args:
-            config_dir: Path to configuration directory.
-        """
-        self.config_dir = config_dir
-        self.config_dir.mkdir(parents=True, exist_ok=True)
-        self.block_file = config_dir / "blocklist.txt"
-        self.allow_file = config_dir / "allowlist.txt"
-
-    def load_blocklist(self) -> Set[str]:
-        """Load blocklist from disk.
-
-        Returns:
-            Set[str]: Words to redact (lowercase).
-        """
-        return self._load_list(self.block_file)
-
-    def load_allowlist(self) -> Set[str]:
-        """Load allowlist from disk.
-
-        Returns:
-            Set[str]: Words to preserve from redaction (lowercase).
-        """
-        return self._load_list(self.allow_file)
-
-    def save_blocklist(self, blocklist: Set[str]) -> None:
-        """Persist blocklist to disk.
-
-        Args:
-            blocklist: Set of words to save.
-        """
-        self._save_list(self.block_file, blocklist)
-
-    def save_allowlist(self, allowlist: Set[str]) -> None:
-        """Persist allowlist to disk.
-
-        Args:
-            allowlist: Set of words to save.
-        """
-        self._save_list(self.allow_file, allowlist)
-
-    def _load_list(self, path: pathlib.Path) -> Set[str]:
-        """Load word list from file with validation.
-
-        Args:
-            path: Path to list file.
-
-        Returns:
-            Set[str]: Set of words (lowercase, stripped, min length 3).
-        """
-        if not path.exists():
-            return set()
-        try:
-            # Use context manager to ensure file handle is closed deterministically
-            with open(path, "r", encoding="utf-8") as fh:
-                return {
-                    line.strip().lower()
-                    for line in fh
-                    if len(line.strip()) > 2
-                }
-        except Exception as e:
-            logging.getLogger(__name__).error(f"Error loading {path}: {e}")
-            return set()
-
-    def _save_list(self, path: pathlib.Path, words: Set[str]) -> None:
-        """Save word list to file.
-
-        Args:
-            path: Path to save list.
-            words: Set of words to save.
-        """
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                f.write("\n".join(sorted(words)))
-        except Exception as e:
-            logging.getLogger(__name__).error(f"Error saving {path}: {e}")
-
-
 STYLESHEET = """
 QMainWindow, QDialog { background-color: #0f172a; }
 QWidget { color: #cbd5e1; font-family: 'Segoe UI', 'Roboto', sans-serif; font-size: 13px; }
@@ -826,12 +948,13 @@ class AIWorker(QObject):
         except Exception as e:
             logging.getLogger("nullifypdf").debug(f"Error during AI cleanup: {e}")
 
-    @Slot(object, object, str, list, set, bool, object, list)
+    @Slot(object, object, str, list, set, bool, object, list, bool)
     def run_scan(self, doc: Any, doc_mutex: Any, choice: str,
                  compiled_allowlist: List[Tuple[str, Any]],
                  allowlist_set: Set[str], use_ocr: bool,
                  tessdata_dir: Optional[str],
-                 enabled_types: List[str]) -> None:
+                 enabled_types: List[str],
+                 health_mode: bool = False) -> None:
         """Run AI scan on PDF pages and emit detected sensitive entities.
 
         Text extraction (`page.get_text()`) is performed inside this worker so
@@ -848,6 +971,8 @@ class AIWorker(QObject):
             allowlist_set: Set of allowlist entries (lowercase) for O(1)
                 exact-match fast-path lookup before regex any() scan.
             enabled_types: Presidio entity types the user chose to detect.
+            health_mode: Health-document profile: no uncertain hit is dropped
+                silently, it becomes a suggestion for review instead.
         """
         try:
             if self._stop_requested:
@@ -921,25 +1046,37 @@ class AIWorker(QObject):
                 self.loaded_langs = target_langs
             self.log_sig.emit("Scansione privacy in corso...")
             targets = list(enabled_types)
+            presidio_targets = [
+                t for t in targets if t not in NON_PRESIDIO_TYPES
+            ]
+            allow_terms = sorted(
+                set(allowlist_set) | {a for a, _ in compiled_allowlist}
+            )
 
             # Determine page count under mutex (cheap, but doc may be replaced
             # mid-flight by load_path if not for the disabled UI during scan).
             with QMutexLocker(doc_mutex):
                 total_pages = len(doc)
 
+            totals: Dict[str, int] = {}
+            n_suggested = 0
             for i in range(total_pages):
                 if self._stop_requested:
                     break
                 # Extract text in worker thread (off the UI thread) under mutex
                 # because UI thread renders / mutates annotations on the same doc.
                 used_ocr = False
+                has_images = False
                 textpage = None
+                signature_dets: List[Dict[str, Any]] = []
                 with QMutexLocker(doc_mutex):
                     try:
                         page = doc[i]
                         text = page.get_text()
                         needs_ocr = use_ocr and self._page_needs_ocr(page, text)
-                        index = build_page_index(page.get_text("words"))
+                        coverage = page_image_coverage(page)
+                        has_images = coverage > 0.0
+                        words = page.get_text("words")
                         if needs_ocr:
                             self.log_sig.emit(f"OCR pagina {i + 1}...")
                             textpage = page.get_textpage_ocr(
@@ -948,70 +1085,83 @@ class AIWorker(QObject):
                                 full=True,
                                 tessdata=tessdata_dir,
                             )
-                            text = page.get_text(textpage=textpage)
-                            index = build_page_index(
-                                page.get_text("words", textpage=textpage)
-                            )
+                            words = page.get_text("words", textpage=textpage)
                             used_ocr = True
+                        elif use_ocr and tessdata_dir and coverage >= 0.03:
+                            # Text page with embedded images (stamps, scanned
+                            # attachments): OCR the images only and merge.
+                            self.log_sig.emit(f"OCR immagini pagina {i + 1}...")
+                            textpage = page.get_textpage_ocr(
+                                language=ocr_language,
+                                dpi=300,
+                                full=False,
+                                tessdata=tessdata_dir,
+                            )
+                            words = page.get_text("words", textpage=textpage)
+                            used_ocr = True
+                        index = build_page_index(
+                            words, ocr=used_ocr,
+                            image_rects=[
+                                tuple(i["bbox"])
+                                for i in page.get_image_info(hashes=False)
+                            ],
+                        )
+                        if health_mode:
+                            signature_dets = suggest_signature_areas(page)
+                        if index.collisions:
+                            self.log_sig.emit(
+                                f"Avviso: interlinea molto stretta a pagina "
+                                f"{i + 1}: {index.collisions} parole vicine "
+                                "potrebbero essere danneggiate. Controlla l'anteprima."
+                            )
                     except Exception as e:
                         self.log_sig.emit(
                             f"Avviso: estrazione testo/OCR fallita pagina {i+1}: {e}"
                         )
-                        text = ""
                         index = build_page_index([])
-                candidates: List[Any] = []
+                results: List[Any] = []
+                verb_like: Set[str] = set()
                 for lang in self.loaded_langs:
-                    if not targets or not index.text:
+                    if not presidio_targets or not index.text:
                         break
+                    artifacts = None
+                    try:
+                        artifacts = self.analyzer.nlp_engine.process_text(
+                            index.text, lang
+                        )
+                    except Exception:
+                        artifacts = None
                     res = self.analyzer.analyze(
-                        text=index.text, entities=targets, language=lang
+                        text=index.text, entities=presidio_targets,
+                        language=lang, nlp_artifacts=artifacts,
                     )
-                    candidates.extend(filter_results(res, index.text, targets))
-                candidates = resolve_overlaps(
-                    reject_label_like_hits(
-                        clean_candidates(candidates, enabled_types=targets),
-                        index.text,
-                    )
+                    results.extend(res)
+                    verb_like |= self._first_person_verbs(artifacts)
+                candidates, stats = classify_page(
+                    results, index, targets,
+                    used_ocr=used_ocr, health_mode=health_mode,
+                    verb_like=verb_like,
                 )
-                detections = []
-                seen_values: Set[Tuple[str, str]] = set()
-                for c in candidates:
-                    m, entity_type = c.text, c.entity_type
-                    clean = " ".join(m.strip(string.punctuation).lower().split())
-                    if not clean:
-                        continue
-                    # Fast path: exact set membership is O(1).
-                    if clean in allowlist_set:
-                        continue
-                    clean_pattern = re.compile(r"" + re.escape(clean) + r"")
-                    if any(
-                        f_reg.search(clean) or clean_pattern.search(a_str)
-                        for a_str, f_reg in compiled_allowlist
-                    ):
-                        continue
-                    rects = span_to_rects(index, c.start, c.end)
-                    if (m, entity_type) not in seen_values:
-                        seen_values.add((m, entity_type))
-                        # Other occurrences of the same value: whole words only.
-                        for extra in propagate_whole_word(
-                            index, m,
-                            case_sensitive=entity_type in ("PERSON", "LOCATION"),
-                        ):
-                            if extra not in rects:
-                                rects.append(extra)
-                    if not rects:
-                        continue
-                    detections.append({
-                        "text": m,
-                        "entity_type": entity_type,
-                        "rects": rects,
-                        "source": "ocr" if used_ocr else "text",
-                        "score": c.score,
-                    })
+                detections = build_detections(
+                    index, candidates, allowlist=allow_terms,
+                    source="ocr" if used_ocr else "text", stats=stats,
+                )
+                detections.extend(signature_dets)
+                for key, n in stats.items():
+                    totals[key] = totals.get(key, 0) + n
+                n_suggested += sum(1 for d in detections if d.get("state") == "suggested")
                 self.page_done_sig.emit(i, detections)
                 self.progress_sig.emit(i + 1, total_pages)
             if not self._stop_requested:
-                self.log_sig.emit("Anonimizzazione completata.")
+                if totals:
+                    summary = ", ".join(f"{k}={v}" for k, v in sorted(totals.items()))
+                    logging.getLogger("nullifypdf").info(
+                        f"Scan discards (no values): {summary}"
+                    )
+                msg = "Scansione completata."
+                if n_suggested:
+                    msg += f" {n_suggested} suggerimenti da rivedere."
+                self.log_sig.emit(msg)
         except Exception as e:
             # Log full traceback to file for diagnostics; show only summary in UI
             logging.getLogger("nullifypdf").error(
@@ -1020,6 +1170,22 @@ class AIWorker(QObject):
             self.log_sig.emit(f"ERRORE rilevamento: {type(e).__name__}: {str(e)}")
         finally:
             self.finished_sig.emit()
+
+    @staticmethod
+    def _first_person_verbs(artifacts: Any) -> Set[str]:
+        """Lowercase first-person finite verb forms spaCy found on the page.
+
+        A weak signal only: the grammar tags of capitalised words are not
+        reliable enough to reject a hit on their own.
+        """
+        out: Set[str] = set()
+        try:
+            for tok in artifacts.tokens:
+                if tok.pos_ in ("VERB", "AUX") and "Person=1" in str(tok.morph):
+                    out.add(tok.text.lower())
+        except Exception:
+            return set()
+        return out
 
     def _page_needs_ocr(self, page: Any, extracted_text: str) -> bool:
         """Return True when a page looks scanned or text extraction is too poor."""
@@ -1104,6 +1270,36 @@ class PDFView(QGraphicsView):
             super().wheelEvent(event)
 
 
+class SuggestionItem(QGraphicsRectItem):
+    """Scene-only outline of a pending suggestion.
+
+    It lives in the graphics scene, never in the document: it cannot reach an
+    export or a print, and it becomes a redaction only through the
+    "Censura" decision.
+    """
+
+    def __init__(self, rect_pdf: Tuple[float, ...], suggestion: Dict[str, Any], scale: float) -> None:
+        r = rect_pdf
+        super().__init__(QRectF(r[0] * scale, r[1] * scale, (r[2] - r[0]) * scale, (r[3] - r[1]) * scale))
+        self.suggestion = suggestion
+        pen = QPen(QColor("#f97316"), 2)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        pen.setCosmetic(True)
+        self.setPen(pen)
+        self.setBrush(QColor(249, 115, 22, 40))
+        self.setZValue(10)
+        self.setToolTip(
+            f"Suggerimento: {suggestion.get('entity_type', '')} "
+            f"({float(suggestion.get('score', 0.0)):.2f}) - clic per decidere"
+        )
+
+    def set_highlight(self, on: bool) -> None:
+        pen = QPen(QColor("#f97316"), 4 if on else 2)
+        pen.setStyle(Qt.PenStyle.SolidLine if on else Qt.PenStyle.DashLine)
+        pen.setCosmetic(True)
+        self.setPen(pen)
+
+
 class NullifyPDF(QMainWindow):
     """Main application window for PDF privacy redaction using AI.
 
@@ -1119,7 +1315,7 @@ class NullifyPDF(QMainWindow):
         config_dir: Path to user config directory (~/.nullifypdf).
     """
 
-    start_scan_sig = Signal(object, object, str, list, set, bool, object, list)
+    start_scan_sig = Signal(object, object, str, list, set, bool, object, list, bool)
 
     def __init__(self) -> None:
         """Initialize main application window and setup UI."""
@@ -1139,13 +1335,20 @@ class NullifyPDF(QMainWindow):
         # Mutex guards `self.doc` against concurrent access from the AI worker
         # thread (text extraction) and the UI thread (render, apply redactions).
         self.doc_mutex = QMutex()
+        # Detections the evidence score could not settle; never applied
+        # silently, reviewed by the user (see review_dialog.ReviewDialog).
+        self.pending_suggestions: List[Dict[str, Any]] = []
+        self._export_labels: List[Tuple[int, Any, str, Optional[Dict[str, Any]]]] = []
         self.config_dir = pathlib.Path.home() / ".nullifypdf"
         # Update-check threads outlive their dialogs: keep them referenced
         # until they finish so a QThread is never destroyed while running.
         self._bg_threads: Set[QThread] = set()
+        cleanup_stale_temp(self.config_dir)
         self.list_manager = PDFListManager(self.config_dir)
         self.blocklist = self.list_manager.load_blocklist()
         self.allowlist = self.list_manager.load_allowlist()
+        if self.list_manager.keystore_error:
+            self.logger.error("Word lists unreadable: keystore unavailable")
         self.ai_thread = QThread()
         self.ai_worker = AIWorker()
         self.ai_worker.moveToThread(self.ai_thread)
@@ -1156,6 +1359,15 @@ class NullifyPDF(QMainWindow):
         self.start_scan_sig.connect(self.ai_worker.run_scan)
         self.ai_thread.start()
         self.build_ui()
+        if self.list_manager.expired_removed:
+            self.write_log(
+                f"Rimossi {self.list_manager.expired_removed} termini scaduti dai dizionari."
+            )
+        if self.list_manager.keystore_error:
+            self.write_log(
+                "Avviso: dizionari cifrati non leggibili su questo account/PC; "
+                "verranno usati dizionari vuoti finché non vengono ripristinati."
+            )
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
         # Register cleanup on exit
@@ -1269,7 +1481,12 @@ class NullifyPDF(QMainWindow):
         self.rb_en = QRadioButton("EN")
         self.rb_it = QRadioButton("IT")
         self.rb_both = QRadioButton("BOTH")
-        self.rb_en.setChecked(True)
+        # Default to the interface language: running the English model on
+        # Italian text only adds false positives.
+        if QLocale.system().language() == QLocale.Language.Italian:
+            self.rb_it.setChecked(True)
+        else:
+            self.rb_both.setChecked(True)
         self.lang_grp = QButtonGroup(self)
         for rb in (self.rb_en, self.rb_it, self.rb_both):
             self.lang_grp.addButton(rb)
@@ -1281,6 +1498,23 @@ class NullifyPDF(QMainWindow):
         self.chk_ocr = QCheckBox("OCR PDF scansionati")
         self.chk_ocr.setChecked(True)
         s_lay.addWidget(self.chk_ocr)
+        self.chk_sugg = QCheckBox("Mostra suggerimenti")
+        self.chk_sugg.setChecked(True)
+        self.chk_sugg.setToolTip("Contorna in arancione, nell'anteprima, i suggerimenti da rivedere.")
+        self.chk_sugg.toggled.connect(lambda _on: self.render_page())
+        s_lay.addWidget(self.chk_sugg)
+        self.chk_health = QCheckBox("Profilo documenti sanitari")
+        self.chk_health.setToolTip(
+            "Rileva anche date di nascita e identificativi sanitari e non "
+            "scarta in silenzio i casi incerti: li propone in revisione."
+        )
+        s_lay.addWidget(self.chk_health)
+        self.chk_mask_width = QCheckBox("Maschera larghezza testo rimosso")
+        self.chk_mask_width.setToolTip(
+            "Arrotonda lo spazio lasciato dal testo rimosso, che altrimenti "
+            "ne rivela la larghezza. Puo spostare di poco il testo seguente."
+        )
+        s_lay.addWidget(self.chk_mask_width)
         s_lay.addSpacing(20)
         btn_dict = QPushButton("Dizionari")
         btn_dict.clicked.connect(self.cmd_dict)
@@ -1289,6 +1523,10 @@ class NullifyPDF(QMainWindow):
         self.btn_ai.setObjectName("Danger")
         self.btn_ai.clicked.connect(self.cmd_auto_ai)
         s_lay.addWidget(self.btn_ai)
+        self.btn_review = QPushButton("Rivedi suggerimenti (0)")
+        self.btn_review.clicked.connect(self._review_suggestions)
+        self.btn_review.setEnabled(False)
+        s_lay.addWidget(self.btn_review)
         btn_clear = QPushButton("Pulisci Pagina")
         btn_clear.clicked.connect(self.cmd_clear)
         s_lay.addWidget(btn_clear)
@@ -1300,6 +1538,13 @@ class NullifyPDF(QMainWindow):
         btn_reconstruct = QPushButton("Ricostruisci PDF")
         btn_reconstruct.clicked.connect(self.cmd_reconstruct)
         s_lay.addWidget(btn_reconstruct)
+        btn_wipe = QPushButton("Elimina dati locali")
+        btn_wipe.setToolTip(
+            "Cancella log, registri di esportazione e file temporanei salvati "
+            "in ~/.nullifypdf."
+        )
+        btn_wipe.clicked.connect(self.cmd_wipe_local_data)
+        s_lay.addWidget(btn_wipe)
         s_lay.addStretch()
         btn_about = QPushButton("Info")
         btn_about.clicked.connect(self.cmd_about)
@@ -1437,6 +1682,8 @@ class NullifyPDF(QMainWindow):
                 self.doc = tdoc
                 self.page_num = 0
                 self.scale = 1.5
+                self.pending_suggestions = []
+            self._update_review_button()
             self.adjust_zoom(0)
             self.write_log(f"Caricato: {os.path.basename(path)}")
             self._warn_if_scanned_pdf()
@@ -1497,6 +1744,53 @@ class NullifyPDF(QMainWindow):
         self.scene.setSceneRect(0, 0, pix.width, pix.height)
         self.le_page.setText(str(self.page_num + 1))
         self.lbl_tot.setText(f"/ {total}")
+        self._draw_suggestion_overlays()
+
+    def _draw_suggestion_overlays(self) -> None:
+        """Outline the pending suggestions of the current page (view only)."""
+        if not self.chk_sugg.isChecked():
+            return
+        for s in self.pending_suggestions:
+            if int(s.get("page", -1)) != self.page_num:
+                continue
+            for rect in s.get("rects") or []:
+                self.scene.addItem(SuggestionItem(tuple(rect), s, self.scale))
+
+    def _highlight_suggestion(self, suggestion: Any) -> None:
+        for it in self.scene.items():
+            if isinstance(it, SuggestionItem):
+                it.set_highlight(it.suggestion is suggestion)
+
+    def _decide_suggestion(self, s: Dict[str, Any]) -> None:
+        """Accept or discard one suggestion clicked in the page view."""
+        reveal = False
+        while True:
+            value = " ".join(str(s.get("text", "")).split())
+            shown = "(area grafica)" if not value else (value if reveal else value[:1] + "•" * min(len(value) - 1, 8))
+            box = QMessageBox(self)
+            box.setWindowTitle("Suggerimento")
+            box.setText(
+                f"{s.get('entity_type', '')} - {shown}\n"
+                f"Punteggio {float(s.get('score', 0.0)):.2f}: "
+                + ", ".join(str(r) for r in s.get("reasons", []))
+            )
+            b_yes = box.addButton("Censura", QMessageBox.ButtonRole.AcceptRole)
+            b_no = box.addButton("Scarta", QMessageBox.ButtonRole.DestructiveRole)
+            b_show = box.addButton("Mostra valore", QMessageBox.ButtonRole.ActionRole)
+            box.addButton("Annulla", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            clicked = box.clickedButton()
+            if clicked == b_show and value and not reveal:
+                reveal = True
+                continue
+            break
+        if clicked not in (b_yes, b_no):
+            return
+        if clicked == b_yes:
+            self._apply_detections(int(s.get("page", self.page_num)), [s])
+        self.pending_suggestions = [p for p in self.pending_suggestions if p is not s]
+        self._update_review_button()
+        self.render_page()
 
     def adjust_zoom(self, d: int) -> None:
         """Adjust zoom level.
@@ -1555,7 +1849,7 @@ class NullifyPDF(QMainWindow):
             if not self.doc:
                 return
             p = self.doc[self.page_num]
-            txt = p.get_text("text", clip=r).strip()
+            txt = text_under_rect(p, fitz.Rect(r))
             if not txt:
                 p.add_redact_annot(
                     r,
@@ -1601,6 +1895,10 @@ class NullifyPDF(QMainWindow):
         """
         if not self.doc:
             return
+        overlays = [it for it in self.scene.items(qpt) if isinstance(it, SuggestionItem)]
+        if overlays:
+            self._decide_suggestion(overlays[0].suggestion)
+            return
         pt = fitz.Point(qpt.x() / self.scale, qpt.y() / self.scale)
         cl = ""
         with QMutexLocker(self.doc_mutex):
@@ -1614,7 +1912,7 @@ class NullifyPDF(QMainWindow):
             ]
             if not ans:
                 return
-            txt = p.get_text("text", clip=ans[0].rect)
+            txt = text_under_rect(p, ans[0].rect)
             cl = " ".join(txt.split()).lower()
 
         add_to_whitelist = False
@@ -1681,40 +1979,13 @@ class NullifyPDF(QMainWindow):
         self.write_log(f"Censure rimosse su pagina {self.page_num+1}")
 
     def cmd_dict(self) -> None:
-        """Open dialog to edit blocklist/allowlist."""
-        d = QDialog(self)
-        d.setWindowTitle("Dizionari")
-        d.resize(500, 450)
-        lay = QVBoxLayout(d)
-        lay.addWidget(QLabel("<b>🔴 BLOCKLIST</b>"))
-        bx = QTextEdit()
-        bx.setPlainText("\n".join(sorted(self.blocklist)))
-        lay.addWidget(bx)
-        lay.addWidget(QLabel("<b>🟢 ALLOWLIST</b>"))
-        ax = QTextEdit()
-        ax.setPlainText("\n".join(sorted(self.allowlist)))
-        lay.addWidget(ax)
-        btn = QPushButton("Salva")
-        btn.setObjectName("Primary")
-
-        def s() -> None:
-            self.blocklist = {
-                line.strip().lower()
-                for line in bx.toPlainText().split("\n")
-                if len(line.strip()) > 2
-            }
-            self.allowlist = {
-                line.strip().lower()
-                for line in ax.toPlainText().split("\n")
-                if len(line.strip()) > 2
-            }
-            self.list_manager.save_blocklist(self.blocklist)
-            self.list_manager.save_allowlist(self.allowlist)
-            d.accept()
-
-        btn.clicked.connect(s)
-        lay.addWidget(btn)
-        d.exec()
+        """Open the dictionary editor (blocklist / allowlist with expiry)."""
+        d = DictionaryDialog(self.list_manager, self)
+        if d.exec() == QDialog.DialogCode.Accepted:
+            if d.saved_blocklist is not None:
+                self.blocklist = d.saved_blocklist
+            if d.saved_allowlist is not None:
+                self.allowlist = d.saved_allowlist
 
     def _start_bg_thread(self, w: QThread) -> None:
         """Start ``w`` and keep it referenced until it has finished."""
@@ -1770,7 +2041,7 @@ class NullifyPDF(QMainWindow):
         lbl_ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(lbl_ver)
         desc = QLabel(
-            "\nAnonimizzazione PDF Offline.\n\nSviluppato da: Graziano Mariella\nLicenza MIT"
+            "\nCensura e pseudonimizzazione PDF offline.\n\nSviluppato da: Graziano Mariella\nLicenza MIT"
         )
         desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(desc)
@@ -1939,8 +2210,22 @@ class NullifyPDF(QMainWindow):
         enabled_groups = self._select_ai_entities()
         if not enabled_groups:
             return
+        health_mode = self.chk_health.isChecked()
+        if health_mode:
+            for gid in ("BIRTHDATE", "HEALTHID", "EXEMPT"):
+                if gid not in enabled_groups:
+                    enabled_groups = list(enabled_groups) + [gid]
         self.btn_ai.setEnabled(False)
         self.prog.setValue(0)
+        # Text in a layer that is switched off is invisible to extraction, so
+        # neither the detector nor the reviewer would ever see it: show all
+        # layers (in memory only) before scanning.
+        with QMutexLocker(self.doc_mutex):
+            revealed = reveal_hidden_layers(self.doc)
+        if revealed:
+            self.write_log(
+                f"Avviso: {revealed} livelli nascosti resi visibili per l'analisi."
+            )
         c_allow = [
             (a, re.compile(r"\b" + re.escape(a) + r"\b")) for a in self.allowlist
         ]
@@ -1972,6 +2257,7 @@ class NullifyPDF(QMainWindow):
             use_ocr,
             tessdata_dir,
             expand_group_ids(enabled_groups),
+            health_mode,
         )
 
     def _select_ai_entities(self) -> Optional[List[str]]:
@@ -2032,11 +2318,15 @@ class NullifyPDF(QMainWindow):
         box.setIcon(QMessageBox.Icon.Question)
         box.setText("Scegli come trattare i dati personali nel PDF esportato.")
         box.setInformativeText(
-            "Anonimizzazione: rimozione irreversibile.\n"
-            "Pseudonimizzazione: segnaposto reversibili con mappa cifrata separata."
+            "Rimozione irreversibile: i valori selezionati vengono eliminati "
+            "dal file. Il risultato puo contenere ancora dati personali non "
+            "rilevati o indiretti (date, luoghi, dettagli): controllalo prima "
+            "di condividerlo.\n\n"
+            "Pseudonimizzazione: segnaposto reversibili con mappa cifrata "
+            "separata. Il file e la mappa restano dati personali."
         )
         anonymize_btn = box.addButton(
-            "Anonimizzazione irreversibile", QMessageBox.ButtonRole.AcceptRole
+            "Rimozione irreversibile", QMessageBox.ButtonRole.AcceptRole
         )
         pseudonymize_btn = box.addButton(
             "Pseudonimizzazione reversibile", QMessageBox.ButtonRole.ActionRole
@@ -2122,7 +2412,7 @@ class NullifyPDF(QMainWindow):
             (
                 annot.rect,
                 self._read_redaction_payload(annot),
-                page.get_text("text", clip=annot.rect).strip(),
+                text_under_rect(page, annot.rect),
                 capture_text_style(page, annot.rect),
             )
             for annot in (page.annots() or [])
@@ -2132,6 +2422,16 @@ class NullifyPDF(QMainWindow):
             if annot.type[0] == PDF_ANNOT_REDACT:
                 page.delete_annot(annot)
         for rect, payload, clipped_text, style in pending:
+            if payload.get("entity_type") == "SIGNATURE":
+                page.add_redact_annot(
+                    rect,
+                    text="[FIRMA RIMOSSA]",
+                    fill=(1, 1, 1),
+                    text_color=(0, 0, 0),
+                    align=1,
+                    fontsize=fit_redaction_fontsize("[FIRMA RIMOSSA]", rect),
+                )
+                continue
             clean_original = " ".join(
                 (payload.get("original") or clipped_text).split()
             )
@@ -2146,16 +2446,12 @@ class NullifyPDF(QMainWindow):
                     rect=(rect.x0, rect.y0, rect.x1, rect.y1),
                     style=style,
                 )
-                page.add_redact_annot(
-                    rect,
-                    text=placeholder,
-                    fill=(1, 1, 1),
-                    text_color=(0, 0, 0),
-                    align=1,
-                    # Must fit on one line: a wrapped placeholder is still
-                    # readable but no longer findable by search_for(), which
-                    # is the only handle a version 1 restore map has.
-                    fontsize=fit_redaction_fontsize(placeholder, rect),
+                # The placeholder is drawn after apply_redactions() (see
+                # _finish_pseudonymized_page): replacement text passed to
+                # the annotation is dropped when it cannot be laid out at 4 pt.
+                page.add_redact_annot(rect, fill=(1, 1, 1))
+                self._export_labels.append(
+                    (page.number, fitz.Rect(rect), placeholder, style)
                 )
             else:
                 page.add_redact_annot(
@@ -2167,12 +2463,32 @@ class NullifyPDF(QMainWindow):
                     fontsize=fit_redaction_fontsize("[IMAGE_REMOVED]", rect),
                 )
 
+    def _finish_pseudonymized_page(
+        self, page: Any, registry: PlaceholderRegistry
+    ) -> None:
+        """Draw the placeholders of `page` once its redactions are applied."""
+        for page_no, rect, placeholder, style in self._export_labels:
+            if page_no != page.number:
+                continue
+            drawn = write_label(
+                page,
+                rect,
+                compact_labels(placeholder),
+                style=style,
+                allowance=free_space_right(page, rect),
+            )
+            if drawn != placeholder:
+                registry.set_label(
+                    placeholder, (rect.x0, rect.y0, rect.x1, rect.y1), drawn
+                )
+
     @Slot(int, object)
     def apply_ai_to_page(self, i: int, detections: Any) -> None:
         """Apply AI-detected redactions to page.
 
-        Runs on the UI thread (Qt slot). Holds `doc_mutex` while mutating the
-        page so the AI worker's `get_text()` calls do not race.
+        Runs on the UI thread (Qt slot). Detections in state "accepted" are
+        applied; those in state "suggested" are queued for review and never
+        applied silently.
 
         Args:
             i: Page index.
@@ -2187,17 +2503,42 @@ class NullifyPDF(QMainWindow):
             ]
         else:
             normalized_detections = list(detections or [])
+        accepted = [
+            d for d in normalized_detections if d.get("state", "accepted") == "accepted"
+        ]
+        for d in normalized_detections:
+            if d.get("state") == "suggested":
+                self.pending_suggestions.append({**d, "page": i})
+        self._update_review_button()
+        self._apply_detections(i, accepted)
+
+    def _update_review_button(self) -> None:
+        n = len(self.pending_suggestions)
+        self.btn_review.setText(f"Rivedi suggerimenti ({n})")
+        self.btn_review.setEnabled(n > 0)
+
+    def _apply_detections(self, i: int, detections: List[Dict[str, Any]]) -> None:
+        """Add redaction annotations for `detections` on page `i`."""
         with QMutexLocker(self.doc_mutex):
-            if i >= len(self.doc):
+            if not self.doc or i >= len(self.doc):
                 return
             page = self.doc[i]
             e_rects = [
                 a.rect for a in (page.annots() or [])
                 if a.type[0] == PDF_ANNOT_REDACT
             ]
+
+            def already_covered(r: fitz.Rect) -> bool:
+                return covered_fraction(
+                    (r.x0, r.y0, r.x1, r.y1),
+                    [(e.x0, e.y0, e.x1, e.y1) for e in e_rects],
+                ) >= 0.6
+
             if self.chk_img.isChecked():
                 for img in page.get_image_info(hashes=False):
                     ir = fitz.Rect(img["bbox"])
+                    if already_covered(ir):
+                        continue
                     page.add_redact_annot(
                         ir,
                         text="[ IMMAGINE RIMOSSA ]",
@@ -2206,13 +2547,19 @@ class NullifyPDF(QMainWindow):
                         fontsize=8,
                     )
                     e_rects.append(ir)
-            page_index = build_page_index(page.get_text("words"))
+            try:
+                has_images = bool(page.get_image_info(hashes=False))
+            except Exception:
+                has_images = False
+            page_index = build_page_index(
+                page.get_text("words"),
+                image_rects=[
+                    tuple(i["bbox"]) for i in page.get_image_info(hashes=False)
+                ],
+            )
             for bw in self.blocklist:
                 for r in (fitz.Rect(*t) for t in whole_word_rects(page_index, bw)):
-                    if not any(
-                        e.contains(fitz.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2))
-                        for e in e_rects
-                    ):
+                    if not already_covered(r):
                         self._add_privacy_redaction(
                             page,
                             r,
@@ -2220,25 +2567,51 @@ class NullifyPDF(QMainWindow):
                             entity_type=self._infer_entity_type(bw),
                         )
                         e_rects.append(r)
-            p_rects = [
-                fitz.Rect(*t)
-                for aw in self.allowlist
-                for t in whole_word_rects(page_index, aw)
-            ]
-            for detection in normalized_detections:
+            for detection in detections:
                 word = str(detection.get("text", ""))
                 entity_type = str(detection.get("entity_type", "DATA"))
                 raw_rects = detection.get("rects") or []
                 rects = [fitz.Rect(*coords) for coords in raw_rects]
+                fulls = detection.get("full_rects") or []
+                for k, band in enumerate(rects):
+                    if k < len(fulls):
+                        full = fitz.Rect(*fulls[k])
+                        if band != full and not band_covers_target(page, band, full):
+                            rects[k] = full  # never leave a glyph of the target behind
+                if entity_type == "SIGNATURE":
+                    # Graphic area (signature / stamp): no text, no value.
+                    for r in rects:
+                        if already_covered(r):
+                            continue
+                        annot = page.add_redact_annot(r, fill=(0.9, 0.9, 0.9))
+                        try:
+                            annot.set_info(content=json.dumps({
+                                "nullifypdf": 1, "original": "",
+                                "entity_type": "SIGNATURE",
+                            }))
+                        except Exception as e:
+                            self.logger.debug(f"Could not store signature metadata: {e}")
+                        e_rects.append(r)
+                    continue
                 if not rects and word:
-                    rects = list(page.search_for(word))
+                    # Legacy detections without geometry: whole words only,
+                    # never a substring search (it redacts fragments of
+                    # longer words), and never a word the allowlist protects.
+                    protected = [
+                        fitz.Rect(*t)
+                        for aw in self.allowlist
+                        for t in whole_word_rects(page_index, aw)
+                    ]
+                    rects = [
+                        fitz.Rect(*t)
+                        for t in whole_word_rects(page_index, word)
+                        if not any(
+                            pr.contains(fitz.Point((t[0] + t[2]) / 2, (t[1] + t[3]) / 2))
+                            for pr in protected
+                        )
+                    ]
                 for r in rects:
-                    if any(r.intersects(pr) for pr in p_rects):
-                        continue
-                    if not any(
-                        e.contains(fitz.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2))
-                        for e in e_rects
-                    ):
+                    if not already_covered(r):
                         self._add_privacy_redaction(
                             page,
                             r,
@@ -2247,69 +2620,430 @@ class NullifyPDF(QMainWindow):
                         )
                         e_rects.append(r)
 
+    def _review_suggestions(self) -> None:
+        """Let the user accept or reject the queued suggestions."""
+        if not self.pending_suggestions:
+            return
+        dlg = ReviewDialog(self.pending_suggestions, self)
+        dlg.navigate.connect(self._go_to_page)
+        dlg.highlight.connect(self._highlight_suggestion)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        by_page: Dict[int, List[Dict[str, Any]]] = {}
+        for item in dlg.applied():
+            by_page.setdefault(int(item.get("page", 0)), []).append(item)
+        for page_no, items in by_page.items():
+            self._apply_detections(page_no, items)
+        decided = dlg.applied() + dlg.declined()
+        self.pending_suggestions = [
+            p for p in self.pending_suggestions
+            if not any(p is d for d in decided)
+        ]
+        self._update_review_button()
+        self.render_page()
+        self.write_log(
+            f"Revisione: {len(dlg.applied())} applicati, "
+            f"{len(dlg.declined())} scartati."
+        )
+
+    def _go_to_page(self, page_no: int) -> None:
+        if self.doc and 0 <= page_no < len(self.doc):
+            self.page_num = page_no
+            self.render_page()
+
     @Slot()
     def ai_finished(self) -> None:
         """Handle AI scan completion."""
         self.btn_ai.setEnabled(True)
         self.render_page()
+        if self.pending_suggestions:
+            self._review_suggestions()
 
-    def cmd_export(self) -> None:
-        """Export current PDF in irreversible or reversible privacy mode.
+    def _redaction_counts(self) -> Dict[str, int]:
+        """Pending redactions per entity type (no values)."""
+        counts: Dict[str, int] = {}
+        for page in self.doc or []:
+            for annot in page.annots() or []:
+                if annot.type[0] != PDF_ANNOT_REDACT:
+                    continue
+                payload = self._read_redaction_payload(annot)
+                key = payload.get("entity_type") or "UNSPECIFIED"
+                counts[key] = counts.get(key, 0) + 1
+        return counts
 
-        Memory strategy (fix C1): instead of materializing the whole document
-        in RAM via `self.doc.write()` (which would double peak memory on large
-        PDFs), we stream through a sibling temp file next to the target path:
-
-            1. Save `self.doc` (with annotations, NOT yet flattened) to
-               `<target>.tmp` on disk.
-            2. Open the temp file as `ex_doc`.
-            3. Apply redactions / scrub metadata on `ex_doc`.
-            4. Save `ex_doc` to the user-chosen final path.
-            5. Remove the temp file.
-
-        The original `self.doc` is never mutated (redactions stay as
-        annotations), so the user can keep editing after export. Peak extra
-        memory is O(1) over what PyMuPDF needs internally for save().
-        """
-        if not self.doc:
-            return
-        mode = self._select_privacy_export()
-        if mode is None:
-            return
-        p, _ = QFileDialog.getSaveFileName(
-            self,
-            "Esporta",
-            f"{os.path.splitext(self.doc.name)[0]}_{mode.value}.pdf",
-            "PDF (*.pdf)",
+    def _select_pseudonym_style(self) -> Optional[Tuple[str, Optional[bytes]]]:
+        """Ask how pseudonyms are generated. Returns (style, key) or None."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Stile dei segnaposto")
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setText("Come devono essere generati i segnaposto?")
+        box.setInformativeText(
+            "Casuale: non rivela ordine o numero dei valori (consigliato).\n"
+            "Progressivo: PERSON_001, PERSON_002... rivela quanti valori "
+            "distinti esistono e l'ordine in cui compaiono.\n"
+            "Generico: nasconde anche il tipo di dato.\n"
+            "Coerente: lo stesso valore riceve lo stesso segnaposto in tutti i "
+            "documenti creati con la stessa chiave (permette di collegarli)."
         )
-        if not p:
-            return
-        map_path = ""
-        map_password = ""
-        if mode == PrivacyMode.PSEUDONYMIZE:
-            map_path, _ = QFileDialog.getSaveFileName(
+        b_random = box.addButton("Casuale", QMessageBox.ButtonRole.AcceptRole)
+        b_counter = box.addButton("Progressivo", QMessageBox.ButtonRole.ActionRole)
+        b_opaque = box.addButton("Generico", QMessageBox.ButtonRole.ActionRole)
+        b_keyed = box.addButton("Coerente (chiave)", QMessageBox.ButtonRole.ActionRole)
+        b_manage = box.addButton("Gestisci chiave...", QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked == b_random:
+            return "random", None
+        if clicked == b_counter:
+            return "counter", None
+        if clicked == b_opaque:
+            return "opaque", None
+        if clicked == b_manage:
+            self._pseudonym_key_dialog()
+            return self._select_pseudonym_style()
+        if clicked == b_keyed:
+            try:
+                key = self._load_pseudonym_key()
+            except (secure_store.KeystoreUnavailable, secure_store.SealError, OSError) as e:
+                QMessageBox.critical(self, "Chiave non disponibile", str(e))
+                return None
+            QMessageBox.information(
                 self,
-                "Salva mappa cifrata",
-                f"{os.path.splitext(p)[0]}.nullifypdf-map",
-                "NullifyPDF map (*.nullifypdf-map)",
+                "Chiave dei segnaposto",
+                "La chiave e protetta ("
+                + secure_store.protector_label(self.config_dir)
+                + "). Conservane una copia protetta da password con "
+                "\"Gestisci chiave...\" per usarla su un altro computer: chi "
+                "la possiede puo ricollegare i segnaposto ai valori noti, e "
+                "senza di essa i documenti futuri avranno segnaposto diversi.",
             )
-            if not map_path:
-                return
-            map_password, ok = QInputDialog.getText(
+            return "keyed", key
+        return None
+        return None
+
+    def _pseudonym_key_paths(self) -> Tuple[pathlib.Path, pathlib.Path]:
+        return self.config_dir / "pseudonym.v2.enc", self.config_dir / "pseudonym.key"
+
+    def _store_pseudonym_key(self, key: bytes) -> None:
+        enc, _legacy = self._pseudonym_key_paths()
+        master = secure_store.load_or_create_master_key(self.config_dir)
+        secure_store.atomic_write(
+            enc, secure_store.seal(key, master, b"nullifypdf-pseudonym-key")
+        )
+
+    def _load_pseudonym_key(self) -> bytes:
+        """The 32-byte pseudonym key, protected by the local master key.
+
+        A plaintext ``pseudonym.key`` from an older version is validated,
+        sealed and removed. Raises on an invalid or unreadable key.
+        """
+        enc, legacy = self._pseudonym_key_paths()
+        master = secure_store.load_or_create_master_key(self.config_dir)
+        if enc.exists():
+            key = secure_store.open_sealed(
+                enc.read_bytes(), master, b"nullifypdf-pseudonym-key"
+            )
+        elif legacy.exists():
+            key = legacy.read_bytes()
+            if len(key) != 32:
+                raise OSError(
+                    "Chiave dei segnaposto non valida: il file deve "
+                    "contenere esattamente 32 byte."
+                )
+            self._store_pseudonym_key(key)
+            secure_store.secure_delete(legacy)
+        else:
+            key = os.urandom(32)
+            self._store_pseudonym_key(key)
+        if len(key) != 32:
+            raise OSError("Chiave dei segnaposto non valida.")
+        return key
+
+    def _pseudonym_key_dialog(self) -> None:
+        """Export / import a password-protected copy of the pseudonym key."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Chiave dei segnaposto")
+        box.setText("Esporta o importa la chiave dei segnaposto coerenti.")
+        box.setInformativeText(
+            "La copia esportata e protetta da password e serve per usare la "
+            "stessa chiave su un altro computer."
+        )
+        b_exp = box.addButton("Esporta chiave...", QMessageBox.ButtonRole.ActionRole)
+        b_imp = box.addButton("Importa chiave...", QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Close)
+        box.exec()
+        clicked = box.clickedButton()
+        try:
+            if clicked == b_exp:
+                key = self._load_pseudonym_key()
+                pw = self._ask_map_password()
+                if pw is None:
+                    return
+                path, _ = QFileDialog.getSaveFileName(
+                    self, "Esporta chiave", "pseudonym_key.nullifypdf-key",
+                    "NullifyPDF key (*.nullifypdf-key)",
+                )
+                if path:
+                    write_private_file(path, export_pseudonym_key(key, pw))
+                    self.write_log("Chiave dei segnaposto esportata.")
+            elif clicked == b_imp:
+                path, _ = QFileDialog.getOpenFileName(
+                    self, "Importa chiave", "", "NullifyPDF key (*.nullifypdf-key)"
+                )
+                if not path:
+                    return
+                pw, ok = QInputDialog.getText(
+                    self, "Password chiave", "Password della copia della chiave:",
+                    QLineEdit.EchoMode.Password,
+                )
+                if not ok or not pw:
+                    return
+                enc, legacy = self._pseudonym_key_paths()
+                if enc.exists() or legacy.exists():
+                    ans = QMessageBox.question(
+                        self, "Sostituire la chiave?",
+                        "Esiste gia una chiave: sostituirla cambia i segnaposto "
+                        "dei documenti futuri. Continuare?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.No,
+                    )
+                    if ans != QMessageBox.StandardButton.Yes:
+                        return
+                with open(path, "rb") as fh:
+                    key = import_pseudonym_key(fh.read(), pw)
+                self._store_pseudonym_key(key)
+                self.write_log("Chiave dei segnaposto importata.")
+        except Exception as e:
+            from cryptography.fernet import InvalidToken
+
+            msg = "Password errata o file corrotto." if isinstance(e, InvalidToken) else str(e)
+            QMessageBox.critical(self, "Chiave dei segnaposto", msg)
+
+    def _offer_recovery_key(self) -> Optional[bytes]:
+        """Offer a recovery key for the map; shown once, never stored."""
+        ans = QMessageBox.question(
+            self,
+            "Chiave di recupero",
+            "Vuoi creare anche una chiave di recupero? Permette di aprire la "
+            "mappa se dimentichi la password. Non viene salvata dal programma.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if ans != QMessageBox.StandardButton.Yes:
+            return None
+        raw, shown = generate_recovery_key()
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Chiave di recupero")
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(QLabel(
+            "Conserva questa chiave in un luogo sicuro, separato dalla mappa. "
+            "Viene mostrata una sola volta."
+        ))
+        field = QLineEdit(shown)
+        field.setReadOnly(True)
+        lay.addWidget(field)
+        row = QHBoxLayout()
+        btn_copy = QPushButton("Copia")
+        btn_copy.clicked.connect(lambda: QApplication.clipboard().setText(shown))
+        btn_save = QPushButton("Salva su file...")
+
+        def save_file() -> None:
+            path, _ = QFileDialog.getSaveFileName(
+                dlg, "Salva chiave di recupero", "recovery_key.txt", "Testo (*.txt)"
+            )
+            if path:
+                write_private_file(path, shown.encode("utf-8"))
+
+        btn_save.clicked.connect(save_file)
+        row.addWidget(btn_copy)
+        row.addWidget(btn_save)
+        lay.addLayout(row)
+        chk = QCheckBox(
+            "Ho conservato la chiave di recupero in un luogo sicuro, separato dalla mappa"
+        )
+        lay.addWidget(chk)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        ok_btn = bb.button(QDialogButtonBox.StandardButton.Ok)
+        ok_btn.setEnabled(False)
+        chk.toggled.connect(ok_btn.setEnabled)
+        bb.accepted.connect(dlg.accept)
+        lay.addWidget(bb)
+        dlg.exec()
+        QApplication.clipboard().clear()
+        # The key has been shown (and maybe saved): the map must carry its
+        # wrap even if the dialog was closed without ticking the box.
+        return raw
+
+    def _ask_decrypt_secret(self) -> Optional[Tuple[Optional[str], Optional[bytes]]]:
+        """Ask for the map password, or the recovery key. None = cancelled."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Password mappa")
+        lay = QVBoxLayout(dlg)
+        label = QLabel("Password per decifrare la mappa di ripristino:")
+        lay.addWidget(label)
+        field = QLineEdit()
+        field.setEchoMode(QLineEdit.EchoMode.Password)
+        lay.addWidget(field)
+        use_rk = QCheckBox("Usa la chiave di recupero")
+
+        def toggled(on: bool) -> None:
+            label.setText(
+                "Chiave di recupero (NPDF-...):" if on
+                else "Password per decifrare la mappa di ripristino:"
+            )
+
+        use_rk.toggled.connect(toggled)
+        lay.addWidget(use_rk)
+        bb = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        lay.addWidget(bb)
+        if dlg.exec() != QDialog.DialogCode.Accepted or not field.text():
+            return None
+        if use_rk.isChecked():
+            try:
+                return None, parse_recovery_key(field.text())
+            except ValueError as e:
+                QMessageBox.warning(self, "Chiave di recupero", str(e))
+                return None
+        return field.text(), None
+
+    def _ask_map_password(self) -> Optional[str]:
+        """Ask twice for the map password and enforce a minimum strength."""
+        while True:
+            pw, ok = QInputDialog.getText(
                 self,
                 "Password mappa",
                 "Password per cifrare la mappa di ripristino (minimo 12 caratteri):",
                 QLineEdit.EchoMode.Password,
             )
             if not ok:
-                return
-            if len(map_password) < 12:
+                return None
+            good, why = password_strength(pw)
+            if not good:
+                QMessageBox.warning(self, "Password non valida", why)
+                continue
+            confirm, ok = QInputDialog.getText(
+                self,
+                "Conferma password",
+                "Ripeti la password (senza di essa la mappa non e recuperabile):",
+                QLineEdit.EchoMode.Password,
+            )
+            if not ok:
+                return None
+            if confirm != pw:
                 QMessageBox.warning(
-                    self,
-                    "Password troppo corta",
-                    "La password della mappa deve avere almeno 12 caratteri.",
+                    self, "Password diversa", "Le due password non coincidono."
                 )
+                continue
+            return pw
+
+    def cmd_wipe_local_data(self) -> None:
+        """Delete logs, audit records and temp files kept in ~/.nullifypdf."""
+        ans = QMessageBox.question(
+            self,
+            "Elimina dati locali",
+            "Verranno eliminati log, registri di esportazione e file "
+            "temporanei. Vuoi eliminare anche i dizionari (blocklist e "
+            "allowlist)?",
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.No,
+        )
+        if ans == QMessageBox.StandardButton.Cancel:
+            return
+        include_lists = ans == QMessageBox.StandardButton.Yes
+        include_keys = False
+        if include_lists:
+            include_keys = QMessageBox.question(
+                self,
+                "Elimina anche le chiavi",
+                "Eliminare anche le chiavi? I dizionari cifrati e la chiave dei "
+                "segnaposto diventeranno illeggibili.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            ) == QMessageBox.StandardButton.Yes
+        # The rotating log file is open: release it first or it cannot be
+        # removed (Windows), then reopen logging afterwards.
+        for h in list(self.logger.handlers):
+            try:
+                h.close()
+            except Exception:
+                pass
+            self.logger.removeHandler(h)
+        removed = wipe_local_data(
+            self.config_dir, include_lists=include_lists, include_keys=include_keys
+        )
+        self.logger = setup_logging()
+        if include_lists:
+            self.blocklist, self.allowlist = set(), set()
+        self.write_log(f"Dati locali eliminati: {', '.join(removed) or 'nessuno'}.")
+
+    def cmd_export(self) -> None:
+        """Export the current PDF in irreversible or reversible privacy mode.
+
+        The work happens in :func:`export_engine.export_document` on a copy
+        kept in memory (or in a private per-user folder for very large
+        files): the original ``self.doc`` is never mutated, so the user can
+        keep editing, and no unredacted copy is ever written beside the
+        output. The written file is sanitised and then verified.
+        """
+        if not self.doc:
+            return
+        if self.pending_suggestions:
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Icon.Warning)
+            box.setWindowTitle("Suggerimenti non revisionati")
+            box.setText(
+                f"Ci sono {len(self.pending_suggestions)} suggerimenti non "
+                "revisionati: non verranno censurati."
+            )
+            b_review = box.addButton("Rivedi ora", QMessageBox.ButtonRole.AcceptRole)
+            b_go = box.addButton("Esporta comunque", QMessageBox.ButtonRole.DestructiveRole)
+            box.addButton(QMessageBox.StandardButton.Cancel)
+            box.exec()
+            if box.clickedButton() == b_review:
+                self._review_suggestions()
                 return
+            if box.clickedButton() != b_go:
+                return
+        mode = self._select_privacy_export()
+        if mode is None:
+            return
+        with QMutexLocker(self.doc_mutex):
+            removed_values = collect_removed_values(
+                self.doc, self._read_redaction_payload
+            )
+            entity_counts = self._redaction_counts()
+        src_dir = os.path.dirname(self.doc.name or "") or str(pathlib.Path.home())
+        p, _ = QFileDialog.getSaveFileName(
+            self,
+            "Esporta",
+            os.path.join(src_dir, neutral_output_name(mode.value)),
+            "PDF (*.pdf)",
+        )
+        if not p:
+            return
+        if name_leaks_value(p, removed_values):
+            ans = QMessageBox.question(
+                self,
+                "Nome file con dati personali",
+                "Il nome scelto contiene un valore che stai rimuovendo. "
+                "Continuare comunque?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if ans != QMessageBox.StandardButton.Yes:
+                return
+        map_path = ""
+        map_password = ""
+        recovery_key: Optional[bytes] = None
+        style, key = "counter", None
+        if mode == PrivacyMode.PSEUDONYMIZE:
             if importlib.util.find_spec("cryptography") is None:
                 QMessageBox.critical(
                     self,
@@ -2317,109 +3051,138 @@ class NullifyPDF(QMainWindow):
                     "La pseudonimizzazione richiede la libreria 'cryptography'.",
                 )
                 return
+            chosen = self._select_pseudonym_style()
+            if chosen is None:
+                return
+            style, key = chosen
+            map_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Salva mappa cifrata",
+                os.path.join(str(pathlib.Path.home()), neutral_map_name()),
+                "NullifyPDF map (*.nullifypdf-map)",
+            )
+            if not map_path:
+                return
+            same_dir = os.path.dirname(os.path.abspath(map_path)) == os.path.dirname(
+                os.path.abspath(p)
+            )
+            synced = any(
+                tag in os.path.abspath(map_path).lower()
+                for tag in ("onedrive", "dropbox", "google drive", "icloud")
+            )
+            if same_dir or synced:
+                ans = QMessageBox.question(
+                    self,
+                    "Posizione della mappa",
+                    "La mappa di ripristino e dato personale e va conservata "
+                    "separatamente dal PDF pseudonimizzato"
+                    + (", non in una cartella sincronizzata" if synced else "")
+                    + ". Salvarla qui comunque?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if ans != QMessageBox.StandardButton.Yes:
+                    return
+            pw = self._ask_map_password()
+            if pw is None:
+                return
+            map_password = pw
+            recovery_key = self._offer_recovery_key()
 
         self.write_log(
-            "Export anonimizzato..." if mode == PrivacyMode.ANONYMIZE
+            "Export con rimozione irreversibile..." if mode == PrivacyMode.ANONYMIZE
             else "Export pseudonimizzato..."
         )
-        # Sibling temp file (same directory as target so rename/cleanup are
-        # always on the same filesystem; avoids cross-device issues).
-        tmp_path = p + ".nullifypdf.tmp"
-        ex_doc = None
-        registry = PlaceholderRegistry()
+        registry = PlaceholderRegistry(style=style, key=key)
+        policy = SanitizePolicy(mask_removed_width=self.chk_mask_width.isChecked())
         try:
             source_name = self.doc.name or "document.pdf"
             source_sha256 = sha256_file(source_name) if os.path.exists(source_name) else ""
-            # Step 1: serialize `self.doc` (with annotations) to disk under
-            # the mutex so the AI worker thread cannot mutate mid-write.
+            prepare = (
+                (lambda page: self._prepare_pseudonymized_page(page, registry))
+                if mode == PrivacyMode.PSEUDONYMIZE else None
+            )
+            finish = (
+                (lambda page: self._finish_pseudonymized_page(page, registry))
+                if mode == PrivacyMode.PSEUDONYMIZE else None
+            )
+            self._export_labels = []
             with QMutexLocker(self.doc_mutex):
                 if not self.doc:
                     return
-                # `clean=False` here: we want a faithful copy of the
-                # in-memory state, including all redact annotations. The
-                # real cleanup pass happens on ex_doc.save() below.
-                self.doc.save(tmp_path, garbage=0, deflate=False, clean=False)
-
-            # Step 2: reopen the on-disk copy. PyMuPDF lazy-parses pages, so
-            # this does NOT load the whole PDF into RAM up front.
-            ex_doc = fitz.open(tmp_path)
-
-            # Step 3: scrub on the disk-backed copy.
-            for page in ex_doc.pages():
-                if mode == PrivacyMode.PSEUDONYMIZE:
-                    self._prepare_pseudonymized_page(page, registry)
-                # page.annots() may return None for pages with no annotations
-                r_rects = self._collect_redaction_rects(page)
-                try:
-                    links_to_delete = [
-                        lnk for lnk in page.get_links()
-                        if any(fitz.Rect(lnk["from"]).intersects(r) for r in r_rects)
-                    ]
-                    for lnk in links_to_delete:
-                        page.delete_link(lnk)
-                except (RuntimeError, AttributeError, KeyError) as e:
-                    self.logger.debug(f"Could not delete link: {e}")
-                # PDF_REDACT_IMAGE_REMOVE deletes the ENTIRE image object if it
-                # intersects ANY redaction rect, even a small one. On a scanned
-                # PDF (the whole page is one image), redacting a single word
-                # wiped out the entire page, leaving a blank sheet with only
-                # the placeholder text visible. PDF_REDACT_IMAGE_PIXELS blanks
-                # out only the pixels under each redaction rect and leaves the
-                # rest of the image intact (verified this also fully blanks
-                # whole-image redactions from "Oscura Immagini", including
-                # under page rotation, with no visible fringe).
-                page.apply_redactions(
-                    images=PDF_REDACT_IMAGE_PIXELS, graphics=True
+                result = export_document(
+                    self.doc,
+                    p,
+                    prepare_page=prepare,
+                    finish_page=finish,
+                    policy=policy,
+                    removed_values=removed_values,
+                    temp_dir=private_temp_dir(self.config_dir),
+                    log=self.logger.debug,
                 )
-                try:
-                    # Materialize first: mutating during iteration of
-                    # page.widgets() can invalidate the generator.
-                    for w in list(page.widgets() or []):
-                        page.delete_widget(w)
-                except (RuntimeError, AttributeError) as e:
-                    self.logger.debug(f"Could not delete widget: {e}")
-            ex_doc.set_metadata({})
-            cx = ex_doc.pdf_catalog()
-            for k in ["Metadata", "PieceInfo", "Properties", "AcroForm"]:
-                ex_doc.xref_set_key(cx, k, "null")
-
-            # Step 4: write final scrubbed output. Must save to a different
-            # path than the open source (`tmp_path`) to avoid PyMuPDF's
-            # "save to original" restriction on incremental saves.
-            ex_doc.save(p, garbage=4, deflate=True, clean=True)
+            if not result.verification.ok:
+                where = "\n".join(result.verification.findings[:12])
+                ans = QMessageBox.critical(
+                    self,
+                    "Verifica dell'esportazione fallita",
+                    "Nel file esportato sono ancora presenti dati che dovevano "
+                    "essere rimossi o contenuti attivi. Posizioni:\n" + where
+                    + "\n\nEliminare il file esportato?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
+                )
+                self.logger.error(
+                    f"Export verification failed at {len(result.verification.findings)} location(s)"
+                )
+                if ans == QMessageBox.StandardButton.Yes:
+                    try:
+                        os.remove(p)
+                    except OSError as e:
+                        self.logger.debug(f"Could not remove failed export: {e}")
+                    self.write_log("ERRORE export: file eliminato dopo verifica fallita.")
+                    return
             if mode == PrivacyMode.PSEUDONYMIZE:
                 payload = build_restore_payload(
                     source_name=source_name,
                     source_sha256=source_sha256,
-                    output_sha256=sha256_file(p),
+                    output_sha256=result.output_sha256,
                     entries=registry.entries(),
                 )
-                encrypted = encrypt_restore_payload(payload, map_password)
-                with open(map_path, "wb") as fh:
-                    fh.write(encrypted)
+                encrypted = encrypt_restore_payload(
+                    payload, map_password, recovery_key=recovery_key
+                )
+                write_private_file(map_path, encrypted)
                 self.write_log(
                     f"ESPORTATO. Mappa cifrata creata con {len(registry.entries())} segnaposto."
                 )
             else:
                 self.write_log("ESPORTATO.")
+            record = build_audit_record(
+                app_version=APP_VERSION,
+                mode=mode.value,
+                entity_counts=entity_counts,
+                suggestion_counts={"unreviewed": len(self.pending_suggestions)},
+                sanitize=result.sanitize,
+                verification=result.verification,
+                output_sha256=result.output_sha256,
+                pages=result.pages,
+            )
+            write_audit_record(self.config_dir, record)
+            QMessageBox.information(
+                self,
+                "Esportazione completata",
+                (
+                    "Il file esportato puo contenere ancora dati personali non "
+                    "rilevati o indiretti. Controllalo prima di condividerlo."
+                    if mode == PrivacyMode.ANONYMIZE
+                    else "Il PDF pseudonimizzato e la mappa di ripristino "
+                    "restano dati personali: conservali separatamente e proteggi "
+                    "la password."
+                ),
+            )
         except Exception as e:
             self.logger.error(f"Export failed: {traceback.format_exc()}")
             self.write_log(f"ERRORE export: {type(e).__name__}: {str(e)}")
-        finally:
-            # Always close ex_doc, even on failure, to release the file
-            # handle on tmp_path before we try to remove it (Windows locks
-            # open files).
-            if ex_doc is not None:
-                try:
-                    ex_doc.close()
-                except Exception as e:
-                    self.logger.debug(f"Error closing ex_doc: {e}")
-            # Step 5: remove temp file (best-effort).
-            try:
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
-            except OSError as e:
-                self.logger.debug(f"Could not remove temp file {tmp_path}: {e}")
 
     def cmd_reconstruct(self) -> None:
         """Reconstruct a previously pseudonymized PDF using its restore map.
@@ -2448,18 +3211,17 @@ class NullifyPDF(QMainWindow):
         )
         if not map_path:
             return
-        map_password, ok = QInputDialog.getText(
-            self,
-            "Password mappa",
-            "Password per decifrare la mappa di ripristino:",
-            QLineEdit.EchoMode.Password,
-        )
-        if not ok or not map_password:
+        secret = self._ask_decrypt_secret()
+        if secret is None:
             return
+        map_password, recovery_secret = secret
         out_path, _ = QFileDialog.getSaveFileName(
             self,
             "Salva PDF ricostruito",
-            f"{os.path.splitext(pdf_path)[0]}_ricostruito.pdf",
+            os.path.join(
+                os.path.dirname(pdf_path),
+                neutral_output_name("restored"),
+            ),
             "PDF (*.pdf)",
         )
         if not out_path:
@@ -2471,11 +3233,19 @@ class NullifyPDF(QMainWindow):
         try:
             with open(map_path, "rb") as fh:
                 encrypted = fh.read()
-            payload = decrypt_restore_payload(encrypted, map_password)
+            payload = decrypt_restore_payload(
+                encrypted, map_password, recovery_key=recovery_secret
+            )
             expected = expected_restore_count(payload)
             restored_count = reconstruct_pdf(pdf_path, out_path, payload)
             self.write_log(
                 f"RICOSTRUITO. {restored_count} segnaposto ripristinati."
+            )
+            QMessageBox.information(
+                self,
+                "PDF ricostruito",
+                "Il file ricostruito contiene di nuovo tutti i dati personali "
+                "originali: trattalo e conservalo di conseguenza.",
             )
             # A restore that silently puts nothing back used to look like a
             # success: same message, no dialog, output identical to input.
@@ -2492,11 +3262,11 @@ class NullifyPDF(QMainWindow):
             self.write_log(f"ERRORE ricostruzione: {e}")
             QMessageBox.critical(self, "Mappa non corrispondente", str(e))
         except InvalidToken:
-            self.write_log("ERRORE ricostruzione: password errata o mappa corrotta.")
+            self.write_log("ERRORE ricostruzione: password/chiave errata o mappa corrotta.")
             QMessageBox.critical(
                 self,
                 "Errore decifrazione",
-                "Password errata o file della mappa corrotto.",
+                "Password o chiave di recupero errata, oppure mappa corrotta.",
             )
         except Exception as e:
             self.logger.error(f"Reconstruction failed: {traceback.format_exc()}")

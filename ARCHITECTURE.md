@@ -27,8 +27,16 @@ It supports two privacy export modes:
 | ------ | ----------------- |
 | `NullifyPDF.py` | Main PySide6 UI, PDF rendering, AI scan orchestration, redaction, export, reconstruction, OCR integration |
 | `update_check.py` | Qt-free update logic: version comparison (SemVer, stable/beta channels), GitHub release lookup, per-OS asset selection, trusted-host download, startup-check preference (`~/.nullifypdf/update_check.json`). Only runs on user click or if the user enabled the startup check |
-| `pii_detection.py` | Qt-free AI detection helpers: word-box text index, offset-to-rect mapping, per-type score thresholds, generic-word filtering, whole-word propagation, entity selection persistence |
-| `privacy_core.py` | Privacy mode enum, placeholder registry, encrypted restore-map payloads (version 3, optional per-occurrence text style), restore-map parsing |
+| `pii_detection.py` | Qt-free AI detection helpers: word-box text index (neighbour-aware rectangle clamping, ligatures, letter-spaced and hyphenated words), offset-to-rect mapping and partial-match policy, per-type thresholds, pattern validation, evidence-based PERSON/LOCATION scoring, accepted/suggested states, allowlist by word identity, whole-word propagation, entity selection persistence |
+| `privacy_core.py` | Privacy mode enum, placeholder registry (random / sequential / generic / keyed styles), encrypted restore-map payloads (version 3, optional per-occurrence text style; scrypt, PBKDF2 maps still readable), password strength check, restore-map parsing |
+| `lexicon_it.py` | Italian lexicon: certificate/legal verb forms, medical and administrative words, given names, regions and provinces (used to reject ordinary words and to confirm names/places) |
+| `pdf_sanitize.py` | Export sanitiser (annotations, attachments, scripts, hidden layers/text, off-page text, metadata, optional TJ-gap quantisation) and `verify_export()` |
+| `export_engine.py` | Qt-free export pipeline (`export_document`), neutral file names, private temp handling, audit record, local-data wipe |
+| `review_dialog.py` | Qt dialog to accept or reject suggested detections |
+| `secure_store.py` | Master key protected by DPAPI / OS keyring / key file; AES-GCM sealing; atomic private writes |
+| `word_lists.py` | Encrypted blocklist/allowlist with expiry (`PDFListManager`) |
+| `dictionary_dialog.py` | Qt editor for both lists with dates and default expiry |
+| `lexicon_data_it.py` | Generated from ISTAT open data by `scripts/build_lexicon_data.py` (see `THIRD_PARTY_NOTICES.md`); imported lazily |
 | `PDF_Checker.py` | Heuristic post-export inspection helper |
 | `build_local.py` | PyInstaller build script |
 | `scripts/download_ocr_data.py` | Downloads EN/IT Tesseract `tessdata_fast` files bundled into every build |
@@ -69,11 +77,11 @@ Export pipeline writes a cleaned PDF copy
 
 | 🧱 Class | 📍 Location | 🎯 Purpose |
 | ------- | ----------- | ---------- |
-| `PDFListManager` | `NullifyPDF.py` | Loads and saves blocklist/allowlist files in `~/.nullifypdf` |
+| `PDFListManager` | `word_lists.py` | Loads and saves the blocklist/allowlist as encrypted files (`*.v2.enc`) with per-entry expiry; migrates plaintext files |
 | `AIWorker` | `NullifyPDF.py` | Background NLP/OCR worker that emits page-level detections |
 | `PDFView` | `NullifyPDF.py` | Custom `QGraphicsView` for rendering pages, drawing rectangles, and zooming |
 | `NullifyPDF` | `NullifyPDF.py` | Main window and application controller |
-| `PlaceholderRegistry` | `privacy_core.py` | Creates stable placeholders such as `PERSON_001` and `EMAIL_ADDRESS_001` |
+| `PlaceholderRegistry` | `privacy_core.py` | Creates stable placeholders such as `PERSON_9F2A` (random), `PERSON_001` (sequential), `DATA_9F2A` (generic) or an HMAC-derived one (keyed) |
 
 ---
 
@@ -97,13 +105,13 @@ Export pipeline writes a cleaned PDF copy
 3. `cmd_auto_ai()` checks OCR configuration if OCR is enabled.
 4. `AIWorker.run_scan()` processes pages in a background thread.
 5. For each page:
-   - the analysis text is built by `pii_detection.build_page_index()` from `page.get_text("words")`, recording each word's rectangle so character offsets map back to exact boxes
-   - if the page looks scanned, OCR is run with `page.get_textpage_ocr()` and the same index is built from the OCR words
-   - Presidio analyzes the text for the enabled entity types
-   - results are filtered by per-type confidence thresholds; NER spans are split at line breaks; generic PERSON/LOCATION hits (titles, months, salutations, lowercase, role and identifier words) are dropped; single-word hits that look like labels or headings (followed by a colon, list items, lone heading lines, words also written in lowercase on the page, capitalized line starts) are rejected; a name glued to a following address is cut at the street word; overlapping spans are resolved
-   - each surviving value is located by its offsets, and its other occurrences on the page are added as **whole words only**
-   - detections are emitted with text, entity type, score, source, and their rectangles
-6. `apply_ai_to_page()` runs on the UI thread and creates pending redaction annotations from the received rectangles. Blocklist and allowlist terms are matched as whole words too.
+   - the analysis text is built by `pii_detection.build_page_index()` from `page.get_text("words")`, recording each word's rectangle so character offsets map back to exact boxes. Each rectangle is trimmed against the words of neighbouring lines (a word box spans ascender to descender and would otherwise overlap them); ligatures are expanded, letter-spaced runs become one word and a word hyphenated across two lines is joined
+   - if the page looks scanned, OCR is run with `page.get_textpage_ocr()` and the same index is built from the OCR words; on text pages with embedded images only the images are OCR'd and merged
+   - Presidio analyzes the text for the enabled entity types; date of birth and health identifiers are found by context-anchored patterns
+   - `classify_page()` filters the results: per-type thresholds; pattern hits are validated (token boundaries, context words, uppercase form, plausibility); NER spans are split at line breaks and names on consecutive lines are merged; ordinary Italian words are stripped from the edges of a span; fragments and OCR noise are rejected; field labels and list items are rejected; each remaining PERSON/LOCATION hit gets an evidence score and becomes `accepted`, `suggested` or is dropped (in health mode never dropped)
+   - `build_detections()` resolves each candidate to words with the partial-match policy (NER hits must not be a fragment of a longer word; a checksum-valid identifier glued to other text is redacted whole), removes words protected by the allowlist (by word identity), and adds other occurrences as **whole words only**
+   - detections are emitted with text, entity type, score, state, reasons, source and their rectangles
+6. `apply_ai_to_page()` runs on the UI thread: `accepted` detections become pending redaction annotations (a rectangle already covered by at least 60% is not added twice); `suggested` ones are queued and reviewed in `ReviewDialog`. Blocklist terms are matched as whole words.
 
 ### 🖊️ Manual Review
 
@@ -126,26 +134,26 @@ Clicking an existing redaction:
 
 `cmd_export()` is the main export entry point.
 
-1. User chooses privacy mode:
-   - irreversible anonymization
+1. If suggestions are unreviewed, the user is asked to review them or continue without them.
+2. User chooses privacy mode:
+   - irreversible removal
    - reversible pseudonymization
-2. User chooses output PDF path.
-3. For pseudonymization only:
-   - user chooses `.nullifypdf-map` path
-   - user enters a password of at least 12 characters
-   - `cryptography` availability is checked before writing output
-4. The in-memory PDF is saved to a sibling temp file:
-   - `<target>.nullifypdf.tmp`
-5. The temp PDF is reopened as `ex_doc`.
-6. Each page is processed:
-   - overlapping links are deleted for redacted areas
-   - redactions are applied with PyMuPDF
+3. User chooses the output path (default name contains nothing from the source name; a warning appears if the chosen name contains a removed value).
+4. For pseudonymization only:
+   - user chooses the placeholder style (random, sequential, generic, keyed)
+   - user chooses the `.nullifypdf-map` path (a warning appears for the PDF's folder or a synchronised folder)
+   - user enters a password twice; it must pass a strength check (minimum 12 characters)
+5. `export_engine.export_document()` works on a copy of the document kept in memory (or, above a size threshold, in a private per-user temp folder):
+   - links overlapping redactions are deleted
+   - redactions are applied with PyMuPDF (image pixels blanked, not whole images)
    - widgets are removed
-7. Document metadata and selected catalog keys are cleared.
-8. The final PDF is saved with cleanup options.
-9. The temp file is removed.
+   - `pdf_sanitize.sanitize_document()` removes annotations, attachments, scripts, bookmarks, structure, metadata, hidden/invisible/off-page text and external links
+   - the final PDF is saved with cleanup options
+6. `pdf_sanitize.verify_export()` re-opens the written file and checks it; a failure is reported and the file can be deleted.
+7. For pseudonymization, the restore map is encrypted and written with owner-only permissions.
+8. An audit record (no values) is written to `~/.nullifypdf/audit/`.
 
-The original open document remains editable after export because the export works on a disk-backed copy.
+The original open document remains editable after export because the export works on a copy.
 
 ---
 
@@ -192,7 +200,7 @@ The restore map contains:
 - the redaction box of every occurrence
 - for native (non-scanned) PDFs, the typography of the redacted text: font, size, colour, flags and baseline (map version 3, optional)
 
-The map is encrypted with `cryptography` using Fernet and a key derived from the user password with PBKDF2-HMAC-SHA256.
+The map is an envelope (version 3): a random data key encrypts the payload with AES-256-GCM and is wrapped by a key derived from the password with Argon2id (t=3, m=64 MiB, p=4; scrypt if Argon2id is unavailable) and, optionally, by a 256-bit recovery key. Maps created with scrypt + Fernet (version 2) or PBKDF2-HMAC-SHA256 (version 1) still open; the parameters read from a file are bounded before use. Each occurrence may carry the compact label that was drawn when the full placeholder did not fit the box (map version 4).
 
 > [!IMPORTANT]
 > The restore map is never embedded in the pseudonymized PDF.

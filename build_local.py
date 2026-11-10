@@ -396,7 +396,7 @@ def build_app() -> None:
 from PyInstaller.utils.hooks import collect_all
 datas = {datas_literal}
 binaries = []
-hiddenimports = ['spacy', 'presidio_analyzer']
+hiddenimports = ['spacy', 'presidio_analyzer', 'lexicon_data_it']
 for pkg in ['presidio_analyzer', 'spacy', 'tldextract', 'en_core_web_md', 'it_core_news_md']:
     t = collect_all(pkg)
     datas += t[0]; binaries += t[1]; hiddenimports += t[2]
@@ -412,7 +412,7 @@ app = BUNDLE(coll, name='NullifyPDF.app', icon={icon_str}, bundle_identifier='co
 from PyInstaller.utils.hooks import collect_all
 datas = {datas_literal}
 binaries = []
-hiddenimports = ['spacy', 'presidio_analyzer']
+hiddenimports = ['spacy', 'presidio_analyzer', 'lexicon_data_it']
 for pkg in ['presidio_analyzer', 'spacy', 'tldextract', 'en_core_web_md', 'it_core_news_md']:
     t = collect_all(pkg)
     datas += t[0]; binaries += t[1]; hiddenimports += t[2]
