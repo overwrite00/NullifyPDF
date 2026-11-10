@@ -104,8 +104,6 @@ TOOLTIPS: Dict[str, str] = {
     "Deseleziona tutto": "Deseleziona tutti i tipi di dato.",
     "Seleziona i dati da censurare / pseudonimizzare:": "Scegli quali tipi di dati cercare. La scelta viene ricordata.",
     # Guide
-    "guide_topics": "Argomenti della guida.",
-    "guide_text": "Testo dell'argomento selezionato.",
     "Chiudi": "Chiude questa finestra.",
     "OK": "Conferma la scelta e prosegue.",
     "Cancel": "Chiude senza confermare.",
@@ -180,6 +178,9 @@ def _generic_tooltip(widget: QWidget, text: str) -> str:
     return ""
 
 
+# Widgets that deliberately have no tooltip: it would get in the way while reading.
+NO_TOOLTIP = frozenset({"guide_topics", "guide_text"})
+
 _INTERACTIVE: Tuple[type, ...] = (
     QAbstractButton, QLabel, QLineEdit, QProgressBar, QTextEdit, QGraphicsView,
     QTableWidget, QComboBox, QDoubleSpinBox, QTabWidget, QListWidget, QTextBrowser,
@@ -190,7 +191,7 @@ def apply_tooltips(root: QWidget) -> int:
     """Set a tooltip on every widget under `root` that has none. Returns the count."""
     n = 0
     for w in [root, *root.findChildren(QWidget)]:
-        if not isinstance(w, _INTERACTIVE) or w.toolTip():
+        if not isinstance(w, _INTERACTIVE) or w.toolTip() or w.objectName() in NO_TOOLTIP:
             continue
         tip = tooltip_for(w)
         if tip:
@@ -203,7 +204,7 @@ def widgets_without_tooltip(root: QWidget) -> List[str]:
     """Descriptions of interactive widgets that still have no tooltip."""
     missing: List[str] = []
     for w in root.findChildren(QWidget):
-        if isinstance(w, _INTERACTIVE) and not w.toolTip():
+        if isinstance(w, _INTERACTIVE) and not w.toolTip() and w.objectName() not in NO_TOOLTIP:
             # Icons and the inner widgets of composite controls carry no text.
             if isinstance(w, QLabel) and not w.text().strip():
                 continue
@@ -400,7 +401,7 @@ class GuideDialog(QDialog):
         lay.addWidget(self.text, 1)
         self.topics.currentRowChanged.connect(self._show)
         self.topics.setCurrentRow(max(0, min(topic, len(GUIDE_TOPICS) - 1)))
-        apply_tooltips(self)
+        apply_tooltips(self)  # skips the topic list and the text: no hover popups while reading
 
     def _show(self, row: int) -> None:
         if 0 <= row < len(GUIDE_TOPICS):

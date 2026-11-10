@@ -104,6 +104,9 @@ def test_guide_dialog_lists_every_topic_and_has_tooltips(window):
     g = GuideDialog(window)
     assert g.topics.count() == len(GUIDE_TOPICS) >= 10
     assert widgets_without_tooltip(g) == []
+    # No hover popups on the topic list and the text: they get in the way of reading.
+    assert g.topics.toolTip() == "" and g.text.toolTip() == ""
+    assert g.topics.viewport().toolTip() == "" and g.text.viewport().toolTip() == ""
     for row in range(g.topics.count()):
         g.topics.setCurrentRow(row)
         assert len(g.text.toPlainText()) > 80
