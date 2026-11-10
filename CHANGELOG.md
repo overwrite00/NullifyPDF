@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✨ Added
 
+- **Local PII models**: optional, user-downloaded ONNX models from pinned Hugging Face revisions are stored under `~/.nullifypdf/models/`, verified file-by-file with SHA-256, and contribute suggestions only. The model dialog shows the source, license, revision and download progress; unverified experimental entries remain blocked.
+- **Word DOCX import**: local DOCX text and table content can be imported into a PDF representation for the existing detection and review workflow. Macros, external links and embedded objects are not executed.
 - **User guide in the program**: a new "Guida" button (or F1) opens a guide in Italian that explains the whole workflow: opening a PDF, language and options, Auto Redact, review of suggestions, manual corrections, dictionaries, export modes, reconstruction, health documents, local data and shortcuts.
 - **Tooltips on every element**: all buttons, options, fields, tables and indicators of the main window and of the dialogs now show a short description when the pointer rests on them.
 - **Check after redaction for surviving characters**: besides searching the written file, the export now checks that every character of a redacted word was really deleted, and reports it (without the value) if one was not.
@@ -33,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed
 
+- **Download and redaction geometry**: model downloads now show an overall percentage, and accepted word redactions use the complete original word box with a small safety margin so the glyph is covered in both dimensions. Suggestion overlays show the same complete word area.
 - **Redaction boxes covered parts of the lines above and below**: word boxes span ascender to descender, so with normal line spacing a redaction rectangle overlapped neighbouring lines, blackening parts of their letters in the preview and deleting their glyphs on export. Rectangles are now trimmed against the neighbouring lines (at the middle of the overlap on image pages, with a small horizontal margin).
 - **Ordinary Italian words proposed for redaction** ("Certifico", "Prescrivo", "Dichiaro", headings of medical and legal documents): PERSON/LOCATION hits are now judged from evidence in the text (titles and cues such as "nato a" or "residente in", name shape, known given names and places, repetition) and rejected when they are Italian verb forms or common medical, legal and administrative words, including at the start or end of a longer span. Names split over two lines ("Esposito" / "Giovanni") are recognised as one name.
 - **Weak identifier patterns produced false hits**: fiscal codes, VAT numbers, wallets, card numbers, driver licences, passports, ID cards and phone numbers must now sit on token boundaries, and the weak ones need their context word and uppercase form; dates, year ranges and short digit runs are no longer read as phone numbers. A checksum-valid identifier glued to a label is redacted as a whole token instead of being dropped.

@@ -50,6 +50,11 @@ TOOLTIPS: Dict[str, str] = {
     "Profilo documenti sanitari": "Cerca anche date di nascita, numero tessera sanitaria, ricetta e codici di esenzione, e propone firme e timbri. I casi incerti diventano suggerimenti invece di essere scartati.",
     "Maschera larghezza testo rimosso": "Arrotonda lo spazio lasciato dal testo rimosso, che altrimenti ne rivela la larghezza. Può spostare di poco il testo seguente.",
     "Dizionari": "Modifica le parole da censurare sempre (blocklist) e da non censurare mai (allowlist), con scadenza.",
+    "Modelli locali": "Mostra i modelli locali candidati, la licenza, la copertura e lo stato di verifica. Il download richiede un manifest con revisione e SHA-256.",
+    "model_settings": "Gestisce il catalogo curato dei modelli locali. I modelli producono solo suggerimenti e non vengono scaricati senza consenso.",
+    "model_list": "Elenco curato dei modelli locali e del loro stato di verifica.",
+    "model_details": "Dettagli del modello selezionato, inclusi licenza, runtime, lingue e copertura dichiarata.",
+    "model_download": "Scarica un modello solo quando l'applicazione ne ha verificato manifest, revisione e SHA-256.",
     "Auto Redact": "Analizza il documento e segna i dati personali da censurare. Nulla viene cancellato finché non esporti.",
     "Rivedi suggerimenti": "Apre l'elenco dei rilevamenti incerti per decidere uno per uno se censurarli.",
     "Pulisci Pagina": "Rimuove tutte le censure segnate sulla pagina corrente.",
@@ -78,6 +83,7 @@ TOOLTIPS: Dict[str, str] = {
     "Pag.": "Pagina in cui è stato trovato l'elemento.",
     "Valore": "Valore trovato, mascherato finché non spunti «Mostra i valori». Per le aree grafiche indica la zona.",
     "Tipo": "Tipo di dato rilevato (persona, luogo, telefono, firma...).",
+    "Fonte": "Origine del suggerimento: regole, modello locale o OCR.",
     "Punteggio": "Affidabilità del rilevamento, da 0 a 1.",
     "Motivi": "Indizi che hanno portato a questo punteggio (contesto, parola comune, inizio riga...).",
     "Mostra i valori": "Mostra in chiaro i valori trovati nella tabella.",
@@ -259,6 +265,16 @@ GUIDE_TOPICS: List[Tuple[str, str]] = [
 <li><b>Maschera larghezza testo rimosso</b>: arrotonda lo spazio lasciato dal testo cancellato, che altrimenti ne rivela la larghezza. Può spostare di poco il testo seguente; è disattivata di default.</li>
 </ul>
 """),
+    ("Modelli locali", """
+<h2>Modelli locali</h2>
+<p><b>Modelli locali</b> mostra il catalogo curato dei modelli candidati per migliorare i suggerimenti su nomi, indirizzi e altri dati personali. I modelli, quando abilitati, lavorano solo sul testo estratto e non applicano censure da soli.</p>
+<ul>
+<li>Ogni modello deve avere una licenza, una revisione e un <b>SHA-256</b> verificati.</li>
+<li>Il programma non carica codice remoto, file pickle o modelli arbitrari.</li>
+<li>Il download richiede consenso esplicito e i pesi vengono conservati nella cartella dell'utente, non nell'installer.</li>
+<li>La qualità dei modelli va misurata sul tipo di documento concreto: nessun modello garantisce anonimizzazione o copertura completa.</li>
+</ul>
+"""),
     ("Auto Redact", """
 <h2>Auto Redact</h2>
 <p>Premendo <b>Auto Redact</b> scegli quali tipi di dati cercare (nomi, luoghi, email, telefono, IBAN, carte, codice fiscale, partita IVA, patente, carta d'identità, passaporto, e con il profilo sanitario date di nascita, tessera sanitaria, ricetta, esenzioni). La scelta viene ricordata.</p>
@@ -272,10 +288,12 @@ GUIDE_TOPICS: List[Tuple[str, str]] = [
 """),
     ("Revisione dei suggerimenti", """
 <h2>Revisione dei suggerimenti</h2>
-<p>Al termine dell'analisi si apre l'elenco dei suggerimenti: pagina, valore (mascherato finché non spunti <i>Mostra i valori</i>), tipo, punteggio e motivi.</p>
+<p>Al termine dell'analisi si apre l'elenco dei suggerimenti: pagina, valore (mascherato finché non spunti <i>Mostra i valori</i>), tipo, punteggio, fonte e motivi.</p>
 <ul>
 <li>Spunta gli elementi da censurare e premi <b>Applica selezionati</b>: gli altri vengono scartati.</li>
 <li><b>Seleziona ≥ soglia</b> spunta in blocco gli elementi con punteggio alto.</li>
+<li>Il campo <b>Tipo</b> è modificabile: controlla o correggi la categoria prima di applicare il suggerimento.</li>
+<li>La colonna <b>Fonte</b> distingue regole, modello locale e OCR.</li>
 <li><b>Rivedi più tardi</b> lascia tutto in sospeso; il pulsante <b>Rivedi suggerimenti (N)</b> nella barra laterale riapre l'elenco.</li>
 <li>Doppio clic su una riga porta alla pagina; selezionando una riga il suo contorno si evidenzia.</li>
 </ul>

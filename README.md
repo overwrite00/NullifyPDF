@@ -39,6 +39,8 @@ NullifyPDF goes beyond simple text covering. It uses **Natural Language Processi
 - 🛡️ **Privacy Export Modes** — Choose irreversible removal or reversible pseudonymization with a separately encrypted restore map; the exported file is sanitised (annotations, attachments, scripts, metadata, hidden text) and verified
 - 📖 **Built-in guide and tooltips** — Press F1 for an Italian guide to every function; every control shows a description on hover
 - 🔍 **Review of uncertain hits** — Detections without enough evidence are suggested for review instead of being applied or lost silently
+- 🧠 **Optional local models** — Reviewed ONNX PII models can be downloaded by the user from pinned Hugging Face revisions; files are SHA-256 verified and models only add review suggestions
+- 📄 **Word import** — DOCX paragraphs and tables can be imported locally into the analysis workflow; legacy binary DOC files are not supported
 - 🔎 **OCR Support** — Bundled EN/IT Tesseract language data for scanned PDFs
 - 🖼️ **Blindfold Mode** — One-click image/logo censoring with professional placeholder: `[ IMAGE REMOVED ]`
 - 📦 **Native Cross-Platform** — Automated build scripts generate Windows `.exe`, macOS ZIP bundles, and Linux `.deb`/`.rpm` packages
@@ -55,6 +57,7 @@ To keep NullifyPDF lightweight, 100% offline, and secure, be aware of these tech
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | **Handwritten Text**               | NLP models cannot analyze non-digitized handwriting.                                                    |
 | **Password-Protected PDFs**        | Encrypted documents are blocked at load. Decrypt before importing.                                      |
+| **Legacy Word DOC files**          | Only modern `.docx` files are supported; save legacy files as DOCX before importing.                    |
 | **Digital Signatures Invalidated** | Privacy export changes the PDF; cryptographic signatures (PAdES, notarized) become invalid.            |
 
 > [!WARNING]
@@ -264,5 +267,5 @@ Want to help improve NullifyPDF? See [CONTRIBUTING.md](./CONTRIBUTING.md) for gu
 
 ---
 
-*Last updated: 2026-11-10*  
+*Last updated: 2026-11-11*  
 *[User Guide →](./USER_GUIDE.md)*

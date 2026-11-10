@@ -33,6 +33,10 @@ It supports two privacy export modes:
 | `pdf_sanitize.py` | Export sanitiser (annotations, attachments, scripts, hidden layers/text, off-page text, metadata, optional TJ-gap quantisation) and `verify_export()` |
 | `export_engine.py` | Qt-free export pipeline (`export_document`), neutral file names, private temp handling, audit record, local-data wipe |
 | `review_dialog.py` | Qt dialog to accept or reject suggested detections |
+| `model_manager.py` | Pinned Hugging Face model catalog, SHA-256 verification, local model store and hardware recommendation |
+| `model_dialog.py` | Italian model selection, consent and progress-aware downloads |
+| `onnx_ner.py` | CPU ONNX token-classification adapter with character-offset mapping and label mapping |
+| `word_import.py` | Safe DOCX OOXML text/table extraction into an internal PyMuPDF document; no macro execution |
 | `help_guide.py` | In-app guide (Italian, F1) and the tooltip table applied to every widget |
 | `secure_store.py` | Master key protected by DPAPI / OS keyring / key file; AES-GCM sealing; atomic private writes |
 | `word_lists.py` | Encrypted blocklist/allowlist with expiry (`PDFListManager`) |
@@ -322,5 +326,5 @@ pytest tests/ -v
 
 ---
 
-*Last updated: 2026-11-10*  
+*Last updated: 2026-11-11*  
 *[Back to README](./README.md) | [Development →](./DEVELOPMENT.md)*

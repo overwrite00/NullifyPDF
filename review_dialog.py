@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
+    QComboBox,
     QDialog,
     QDoubleSpinBox,
     QHBoxLayout,
@@ -49,7 +50,7 @@ REASON_LABELS: Dict[str, str] = {
     "ambiguous-place": "luogo omonimo di parola comune",
 }
 
-COL_APPLY, COL_PAGE, COL_VALUE, COL_TYPE, COL_SCORE, COL_WHY = range(6)
+COL_APPLY, COL_PAGE, COL_VALUE, COL_TYPE, COL_SCORE, COL_SOURCE, COL_WHY = range(7)
 
 
 def mask_value(value: str) -> str:
@@ -68,7 +69,7 @@ class ReviewDialog(QDialog):
     def __init__(self, suggestions: List[Dict[str, Any]], parent: Any = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Revisione suggerimenti")
-        self.resize(760, 460)
+        self.resize(900, 460)
         self._items = list(suggestions)
         self._applied: List[Dict[str, Any]] = []
         self._rejected: List[Dict[str, Any]] = []
@@ -80,11 +81,20 @@ class ReviewDialog(QDialog):
         )
         intro.setWordWrap(True)
         lay.addWidget(intro)
-        self.table = QTableWidget(len(self._items), 6, self)
+        if len(self._items) > 30:
+            warning = QLabel(
+                f"Attenzione: {len(self._items)} suggerimenti. "
+                "Controlla l'elenco pagina per pagina; non approvare in blocco senza verifica."
+            )
+            warning.setObjectName("review_many_warning")
+            warning.setStyleSheet("color: #f59e0b; font-weight: bold;")
+            warning.setWordWrap(True)
+            lay.addWidget(warning)
+        self.table = QTableWidget(len(self._items), 7, self)
         self.table.setObjectName("review_table")
         self.table.verticalHeader().setVisible(False)
         self.table.setHorizontalHeaderLabels(
-            ["Censura", "Pag.", "Valore", "Tipo", "Punteggio", "Motivi"]
+            ["Censura", "Pag.", "Valore", "Tipo", "Punteggio", "Fonte", "Motivi"]
         )
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -104,8 +114,15 @@ class ReviewDialog(QDialog):
             self.table.setItem(row, COL_APPLY, apply_item)
             self.table.setItem(row, COL_PAGE, QTableWidgetItem(str(int(it.get("page", 0)) + 1)))
             self.table.setItem(row, COL_VALUE, QTableWidgetItem(""))
-            self.table.setItem(row, COL_TYPE, QTableWidgetItem(str(it.get("entity_type", ""))))
+            type_box = QComboBox(self.table)
+            types = ["PERSON", "LOCATION", "EMAIL", "PHONE", "IBAN", "CARD", "FISCAL", "VAT", "LICENSE", "IDCARD", "PASSPORT", "BIRTHDATE", "HEALTHID", "EXEMPT", "DATA"]
+            type_box.addItems(types)
+            current_type = str(it.get("entity_type", "DATA"))
+            type_box.setCurrentText(current_type if current_type in types else "DATA")
+            type_box.setToolTip("Modifica il tipo attribuito al suggerimento prima dell'applicazione.")
+            self.table.setCellWidget(row, COL_TYPE, type_box)
             self.table.setItem(row, COL_SCORE, QTableWidgetItem(f"{float(it.get('score', 0.0)):.2f}"))
+            self.table.setItem(row, COL_SOURCE, QTableWidgetItem(str(it.get("source", "regole"))))
             why = ", ".join(REASON_LABELS.get(r, r) for r in it.get("reasons", []))
             self.table.setItem(row, COL_WHY, QTableWidgetItem(why))
         self._refresh_values()
@@ -188,6 +205,9 @@ class ReviewDialog(QDialog):
         self._applied, self._rejected = [], []
         for row, it in enumerate(self._items):
             checked = self._cell(row, COL_APPLY).checkState() == Qt.CheckState.Checked
+            type_box = self.table.cellWidget(row, COL_TYPE)
+            if isinstance(type_box, QComboBox):
+                it["entity_type"] = type_box.currentText()
             (self._applied if checked else self._rejected).append(it)
         self.accept()
 

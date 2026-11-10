@@ -92,6 +92,7 @@ from pii_detection import (
     NON_PRESIDIO_TYPES,
     build_detections,
     build_page_index,
+    Candidate,
     classify_page,
     covered_fraction,
     expand_group_ids,
@@ -122,10 +123,14 @@ from pdf_sanitize import (
     suggest_signature_areas,
 )
 from review_dialog import ReviewDialog
+from model_dialog import ModelDialog
 from help_guide import GuideDialog, apply_tooltips
 from dictionary_dialog import DictionaryDialog
 from word_lists import PDFListManager
+from word_import import docx_to_pdf
 import secure_store
+from model_manager import CATALOG, MODEL_CANDIDATES, ModelStore
+from onnx_ner import OnnxTokenDetector
 
 # PyMuPDF defines these constants dynamically, which mypy cannot see; read
 # them once here (with the suppression) instead of at every call site.
@@ -133,7 +138,7 @@ PDF_ANNOT_REDACT: int = fitz.PDF_ANNOT_REDACT  # type: ignore[attr-defined]
 PDF_REDACT_IMAGE_PIXELS: int = fitz.PDF_REDACT_IMAGE_PIXELS  # type: ignore[attr-defined]
 
 __version__ = "2.4.0"
-__version_prerelease__ = "beta.3"
+__version_prerelease__ = "beta.4"
 APP_VERSION = (
     f"{__version__}-{__version_prerelease__}"
     if __version_prerelease__
@@ -469,7 +474,9 @@ def band_covers_target(page: Any, band: "fitz.Rect", full: "fitz.Rect") -> bool:
     and survive the redaction.
     """
     chars = target_chars(page, full)
-    return all(_core_hits(tuple(ch["bbox"]), band) for ch in chars)
+    # An empty clipped result is not proof of coverage.  A band trimmed
+    # against neighbouring lines can otherwise leave part of the glyph.
+    return bool(chars) and all(_core_hits(tuple(ch["bbox"]), band) for ch in chars)
 
 
 def text_under_rect(page: Any, rect: "fitz.Rect") -> str:
@@ -902,6 +909,7 @@ class AIWorker(QObject):
         super().__init__()
         self.analyzer: Optional[Any] = None
         self.loaded_langs: List[str] = []
+        self.model_detectors: List[Tuple[str, OnnxTokenDetector]] = []
         self._stop_requested = False
 
     def cleanup(self) -> None:
@@ -917,6 +925,7 @@ class AIWorker(QObject):
                 # spaCy (read-only property), so we simply drop the reference.
                 self.analyzer = None
             self.loaded_langs.clear()
+            self.model_detectors.clear()
         except Exception as e:
             logging.getLogger("nullifypdf").debug(f"Error during AI cleanup: {e}")
 
@@ -1017,6 +1026,7 @@ class AIWorker(QObject):
                 )
                 self.loaded_langs = target_langs
             self.log_sig.emit("Scansione privacy in corso...")
+            self._load_local_detectors()
             targets = list(enabled_types)
             presidio_targets = [
                 t for t in targets if t not in NON_PRESIDIO_TYPES
@@ -1118,6 +1128,36 @@ class AIWorker(QObject):
                     index, candidates, allowlist=allow_terms,
                     source="ocr" if used_ocr else "text", stats=stats,
                 )
+                model_candidates: List[Tuple[Candidate, str]] = []
+                for model_id, detector in self.model_detectors:
+                    try:
+                        for entity in detector.detect(index.text):
+                            entity_type = entity.label
+                            if entity_type not in targets:
+                                continue
+                            model_candidates.append((
+                                Candidate(
+                                    entity.start,
+                                    entity.end,
+                                    entity.text,
+                                    entity_type,
+                                    min(1.0, max(0.0, entity.score)),
+                                    state="suggested",
+                                    reasons=[f"model:{model_id}"],
+                                ),
+                                model_id,
+                            ))
+                    except Exception as exc:
+                        self.log_sig.emit(f"Avviso: modello locale {model_id} non disponibile a pagina {i + 1}: {exc}")
+                for candidate, model_id in model_candidates:
+                    model_detections = build_detections(
+                        index,
+                        [candidate],
+                        allowlist=allow_terms,
+                        source=f"model:{model_id}",
+                        stats=stats,
+                    )
+                    detections.extend(model_detections)
                 detections.extend(signature_dets)
                 for key, n in stats.items():
                     totals[key] = totals.get(key, 0) + n
@@ -1158,6 +1198,22 @@ class AIWorker(QObject):
         except Exception:
             return set()
         return out
+
+    def _load_local_detectors(self) -> None:
+        """Load every installed, manifest-verified local model once per scan."""
+        if self.model_detectors:
+            return
+        store = ModelStore(pathlib.Path.home() / ".nullifypdf" / "models")
+        for manifest in CATALOG:
+            if not manifest.enabled or not store.is_installed(manifest):
+                continue
+            try:
+                self.model_detectors.append(
+                    (manifest.model_id, OnnxTokenDetector(store.model_dir(manifest), manifest))
+                )
+                self.log_sig.emit(f"Modello locale caricato: {manifest.model_id}")
+            except Exception as exc:
+                self.log_sig.emit(f"Avviso: modello locale {manifest.model_id} ignorato: {exc}")
 
     def _page_needs_ocr(self, page: Any, extracted_text: str) -> bool:
         """Return True when a page looks scanned or text extraction is too poor."""
@@ -1494,6 +1550,10 @@ class NullifyPDF(QMainWindow):
         btn_dict = QPushButton("Dizionari")
         btn_dict.clicked.connect(self.cmd_dict)
         s_lay.addWidget(btn_dict)
+        btn_models = QPushButton("Modelli locali")
+        btn_models.setObjectName("model_settings")
+        btn_models.clicked.connect(self.cmd_models)
+        s_lay.addWidget(btn_models)
         self.btn_ai = QPushButton("Auto Redact")
         self.btn_ai.setObjectName("Danger")
         self.btn_ai.clicked.connect(self.cmd_auto_ai)
@@ -1598,6 +1658,16 @@ class NullifyPDF(QMainWindow):
         if urls and urls[0].isLocalFile():
             self.load_path(urls[0].toLocalFile())
 
+    def cmd_models(self) -> None:
+        """Show the curated local-model catalog and its verification state."""
+        store = ModelStore(self.config_dir / "models")
+        ModelDialog(
+            MODEL_CANDIDATES,
+            manifests=CATALOG,
+            store=store,
+            parent=self,
+        ).exec()
+
     def write_log(self, m: str) -> None:
         """Write message to UI log with color coding.
 
@@ -1632,7 +1702,9 @@ class NullifyPDF(QMainWindow):
 
     def cmd_open(self) -> None:
         """Open file dialog to load PDF."""
-        p, _ = QFileDialog.getOpenFileName(self, "Apri PDF", "", "PDF (*.pdf)")
+        p, _ = QFileDialog.getOpenFileName(
+            self, "Apri documento", "", "PDF e Word (*.pdf *.docx);;PDF (*.pdf);;Word DOCX (*.docx)"
+        )
         if p:
             self.load_path(p)
 
@@ -1648,12 +1720,14 @@ class NullifyPDF(QMainWindow):
         if not os.path.exists(path):
             self.write_log(f"ERRORE: File non trovato: {path}")
             return
-        if not path.lower().endswith('.pdf'):
-            self.write_log("ERRORE: Solo file PDF sono supportati")
+        suffix = pathlib.Path(path).suffix.lower()
+        if suffix not in {".pdf", ".docx"}:
+            self.write_log("ERRORE: Sono supportati solo PDF e Word DOCX")
             return
 
         try:
-            tdoc = fitz.open(path)
+            imported_word = suffix == ".docx"
+            tdoc = docx_to_pdf(path) if imported_word else fitz.open(path)
             if tdoc.needs_pass:
                 self.write_log("ERRORE: PDF cifrato - inserire password non supportato")
                 tdoc.close()
@@ -1669,7 +1743,8 @@ class NullifyPDF(QMainWindow):
                 self.pending_suggestions = []
             self._update_review_button()
             self.adjust_zoom(0)
-            self.write_log(f"Caricato: {os.path.basename(path)}")
+            label = "Word DOCX convertito in PDF locale" if imported_word else "PDF"
+            self.write_log(f"Caricato {label}: {os.path.basename(path)}")
             self._warn_if_scanned_pdf()
         except FileNotFoundError:
             self.write_log(f"ERRORE: File non trovato")
@@ -1737,7 +1812,9 @@ class NullifyPDF(QMainWindow):
         for s in self.pending_suggestions:
             if int(s.get("page", -1)) != self.page_num:
                 continue
-            for rect in s.get("rects") or []:
+            # The clamped band is internal redaction geometry.  Showing it
+            # makes a correctly detected word appear partially selected.
+            for rect in s.get("full_rects") or s.get("rects") or []:
                 self.scene.addItem(SuggestionItem(tuple(rect), s, self.scale))
 
     def _highlight_suggestion(self, suggestion: Any) -> None:
@@ -2584,8 +2661,18 @@ class NullifyPDF(QMainWindow):
                     tuple(i["bbox"]) for i in page.get_image_info(hashes=False)
                 ],
             )
+            # Accepted redactions must cover the actual word box.  The
+            # clamped index is useful for analysis, but using its thin band
+            # for the final annotation can leave the top/bottom of a glyph
+            # visible (as happens with tightly spaced lines).
+            full_page_index = build_page_index(page.get_text("words"), clamp=False)
+
+            def cover_word(rect: fitz.Rect) -> fitz.Rect:
+                padded = fitz.Rect(rect.x0 - 0.5, rect.y0 - 0.5, rect.x1 + 0.5, rect.y1 + 0.5)
+                return padded & page.rect
+
             for bw in self.blocklist:
-                for r in (fitz.Rect(*t) for t in whole_word_rects(page_index, bw)):
+                for r in (cover_word(fitz.Rect(*t)) for t in whole_word_rects(full_page_index, bw)):
                     if not already_covered(r):
                         self._add_privacy_redaction(
                             page,
@@ -2602,9 +2689,9 @@ class NullifyPDF(QMainWindow):
                 fulls = detection.get("full_rects") or []
                 for k, band in enumerate(rects):
                     if k < len(fulls):
-                        full = fitz.Rect(*fulls[k])
-                        if band != full and not band_covers_target(page, band, full):
-                            rects[k] = full  # never leave a glyph of the target behind
+                        # Always use the original word box for the final
+                        # redaction, with a small margin in both dimensions.
+                        rects[k] = cover_word(fitz.Rect(*fulls[k]))
                 if entity_type == "SIGNATURE":
                     # Graphic area (signature / stamp): no text, no value.
                     for r in rects:
@@ -2620,11 +2707,11 @@ class NullifyPDF(QMainWindow):
                     protected = [
                         fitz.Rect(*t)
                         for aw in self.allowlist
-                        for t in whole_word_rects(page_index, aw)
+                        for t in whole_word_rects(full_page_index, aw)
                     ]
                     rects = [
                         fitz.Rect(*t)
-                        for t in whole_word_rects(page_index, word)
+                        for t in whole_word_rects(full_page_index, word)
                         if not any(
                             pr.contains(fitz.Point((t[0] + t[2]) / 2, (t[1] + t[3]) / 2))
                             for pr in protected
@@ -2633,7 +2720,7 @@ class NullifyPDF(QMainWindow):
                 for k, r in enumerate(rects):
                     if not already_covered(r):
                         full_box = (
-                            fitz.Rect(*fulls[k])
+                            cover_word(fitz.Rect(*fulls[k]))
                             if (k < len(fulls) and raw_rects) else None
                         )
                         self._add_privacy_redaction(

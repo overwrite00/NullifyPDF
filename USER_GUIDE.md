@@ -11,7 +11,7 @@ Your step-by-step guide to redacting sensitive data from PDFs safely and securel
 
 | 🎯 Step            | ⏱️ Time  | What You'll Do                |
 | ----------------- | ------- | ----------------------------- |
-| **1️⃣ Load**        | 30 sec  | Open a PDF file               |
+| **1️⃣ Load**        | 30 sec  | Open a PDF or Word DOCX file  |
 | **2️⃣ Configure**   | 30 sec  | Select document language      |
 | **3️⃣ Auto-Redact** | 1-2 min | Run AI to find sensitive data |
 | **4️⃣ Review**      | 1-2 min | Manually fix any mistakes     |
@@ -23,14 +23,20 @@ Your step-by-step guide to redacting sensitive data from PDFs safely and securel
 > [!TIP]
 > The program has its own guide in Italian: press **F1** or the **Guida** button in the sidebar. Resting the pointer on any button, option or field shows a short description.
 
-## Step 1️⃣ — Load Your PDF
+## Step 1️⃣ — Load Your PDF or Word Document
 
 1. Click the blue **"Apri PDF"** button in the top left
-2. Select a PDF file from your computer
+2. Select a PDF or modern Word **DOCX** file from your computer
 3. The document appears in the center. Scroll with mouse or use arrow buttons (top right)
 
 > [!NOTE]
-> Supported format: unencrypted PDF. Digital text is scanned directly; scanned pages require OCR. If NullifyPDF detects a page with no extractable text, a popup confirms it and reminds you to enable **OCR PDF scansionati** before AI scanning — manual selection (Step 4) works on scanned pages either way.
+> Supported formats: unencrypted PDF and DOCX. A DOCX is read locally and converted to an internal PDF representation; the original Word file is never modified and macros, external links and embedded objects are not executed. Legacy binary `.doc` files must be saved as DOCX first. Digital PDF text is scanned directly; scanned pages require OCR.
+
+### Optional local models
+
+Open **Modelli locali** in the sidebar to view the reviewed shortlist. Models are optional and are not included in the installer. Before downloading, the dialog shows the Hugging Face source, license, pinned revision and total size. The progress bar reports the overall percentage across all model files.
+
+Only entries with a complete application manifest can be downloaded. The manifest fixes the revision, allowed files, expected sizes and SHA-256 values. Experimental entries without those checks remain unavailable. Installed models run locally and add suggestions for review; they never apply a redaction automatically.
 
 ---
 
@@ -308,5 +314,5 @@ python3.13 NullifyPDF.py
 
 ---
 
-*Last updated: 2026-11-10*  
+*Last updated: 2026-11-11*  
 *← [Back to README](./README.md) | [Troubleshooting →](./TROUBLESHOOTING.md)*

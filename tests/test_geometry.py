@@ -204,6 +204,17 @@ def test_core_band_mixed_sizes_spares_neighbours(tmp_path):
     assert "Alessandro" not in text and "Marchetti" not in text
 
 
+def test_empty_clipped_target_never_approves_thin_band():
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "Mario Rossi", fontsize=11)
+    idx = pd.build_page_index(page.get_text("words"), clamp=False)
+    full = pymupdf.Rect(*pd.whole_word_rects(idx, "Mario")[0])
+    thin = pymupdf.Rect(full.x0, full.y0, full.x1, full.y0 + 0.01)
+    from NullifyPDF import band_covers_target
+    assert not band_covers_target(page, thin, full)
+
+
 def test_no_safe_band_flags_collision_and_still_removes_target(tmp_path):
     doc = make_doc(LINES, pitch=5)
     page = doc[0]

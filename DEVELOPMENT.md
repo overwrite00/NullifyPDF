@@ -105,6 +105,10 @@ If the GUI opens → **You're ready to develop!** 🎉
 ```
 NullifyPDF/
 |-- NullifyPDF.py              # Main PySide6 application
+|-- model_manager.py           # Pinned local model catalog and integrity checks
+|-- model_dialog.py             # Model consent and download UI
+|-- onnx_ner.py                 # ONNX token-classification adapter
+|-- word_import.py              # Safe DOCX text/table importer
 |-- privacy_core.py            # Privacy modes and encrypted restore maps
 |-- update_check.py            # Qt-free update check: versions, GitHub releases, asset choice, download
 |-- pii_detection.py           # Qt-free AI detection helpers (offsets, filters, whole-word matching)
@@ -142,6 +146,9 @@ NullifyPDF/
 | **presidio-analyzer** | 2.2.366 | PII detection                |
 | **spaCy**             | 3.8.18  | NLP for entity recognition   |
 | **cryptography**      | 50.0.2  | Encrypted restore maps       |
+| **onnxruntime**       | 1.31.1  | CPU inference for optional local PII models |
+| **tokenizers**        | 0.23.3  | Fast local tokenizer with character offsets |
+| **python-docx**       | —       | Not required; DOCX import uses the standard-library OOXML reader |
 | **pytest**            | 9.2.0   | Testing framework            |
 
 ### Language Models (Auto-Downloaded)
@@ -590,5 +597,5 @@ The release workflows fill each GitHub release body with `scripts/extract_releas
 
 ---
 
-*Last updated: 2026-11-10*  
+*Last updated: 2026-11-11*  
 *← [Troubleshooting](./TROUBLESHOOTING.md) | [Back to README →](./README.md)*
