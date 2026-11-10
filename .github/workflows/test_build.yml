@@ -111,7 +111,13 @@ jobs:
           pip install --upgrade pymupdf
           python -c "import pymupdf; print(pymupdf.VersionBind, pymupdf.VersionFitz)" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Run Tests
+      - name: Diagnose exit status per test (temporary)
         shell: bash
         run: |
-          pytest tests/ -v -k "geometry or reconstruct or export or gui_flow" || echo "::warning title=PyMuPDF latest::tests failed on $(python -c 'import pymupdf;print(pymupdf.VersionBind)')"
+          for f in tests/test_export_sanitize.py tests/test_geometry.py tests/test_reconstruct.py tests/test_secure_store.py tests/test_privacy_hardening.py tests/test_detection_pipeline.py; do
+            pytest "$f" -q >/dev/null 2>&1; echo "FILE $f exit=$?"
+          done
+          for t in $(pytest tests/test_gui_flow.py --collect-only -q 2>/dev/null | grep "::"); do
+            pytest "$t" -q >/dev/null 2>&1; rc=$?; [ $rc -ne 0 ] && echo "GUI $t exit=$rc"
+          done
+          echo "diagnosis finished"
