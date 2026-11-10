@@ -123,32 +123,93 @@ class DpapiProtector:
         return self._call(base64.b64decode(blob["blob"]), False)
 
 
+PROBE_TIMEOUT = 3.0     # a healthy keyring answers in milliseconds
+UNWRAP_TIMEOUT = 60.0   # may legitimately wait for the user to unlock it
+
+
+def _with_timeout(fn: Any, seconds: float) -> Any:
+    """Run `fn` in a daemon thread; raise TimeoutError if it does not finish.
+
+    A keyring backend can block forever when it needs a graphical
+    confirmation that nobody can give (a locked macOS Keychain on a headless
+    machine, no Secret Service session). The thread is abandoned: it is a
+    daemon, so it never keeps the program alive.
+    """
+    import threading
+
+    box: Dict[str, Any] = {}
+
+    def run() -> None:
+        try:
+            box["value"] = fn()
+        except BaseException as e:  # noqa: BLE001 - re-raised in the caller
+            box["error"] = e
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    t.join(seconds)
+    if t.is_alive():
+        raise TimeoutError("keyring did not answer in time")
+    if "error" in box:
+        raise box["error"]
+    return box.get("value")
+
+
 class KeyringProtector:
     name = "keyring"
     SERVICE = "NullifyPDF"
     USER = "master"
+    _probe_result: "Dict[int, bool]" = {}
 
     @staticmethod
     def available() -> bool:
+        """A real keyring backend that answers promptly.
+
+        Set NULLIFYPDF_DISABLE_KEYRING=1 to never touch the system keyring
+        (used by the tests, so they never reach a real Keychain).
+        """
+        if os.environ.get("NULLIFYPDF_DISABLE_KEYRING") == "1":
+            return False
         try:
             import keyring  # type: ignore[import-not-found]
             from keyring.backends import fail, null  # type: ignore[import-not-found]
 
             backend = keyring.get_keyring()
-            return not isinstance(backend, (fail.Keyring, null.Keyring))
+            if isinstance(backend, (fail.Keyring, null.Keyring)):
+                return False
+            key = id(backend)
+            if key in KeyringProtector._probe_result:
+                return KeyringProtector._probe_result[key]
+
+            def probe() -> bool:
+                keyring.set_password("NullifyPDF-probe", "probe", "x")
+                ok = keyring.get_password("NullifyPDF-probe", "probe") == "x"
+                keyring.delete_password("NullifyPDF-probe", "probe")
+                return ok
+
+            try:
+                ok = bool(_with_timeout(probe, PROBE_TIMEOUT))
+            except Exception:
+                ok = False
+            KeyringProtector._probe_result[key] = ok
+            return ok
         except Exception:
             return False
 
     def wrap(self, key: bytes) -> Dict[str, Any]:
         import keyring  # type: ignore[import-not-found]
 
-        keyring.set_password(self.SERVICE, self.USER, base64.b64encode(key).decode("ascii"))
+        secret = base64.b64encode(key).decode("ascii")
+        _with_timeout(
+            lambda: keyring.set_password(self.SERVICE, self.USER, secret), UNWRAP_TIMEOUT
+        )
         return {"protector": self.name, "service": self.SERVICE, "user": self.USER}
 
     def unwrap(self, blob: Dict[str, Any]) -> bytes:
         import keyring  # type: ignore[import-not-found]
 
-        secret = keyring.get_password(blob.get("service", self.SERVICE), blob.get("user", self.USER))
+        svc, usr = blob.get("service", self.SERVICE), blob.get("user", self.USER)
+        secret = _with_timeout(lambda: keyring.get_password(svc, usr), UNWRAP_TIMEOUT)
         if not secret:
             raise OSError("Segreto non presente nel portachiavi.")
         return base64.b64decode(secret)

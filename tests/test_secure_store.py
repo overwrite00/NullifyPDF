@@ -180,6 +180,8 @@ def test_keyring_backend_holds_the_master_key_when_available(tmp_path, monkeypat
 
     old = keyring.get_keyring()
     keyring.set_keyring(MemoryKeyring())
+    monkeypatch.delenv("NULLIFYPDF_DISABLE_KEYRING", raising=False)
+    secure_store.KeyringProtector._probe_result.clear()
     try:
         monkeypatch.setattr(secure_store.DpapiProtector, "available", staticmethod(lambda: False))
         key = secure_store.load_or_create_master_key(tmp_path)
@@ -198,3 +200,44 @@ def test_keyring_backend_holds_the_master_key_when_available(tmp_path, monkeypat
             secure_store.load_or_create_master_key(tmp_path)
     finally:
         keyring.set_keyring(old)
+
+
+def test_a_keyring_that_never_answers_is_skipped_not_waited_for(tmp_path, monkeypatch):
+    """A locked Keychain waiting for a dialog must not hang the program."""
+    import time
+
+    keyring = pytest.importorskip("keyring")
+    from keyring.backend import KeyringBackend
+
+    class HangingKeyring(KeyringBackend):
+        priority = 1
+
+        def set_password(self, service, username, password):
+            time.sleep(30)
+
+        def get_password(self, service, username):
+            time.sleep(30)
+
+        def delete_password(self, service, username):
+            time.sleep(30)
+
+    old = keyring.get_keyring()
+    keyring.set_keyring(HangingKeyring())
+    monkeypatch.delenv("NULLIFYPDF_DISABLE_KEYRING", raising=False)
+    monkeypatch.setattr(secure_store, "PROBE_TIMEOUT", 0.3)
+    monkeypatch.setattr(secure_store.DpapiProtector, "available", staticmethod(lambda: False))
+    secure_store.KeyringProtector._probe_result.clear()
+    try:
+        t0 = time.time()
+        assert secure_store.KeyringProtector.available() is False
+        assert time.time() - t0 < 5
+        secure_store.load_or_create_master_key(tmp_path)
+        assert json.loads((tmp_path / "keystore.json").read_text())["master"]["protector"] == "keyfile"
+    finally:
+        keyring.set_keyring(old)
+        secure_store.KeyringProtector._probe_result.clear()
+
+
+def test_keyring_can_be_disabled_by_environment(monkeypatch):
+    monkeypatch.setenv("NULLIFYPDF_DISABLE_KEYRING", "1")
+    assert secure_store.KeyringProtector.available() is False
