@@ -1,8 +1,13 @@
 """Pytest configuration shared by the test suite."""
 
+import os
 import pathlib
 import sys
 
+
+# Tests must never touch a real system keyring (a locked macOS Keychain on a
+# headless runner blocks forever waiting for a dialog).
+os.environ.setdefault("NULLIFYPDF_DISABLE_KEYRING", "1")
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
 root_str = str(PROJECT_ROOT)
