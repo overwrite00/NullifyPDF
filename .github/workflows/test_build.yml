@@ -81,7 +81,7 @@ jobs:
   pymupdf-latest:
     # Redaction semantics (the glyph-deletion core, word boxes) differ between
     # PyMuPDF releases; this job reports early when a newer release changes
-    # them. It never fails the workflow: it raises a visible warning.
+    # them. It is not a required check, but a failure is shown as a failure.
     name: Tests against the latest PyMuPDF
     runs-on: ubuntu-24.04
     env:
@@ -111,9 +111,5 @@ jobs:
           pip install --upgrade pymupdf
           python -c "import pymupdf; print(pymupdf.VersionBind, pymupdf.VersionFitz)" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Diagnose exit status per test (temporary)
-        shell: bash {0}
-        run: |
-          pytest tests/ -q >/dev/null 2>&1; echo "FULL rc=$?"
-          pytest tests/ -q >/dev/null 2>&1; echo "FULL again rc=$?"
-          echo "diagnosis finished"
+      - name: Run Tests
+        run: pytest tests/ -v
