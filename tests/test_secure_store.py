@@ -158,3 +158,43 @@ def test_tampered_list_file_is_not_trusted(tmp_path):
     raw[-1] ^= 1
     p.write_bytes(bytes(raw))
     assert PDFListManager(tmp_path).load_blocklist() == set()
+
+
+def test_keyring_backend_holds_the_master_key_when_available(tmp_path, monkeypatch):
+    """With a real (here: in-memory) keyring backend the key never touches the keystore file."""
+    keyring = pytest.importorskip("keyring")
+    from keyring.backend import KeyringBackend
+
+    class MemoryKeyring(KeyringBackend):
+        priority = 1
+        store: dict = {}
+
+        def set_password(self, service, username, password):
+            self.store[(service, username)] = password
+
+        def get_password(self, service, username):
+            return self.store.get((service, username))
+
+        def delete_password(self, service, username):
+            self.store.pop((service, username), None)
+
+    old = keyring.get_keyring()
+    keyring.set_keyring(MemoryKeyring())
+    try:
+        monkeypatch.setattr(secure_store.DpapiProtector, "available", staticmethod(lambda: False))
+        key = secure_store.load_or_create_master_key(tmp_path)
+        ks = json.loads((tmp_path / "keystore.json").read_text())
+        assert ks["master"]["protector"] == "keyring"
+        assert "portachiavi" in secure_store.protector_label(tmp_path)
+        import base64
+        assert base64.b64encode(key).decode() not in json.dumps(ks)
+        assert not (tmp_path / "keys").exists()
+        secure_store.forget_cached_keys()
+        assert secure_store.load_or_create_master_key(tmp_path) == key
+        # losing the keyring entry = unreadable keystore, never silent re-creation
+        MemoryKeyring.store.clear()
+        secure_store.forget_cached_keys()
+        with pytest.raises(secure_store.KeystoreUnavailable):
+            secure_store.load_or_create_master_key(tmp_path)
+    finally:
+        keyring.set_keyring(old)

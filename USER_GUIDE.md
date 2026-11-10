@@ -20,6 +20,9 @@ Your step-by-step guide to redacting sensitive data from PDFs safely and securel
 
 ---
 
+> [!TIP]
+> The program has its own guide in Italian: press **F1** or the **Guida** button in the sidebar. Resting the pointer on any button, option or field shows a short description.
+
 ## Step 1️⃣ — Load Your PDF
 
 1. Click the blue **"Apri PDF"** button in the top left
@@ -305,5 +308,5 @@ python3.13 NullifyPDF.py
 
 ---
 
-*Last updated: 2026-11-08*  
+*Last updated: 2026-11-10*  
 *← [Back to README](./README.md) | [Troubleshooting →](./TROUBLESHOOTING.md)*

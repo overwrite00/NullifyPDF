@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from help_guide import apply_tooltips
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -72,12 +73,16 @@ class ReviewDialog(QDialog):
         self._applied: List[Dict[str, Any]] = []
         self._rejected: List[Dict[str, Any]] = []
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel(
+        intro = QLabel(
             "Questi elementi non hanno prove sufficienti per essere censurati "
             "automaticamente. Seleziona quelli da censurare: i non selezionati "
             "vengono scartati se premi «Applica selezionati»."
-        ))
+        )
+        intro.setWordWrap(True)
+        lay.addWidget(intro)
         self.table = QTableWidget(len(self._items), 6, self)
+        self.table.setObjectName("review_table")
+        self.table.verticalHeader().setVisible(False)
         self.table.setHorizontalHeaderLabels(
             ["Censura", "Pag.", "Valore", "Tipo", "Punteggio", "Motivi"]
         )
@@ -114,6 +119,7 @@ class ReviewDialog(QDialog):
         self.spin.setRange(0.0, 1.0)
         self.spin.setSingleStep(0.05)
         self.spin.setValue(0.6)
+        self.spin.setObjectName("review_threshold")
         btn_thr = QPushButton("Seleziona ≥ soglia")
         # Bound methods, not lambdas capturing `self`: a lambda makes a
         # reference cycle that keeps the dialog alive until the garbage
@@ -136,6 +142,7 @@ class ReviewDialog(QDialog):
         bottom.addWidget(self.btn_later)
         bottom.addWidget(self.btn_apply)
         lay.addLayout(bottom)
+        apply_tooltips(self)
 
     # -- helpers ---------------------------------------------------------
     def _cell(self, row: int, col: int) -> QTableWidgetItem:

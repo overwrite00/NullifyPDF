@@ -43,6 +43,7 @@ class ExportResult:
     sanitize: SanitizeReport = field(default_factory=SanitizeReport)
     verification: VerificationReport = field(default_factory=VerificationReport)
     pages: int = 0
+    surviving_glyphs: int = 0
 
 
 def neutral_output_name(mode_value: str, now: Optional[datetime.datetime] = None) -> str:
@@ -149,6 +150,90 @@ def text_outside_redactions(doc: Any) -> str:
     return " ".join(chunks)
 
 
+def _line_chars(page: Any, baseline: float, tol: float = 1.5) -> List[Dict[str, Any]]:
+    """Non-space characters of `page` on one baseline, left to right."""
+    try:
+        raw = page.get_text("rawdict")
+    except Exception:
+        return []
+    out: List[Dict[str, Any]] = []
+    for block in raw.get("blocks", []):
+        if block.get("type") != 0:
+            continue
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                for ch in span.get("chars", []):
+                    if str(ch.get("c", "")).strip() and abs(float(ch["origin"][1]) - baseline) <= tol:
+                        out.append(ch)
+    out.sort(key=lambda c: float(c["origin"][0]))
+    return out
+
+
+def _expected_deletions(
+    page: Any, read_full: Callable[[Any], Optional[Any]]
+) -> List[Dict[str, Any]]:
+    """Per redaction with a stored whole-word box: what must disappear.
+
+    After apply_redactions() every glyph of the word must be gone: a thin
+    band that misses one glyph (a raised or smaller character) would leave
+    part of the value behind, and a text search cannot see a single
+    character. Two independent checks, neither of which relies on glyph
+    positions (MuPDF rewrites and shifts the rest of the line):
+
+    * predicted survivors: target glyphs whose deletion core the band does
+      not reach (the measured rule);
+    * rule check: on that line, the number of glyphs that actually vanish
+      must be at least the number the rule predicts. If a PyMuPDF release
+      changes the rule, this trips instead of leaving the export silently
+      unsafe.
+    """
+    from pii_detection import core_hits, target_chars
+
+    bands = [
+        pymupdf.Rect(a.rect) for a in page.annots() or []
+        if a.type[0] == PDF_ANNOT_REDACT
+    ]
+    expected: List[Dict[str, Any]] = []
+    for annot in page.annots() or []:
+        if annot.type[0] != PDF_ANNOT_REDACT:
+            continue
+        full = read_full(annot)
+        if full is None:
+            continue
+        targets = target_chars(page, pymupdf.Rect(full))
+        if not targets:
+            continue
+        baseline = float(targets[0]["origin"][1])
+        line = _line_chars(page, baseline)
+        predicted = sum(
+            1 for c in line if any(core_hits(tuple(c["bbox"]), b) for b in bands)
+        )
+        missed = sum(
+            1 for t in targets
+            if not any(core_hits(tuple(t["bbox"]), b) for b in bands)
+        )
+        expected.append({
+            "baseline": baseline, "n_pre": len(line),
+            "predicted_deleted": predicted, "missed": missed,
+        })
+    return expected
+
+
+def _count_survivors(page: Any, expected: List[Dict[str, Any]]) -> int:
+    survivors = 0
+    seen_lines = set()
+    for item in expected:
+        survivors += int(item["missed"])
+        key = round(item["baseline"], 1)
+        if key in seen_lines:
+            continue  # several words on one line share the same count
+        seen_lines.add(key)
+        actual = item["n_pre"] - len(_line_chars(page, item["baseline"]))
+        if actual < item["predicted_deleted"]:
+            survivors += item["predicted_deleted"] - actual
+    return survivors
+
+
 def _open_copy(
     src_doc: Any, temp_dir: Optional[pathlib.Path]
 ) -> tuple[Any, Optional[str]]:
@@ -180,6 +265,7 @@ def export_document(
     *,
     prepare_page: Optional[Callable[[Any], None]] = None,
     finish_page: Optional[Callable[[Any], None]] = None,
+    read_full: Optional[Callable[[Any], Optional[Any]]] = None,
     policy: Optional[SanitizePolicy] = None,
     removed_values: Iterable[str] = (),
     temp_dir: Optional[pathlib.Path] = None,
@@ -190,7 +276,10 @@ def export_document(
     kept_text = text_outside_redactions(src_doc)
     ex_doc, tmp = _open_copy(src_doc, temp_dir)
     try:
+        survivors_to_check: Dict[int, List[Dict[str, Any]]] = {}
         for page in ex_doc.pages():
+            if read_full is not None:
+                survivors_to_check[page.number] = _expected_deletions(page, read_full)
             if prepare_page is not None:
                 prepare_page(page)
             redact_rects = [
@@ -207,6 +296,9 @@ def export_document(
             # PDF_REDACT_IMAGE_PIXELS blanks only the pixels under each rect;
             # IMAGE_REMOVE would delete a whole scanned page for one word.
             page.apply_redactions(images=PDF_REDACT_IMAGE_PIXELS, graphics=True)
+            result.surviving_glyphs += _count_survivors(
+                page, survivors_to_check.get(page.number, [])
+            )
             if finish_page is not None:
                 # Text drawn after the redactions are applied: placeholders
                 # must not go through apply_redactions(), which silently
@@ -233,6 +325,10 @@ def export_document(
                 pass
     result.output_sha256 = sha256_of(out_path)
     result.verification = verify_export(out_path, removed_values, kept_text)
+    if result.surviving_glyphs:
+        result.verification.add(
+            f"{result.surviving_glyphs} glyph(s) survived redaction"
+        )
     return result
 
 

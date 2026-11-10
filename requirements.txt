@@ -12,6 +12,9 @@ PyMuPDF==2.1
 presidio-analyzer==2.2.366
 spacy==3.8.18
 cryptography==50.0.2
+# OS keyring (macOS Keychain / Linux Secret Service) for the local master key;
+# Windows uses DPAPI instead, so it is not installed there.
+keyring==25.7.0; sys_platform != "win32"
 # spaCy language models (pinned to exact versions for reproducibility)
 # IMPORTANT: model minor version MUST match the spaCy core minor version
 # (spaCy 3.8.x <-> models 3.8.x). The models declare spacy>=3.8.0,<3.9.0.

@@ -452,3 +452,16 @@ def test_known_surname_helps_a_two_word_name_but_never_rejects():
     text2 = "Il referto di Gianpiero Qwertyuiop"
     _i, cands2, _ = _run(text2, [res("PERSON", text2, "Gianpiero Qwertyuiop")])
     assert cands2 and cands2[0].state in ("accepted", "suggested")  # absence is not a reason to reject
+
+
+def test_wikidata_names_confirm_but_ambiguous_ones_do_not():
+    import lexicon_data_it as d
+
+    unambiguous = sorted(d.NAMES_SURNAMES - d.NAMES_AMBIGUOUS)
+    assert unambiguous and lexicon_it.is_known_surname(unambiguous[0])
+    ambiguous = sorted(d.NAMES_AMBIGUOUS & d.NAMES_SURNAMES)
+    assert ambiguous and not lexicon_it.is_known_surname(ambiguous[0]) or ambiguous[0] in lexicon_it.SURNAMES
+    assert not lexicon_it.is_known_surname("zzqxv")
+    assert "Wikidata" in open(
+        __import__("pathlib").Path(__file__).resolve().parent.parent / "THIRD_PARTY_NOTICES.md",
+        encoding="utf-8").read()
