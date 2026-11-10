@@ -133,7 +133,7 @@ PDF_ANNOT_REDACT: int = fitz.PDF_ANNOT_REDACT  # type: ignore[attr-defined]
 PDF_REDACT_IMAGE_PIXELS: int = fitz.PDF_REDACT_IMAGE_PIXELS  # type: ignore[attr-defined]
 
 __version__ = "2.4.0"
-__version_prerelease__ = "beta.2"
+__version_prerelease__ = "beta.3"
 APP_VERSION = (
     f"{__version__}-{__version_prerelease__}"
     if __version_prerelease__

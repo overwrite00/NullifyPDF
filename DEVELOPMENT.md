@@ -462,7 +462,7 @@ isort NullifyPDF.py
 | `word_lists.py`    | Encrypted blocklist/allowlist with expiry |
 | `dictionary_dialog.py` | Dictionary editor dialog |
 | `help_guide.py` | In-app guide and tooltip table (keep the guide in sync with the UI: `tests/test_gui_help.py` checks it) |
-| `scripts/build_lexicon_data.py` | Generates `lexicon_data_it.py` from ISTAT open data (development only) |
+| `scripts/build_lexicon_data.py` | Generates `lexicon_data_it.py` from ISTAT open data and (with `--wikidata`) Wikidata names; development only |
 | `setup_env.py`     | Environment setup |
 | `build_local.py`   | PyInstaller build |
 | `PDF_Checker.py`   | Post-processing utility |
