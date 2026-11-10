@@ -845,3 +845,77 @@ def test_recovery_wrap_is_kept_even_if_the_dialog_is_closed_without_ticking(wind
     monkeypatch.setattr(QDialog, "exec", lambda self: QDialog.DialogCode.Rejected)
     raw = w._offer_recovery_key()
     assert isinstance(raw, bytes) and len(raw) == 32
+
+
+# --- labels on image / signature areas survive small boxes -------------------------------
+
+def _tiny_area_doc(w, height):
+    w.doc.close()
+    d = pymupdf.open()
+    pg = d.new_page()
+    pg.insert_text((72, 100), "Testo normale", fontsize=11)
+    pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 40, 40), False)
+    pix.set_rect(pix.irect, (10, 10, 10))
+    pg.insert_image(pymupdf.Rect(300, 300, 300 + 24, 300 + height), pixmap=pix)
+    w.doc = d
+    w.chk_img.setChecked(True)
+    w.apply_ai_to_page(0, [])
+
+
+@pytest.mark.parametrize("height", [3, 6, 20])
+@pytest.mark.parametrize("mode", [PrivacyMode.ANONYMIZE, PrivacyMode.PSEUDONYMIZE])
+def test_image_label_is_kept_even_in_a_tiny_box(window, tmp_path, monkeypatch, height, mode):
+    w = window
+    _tiny_area_doc(w, height)
+    assert len(_redacts(w)) == 1
+    out = tmp_path / "i.pdf"
+    files = [str(out)] + ([str(tmp_path / "m.nullifypdf-map")] if mode == PrivacyMode.PSEUDONYMIZE else [])
+    _stub_dialogs(monkeypatch, files)
+    monkeypatch.setattr(w, "_select_privacy_export", lambda: mode)
+    monkeypatch.setattr(w, "_select_pseudonym_style", lambda: ("random", None))
+    monkeypatch.setattr(w, "_ask_map_password", lambda: "una frase molto lunga 2026")
+    monkeypatch.setattr(w, "_offer_recovery_key", lambda: None)
+    w.cmd_export()
+    pdf = pymupdf.open(str(out))
+    text = pdf[0].get_text()
+    pdf.close()
+    assert "Testo normale" in text
+    assert any(lab in text for lab in ("[IMMAGINE RIMOSSA]", "[IMMAGINE]", "[IMG]", "#")), text
+
+
+def test_signature_label_in_a_small_area(window, tmp_path, monkeypatch):
+    w = window
+    w.doc.close()
+    d = pymupdf.open()
+    d.new_page().insert_text((72, 100), "Testo", fontsize=11)
+    w.doc = d
+    w._add_kind_redaction(d[0], pymupdf.Rect(200, 200, 212, 204), "SIGNATURE")
+    out = tmp_path / "s.pdf"
+    _stub_dialogs(monkeypatch, [str(out)])
+    monkeypatch.setattr(w, "_select_privacy_export", lambda: PrivacyMode.ANONYMIZE)
+    w.cmd_export()
+    pdf = pymupdf.open(str(out))
+    text = pdf[0].get_text()
+    pdf.close()
+    assert any(lab in text for lab in ("[FIRMA RIMOSSA]", "[FIRMA]", "[F]", "#")), text
+
+
+def test_export_through_the_app_reports_no_survivor_for_clamped_bands(window, tmp_path, monkeypatch):
+    w = window
+    _tight_doc(w, 8.0)
+    w.apply_ai_to_page(0, [_detection(w, "Alessandro", "PERSON", "accepted")])
+    out = tmp_path / "c.pdf"
+    _stub_dialogs(monkeypatch, [str(out)])
+    monkeypatch.setattr(w, "_select_privacy_export", lambda: PrivacyMode.ANONYMIZE)
+    seen = {}
+    import export_engine as ee
+    real = ee.export_document
+
+    def spy(*a, **k):
+        r = real(*a, **k)
+        seen["r"] = r
+        return r
+
+    monkeypatch.setattr(app, "export_document", spy)
+    w.cmd_export()
+    assert seen["r"].surviving_glyphs == 0 and seen["r"].verification.ok

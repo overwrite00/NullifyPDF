@@ -201,11 +201,21 @@ SURNAMES: FrozenSet[str] = frozenset(
 
 
 def is_known_surname(token: str) -> bool:
-    return token.strip().lower().strip(".,;:") in SURNAMES
+    key = token.strip().lower().strip(".,;:")
+    if key in SURNAMES:
+        return True
+    d = _data()
+    return bool(d and hasattr(d, "NAMES_SURNAMES") and key in d.NAMES_SURNAMES
+                and key not in d.NAMES_AMBIGUOUS)
 
 
 def is_given_name(token: str) -> bool:
-    return token.strip().lower().strip(".,;:") in GIVEN_NAMES
+    key = token.strip().lower().strip(".,;:")
+    if key in GIVEN_NAMES:
+        return True
+    d = _data()
+    return bool(d and hasattr(d, "NAMES_GIVEN") and key in d.NAMES_GIVEN
+                and key not in d.NAMES_AMBIGUOUS)
 
 
 @functools.lru_cache(maxsize=1)

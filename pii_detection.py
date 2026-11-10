@@ -1150,6 +1150,53 @@ def detect_address_parts(
     return out
 
 
+# --- glyph deletion rule (shared by the app and the export checks) -----------
+
+def glyph_core(bbox: Rect4) -> Rect4:
+    """The part of a character box that decides whether a redaction deletes it.
+
+    Measured on PyMuPDF 2.1 (MuPDF 1.28): a glyph is removed when the
+    redaction rectangle intersects its box shrunk by 10% of its width on
+    each side and 10% of its height at top and bottom.
+    """
+    x0, y0, x1, y1 = bbox
+    dx, dy = (x1 - x0) * GLYPH_CORE_INSET, (y1 - y0) * GLYPH_CORE_INSET
+    return (x0 + dx, y0 + dy, x1 - dx, y1 - dy)
+
+
+def core_hits(bbox: Rect4, rect: Any) -> bool:
+    c = glyph_core(bbox)
+    return c[0] < rect.x1 and c[2] > rect.x0 and c[1] < rect.y1 and c[3] > rect.y0
+
+
+def target_chars(page: Any, full: Any) -> List[Dict[str, Any]]:
+    """Characters of the line a word box was taken from (single baseline)."""
+    try:
+        blocks = page.get_text("rawdict", clip=full).get("blocks", [])
+    except Exception:
+        return []
+    chars: List[Tuple[float, Dict[str, Any]]] = []
+    for block in blocks:
+        if block.get("type") != 0:
+            continue
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                for ch in span.get("chars", []):
+                    if not str(ch.get("c", "")).strip():
+                        continue
+                    bx0, by0, bx1, by1 = ch["bbox"]
+                    cx, cy = (bx0 + bx1) / 2, (by0 + by1) / 2
+                    if full.x0 <= cx <= full.x1 and full.y0 <= cy <= full.y1:
+                        chars.append((round(float(ch["origin"][1]), 1), ch))
+    if not chars:
+        return []
+    centre = (full.y0 + full.y1) / 2
+    bases = {b for b, _ in chars}
+    inside = [b for b in bases if full.y0 <= b <= full.y1] or list(bases)
+    base = min(inside, key=lambda b: abs(b - centre))
+    return [ch for b, ch in chars if b == base]
+
+
 # --- geometry policy -------------------------------------------------------
 
 def span_word_indices(

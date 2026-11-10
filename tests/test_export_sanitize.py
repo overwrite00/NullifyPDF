@@ -383,3 +383,93 @@ def test_text_outside_redactions_uses_the_deletion_core():
     page.add_redact_annot(pymupdf.Rect(x0 - 2, y0, x0 + (x1 - x0) * 0.25, y1))
     kept = text_outside_redactions(doc)
     assert "Alessandro" not in kept and "resta" in kept
+
+
+# --- post-apply glyph survival check ----------------------------------------------
+
+def _doc_with_word_and_band(band_fraction):
+    import json as _json
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "Riga ABCDEFGH fine", fontsize=11)
+    x0, y0, x1, y1 = [w for w in page.get_text("words") if w[4] == "ABCDEFGH"][0][:4]
+    band = pymupdf.Rect(x0, y0, x0 + (x1 - x0) * band_fraction, y1)
+    annot = page.add_redact_annot(band)
+    annot.set_info(content=_json.dumps({
+        "nullifypdf": 1, "original": "ABCDEFGH", "entity_type": "PERSON",
+        "full": [x0, y0, x1, y1],
+    }))
+    return doc
+
+
+def _read_full(annot):
+    import json as _json
+
+    try:
+        d = _json.loads(annot.info.get("content", ""))
+        return pymupdf.Rect(*d["full"]) if d.get("full") else None
+    except Exception:
+        return None
+
+
+def test_a_band_that_misses_glyphs_is_reported(tmp_path):
+    doc = _doc_with_word_and_band(0.5)
+    result = export_document(doc, str(tmp_path / "o.pdf"), read_full=_read_full)
+    assert result.surviving_glyphs >= 3
+    assert not result.verification.ok
+    assert any("survived redaction" in f for f in result.verification.findings)
+    assert "ABCD" not in " ".join(result.verification.findings)  # never repeats the value
+
+
+def test_a_band_covering_the_word_reports_nothing(tmp_path):
+    doc = _doc_with_word_and_band(1.0)
+    result = export_document(doc, str(tmp_path / "o.pdf"), read_full=_read_full,
+                             removed_values=["ABCDEFGH"])
+    assert result.surviving_glyphs == 0 and result.verification.ok, result.verification.findings
+
+
+def test_survivor_check_is_inactive_without_a_stored_full_box(tmp_path):
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "ABCDEFGH", fontsize=11)
+    page.add_redact_annot(pymupdf.Rect(72, 90, 80, 110))  # manual box, no `full`
+    result = export_document(doc, str(tmp_path / "o.pdf"), read_full=_read_full)
+    assert result.surviving_glyphs == 0
+
+
+def test_survivor_alignment_survives_mupdf_moving_the_remaining_text(tmp_path):
+    """The rest of the line is rewritten and shifted; positions are not reliable."""
+    doc = _doc_with_word_and_band(0.5)
+    result = export_document(doc, str(tmp_path / "o.pdf"), read_full=_read_full)
+    assert result.surviving_glyphs == 4  # E, F, G, H
+
+
+def test_repeated_words_on_the_line_are_not_false_survivors(tmp_path):
+    import json as _json
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "Maria Mario Maria", fontsize=11)
+    x0, y0, x1, y1 = [w for w in page.get_text("words") if w[4] == "Mario"][0][:4]
+    annot = page.add_redact_annot(pymupdf.Rect(x0, y0, x1, y1))
+    annot.set_info(content=_json.dumps({
+        "nullifypdf": 1, "original": "Mario", "entity_type": "PERSON",
+        "full": [x0 - 1, y0, x1 + 1, y1],
+    }))
+    result = export_document(doc, str(tmp_path / "o.pdf"), read_full=_read_full)
+    assert result.surviving_glyphs == 0
+
+
+def test_rule_deviation_is_reported(tmp_path, monkeypatch):
+    """If a PyMuPDF release stops deleting what the rule predicts, the export says so."""
+    import export_engine as ee
+
+    doc = _doc_with_word_and_band(1.0)
+    real = ee.PDF_REDACT_IMAGE_PIXELS
+    orig_apply = pymupdf.Page.apply_redactions
+    monkeypatch.setattr(pymupdf.Page, "apply_redactions", lambda self, *a, **k: 0)  # deletes nothing
+    result = export_document(doc, str(tmp_path / "o.pdf"), read_full=_read_full)
+    monkeypatch.setattr(pymupdf.Page, "apply_redactions", orig_apply)
+    assert real is not None
+    assert result.surviving_glyphs >= 8 and not result.verification.ok

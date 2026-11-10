@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✨ Added
 
+- **User guide in the program**: a new "Guida" button (or F1) opens a guide in Italian that explains the whole workflow: opening a PDF, language and options, Auto Redact, review of suggestions, manual corrections, dictionaries, export modes, reconstruction, health documents, local data and shortcuts.
+- **Tooltips on every element**: all buttons, options, fields, tables and indicators of the main window and of the dialogs now show a short description when the pointer rests on them.
+- **Check after redaction for surviving characters**: besides searching the written file, the export now checks that every character of a redacted word was really deleted, and reports it (without the value) if one was not.
 - **Check for updates**: the Info dialog has a new "Controlla aggiornamenti" button. It queries the GitHub releases of this repository (on click, or at startup only if you enabled the opt-in startup check) and, if a newer version exists, shows the release link, the release notes and a **Download** button that saves the installer for the running OS into the user's system Downloads folder (resolved per platform), verifying its size and the SHA-256 published by GitHub. Linux distributions outside the Debian/Ubuntu and Fedora/RHEL families only get the release link. Stable builds are only offered newer stable releases; beta builds are offered both stable and beta releases.
 - **Optional check at every start**: a "Controlla ad ogni avvio" checkbox in the Info dialog (off by default, stored in `~/.nullifypdf/update_check.json`) runs the same check silently at startup and opens the update window, with the release notes, only when a newer version exists. Failures are logged, never shown.
 - **Repository link in the Info dialog**.
@@ -24,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Signature and stamp suggestions**: with the health-document profile, curve-rich ink and small images next to "firma", "timbro", "il medico"... are proposed for review (never applied automatically).
 - **Postcodes and house numbers**: a street and its house number are redacted as one address, and postcodes are recognised only in an address context (never in prices, dates or quantities). Health card number, prescription number (NRE) and exemption codes follow the published structure (length, region code, lot code); the check digit is not verified, and the prescription number and exemption codes need their label.
 - **Suggestions in the page preview**: pending suggestions are outlined in orange on the page (view only; they never reach an export). Click one to censor or discard it; selecting a row in the review dialog highlights it.
+- **Given names and surnames from Wikidata** (CC0): a few hundred given names and about one thousand surnames are used to confirm names, never to reject them; names that are also ordinary words count less. Coverage is small.
 - **ISTAT place names**: Italian municipalities, provinces and regions (ISTAT open data, CC BY 4.0) are used to confirm places; a place missing from the list is never rejected for that reason.
 - **Export audit record** in `~/.nullifypdf/audit/` (counts per type, sanitiser actions, verification result, output SHA-256; no personal data), and an "Elimina dati locali" button that wipes logs, audit records and temporary files.
 
@@ -43,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Placeholders were silently dropped in small boxes**: the placeholder is now drawn after the redactions are applied, with a compact form ("P9F2A", "9F2A") when the full one does not fit, so short words keep a visible placeholder. Restore maps are version 4 (version 1-3 maps still load).
 - **Restore wrote neighbouring text back**: the typography captured for a redaction could include fragments of the lines above and below when the leading was tight; only the redacted line is captured, and the restore writes the original value.
 - **Wipe of local data left the active log file**, and "Oscura Immagini" added duplicate image redactions on every apply.
+- **Labels on images and signatures survive small boxes**: the "[IMMAGINE RIMOSSA]" / "[FIRMA RIMOSSA]" labels are drawn after the redactions, with shorter forms when the area is small, instead of being dropped.
+- **Master key in the system keyring on macOS and Linux**: when a keyring is available the encryption key of the dictionaries is stored there instead of in a local key file (Windows keeps using DPAPI).
 - **Local logs are rotated** (512 KiB, 3 files, 30 days) instead of growing indefinitely.
 - **Redacted text could remain in the PDF content stream**: with PyMuPDF 1.28.x, `apply_redactions()` did not remove text drawn with the `'` operator after `TL`/`Td`; the text disappeared from the extracted text but was still stored in the file. Fixed by PyMuPDF 2.x; covered by a regression test that scans every stream of the exported file.
 

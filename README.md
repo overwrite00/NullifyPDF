@@ -37,6 +37,7 @@ NullifyPDF goes beyond simple text covering. It uses **Natural Language Processi
 - 🗄️ **Fluid UI & Thread-Safe** — PySide6 modern dark-mode interface with zero UI freezing. Text extraction in worker thread with QMutex serialization
 - 📖 **Persistent Dictionaries** — Blocklist and Allowlist synchronized to disk (`~/.nullifypdf`) with O(1) fast-path matching
 - 🛡️ **Privacy Export Modes** — Choose irreversible removal or reversible pseudonymization with a separately encrypted restore map; the exported file is sanitised (annotations, attachments, scripts, metadata, hidden text) and verified
+- 📖 **Built-in guide and tooltips** — Press F1 for an Italian guide to every function; every control shows a description on hover
 - 🔍 **Review of uncertain hits** — Detections without enough evidence are suggested for review instead of being applied or lost silently
 - 🔎 **OCR Support** — Bundled EN/IT Tesseract language data for scanned PDFs
 - 🖼️ **Blindfold Mode** — One-click image/logo censoring with professional placeholder: `[ IMAGE REMOVED ]`
@@ -263,5 +264,5 @@ Want to help improve NullifyPDF? See [CONTRIBUTING.md](./CONTRIBUTING.md) for gu
 
 ---
 
-*Last updated: 2026-11-08*  
+*Last updated: 2026-11-10*  
 *[User Guide →](./USER_GUIDE.md)*

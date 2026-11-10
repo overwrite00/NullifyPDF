@@ -95,7 +95,7 @@ jobs:
 
       - name: Type Check (mypy)
         shell: bash
-        run: mypy NullifyPDF.py pii_detection.py privacy_core.py update_check.py PDF_Checker.py export_engine.py pdf_sanitize.py review_dialog.py lexicon_it.py secure_store.py word_lists.py dictionary_dialog.py
+        run: mypy NullifyPDF.py pii_detection.py privacy_core.py update_check.py PDF_Checker.py export_engine.py pdf_sanitize.py review_dialog.py lexicon_it.py secure_store.py word_lists.py dictionary_dialog.py help_guide.py
 
       - name: Build
         run: python build_local.py

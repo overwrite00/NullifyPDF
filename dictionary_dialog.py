@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from help_guide import apply_tooltips
 from word_lists import ListEntry, PDFListManager, MIN_TERM_LENGTH
 
 TTL_CHOICES = [("Mai", None), ("30 giorni", 30), ("90 giorni", 90),
@@ -50,6 +51,7 @@ class DictionaryDialog(QDialog):
         self.saved_allowlist: Optional[set] = None
         lay = QVBoxLayout(self)
         self.status = QLabel(manager.protector_label())
+        self.status.setObjectName("dict_status")
         lay.addWidget(self.status)
         if manager.keystore_error:
             warn = QLabel(
@@ -60,6 +62,7 @@ class DictionaryDialog(QDialog):
             warn.setStyleSheet("color: #f59e0b;")
             lay.addWidget(warn)
         self.tabs = QTabWidget()
+        self.tabs.setObjectName("dict_tabs")
         self.tables: Dict[str, QTableWidget] = {}
         for kind, title in KINDS:
             tab = QWidget()
@@ -68,6 +71,8 @@ class DictionaryDialog(QDialog):
             table.setHorizontalHeaderLabels(["Termine", "Aggiunto il", "Scade il (AAAA-MM-GG)"])
             table.horizontalHeader().setStretchLastSection(True)
             table.setColumnWidth(COL_TERM, 260)
+            table.setObjectName("dict_table")
+            table.verticalHeader().setVisible(False)
             self.tables[kind] = table
             tl.addWidget(table)
             row = QHBoxLayout()
@@ -90,6 +95,7 @@ class DictionaryDialog(QDialog):
         ttl_row = QHBoxLayout()
         ttl_row.addWidget(QLabel("Scadenza predefinita dei nuovi termini:"))
         self.ttl = QComboBox()
+        self.ttl.setObjectName("dict_ttl")
         current = manager.default_ttl_days()
         for i, (label, days) in enumerate(TTL_CHOICES):
             self.ttl.addItem(label, days)
@@ -102,6 +108,7 @@ class DictionaryDialog(QDialog):
         btn.setObjectName("Primary")
         btn.clicked.connect(self.save)
         lay.addWidget(btn)
+        apply_tooltips(self)
 
     def _on_button(self) -> None:
         sender = self.sender()

@@ -393,11 +393,12 @@ def build_app() -> None:
 
     if sys_os == "Darwin":
         spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
+import sys
 from PyInstaller.utils.hooks import collect_all
 datas = {datas_literal}
 binaries = []
 hiddenimports = ['spacy', 'presidio_analyzer', 'lexicon_data_it']
-for pkg in ['presidio_analyzer', 'spacy', 'tldextract', 'en_core_web_md', 'it_core_news_md']:
+for pkg in ['presidio_analyzer', 'spacy', 'tldextract', 'en_core_web_md', 'it_core_news_md'] + (['keyring'] if sys.platform != 'win32' else []):
     t = collect_all(pkg)
     datas += t[0]; binaries += t[1]; hiddenimports += t[2]
 
@@ -409,11 +410,12 @@ app = BUNDLE(coll, name='NullifyPDF.app', icon={icon_str}, bundle_identifier='co
 """
     else:
         spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
+import sys
 from PyInstaller.utils.hooks import collect_all
 datas = {datas_literal}
 binaries = []
 hiddenimports = ['spacy', 'presidio_analyzer', 'lexicon_data_it']
-for pkg in ['presidio_analyzer', 'spacy', 'tldextract', 'en_core_web_md', 'it_core_news_md']:
+for pkg in ['presidio_analyzer', 'spacy', 'tldextract', 'en_core_web_md', 'it_core_news_md'] + (['keyring'] if sys.platform != 'win32' else []):
     t = collect_all(pkg)
     datas += t[0]; binaries += t[1]; hiddenimports += t[2]
 
