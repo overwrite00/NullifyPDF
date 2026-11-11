@@ -94,15 +94,15 @@ class TestResourcePath:
 class TestOcrConfiguration:
     """Test OCR configuration helpers."""
 
-    def test_ocr_language_without_tessdata_uses_requested_languages(self):
-        assert ocr_language_for_choice("EN", None) == "eng"
+    def test_ocr_language_without_tessdata_is_italian(self):
         assert ocr_language_for_choice("IT", None) == "ita"
-        assert ocr_language_for_choice("BOTH", None) == "eng+ita"
 
     def test_ocr_language_filters_to_installed_languages(self, tmp_path):
+        assert ocr_language_for_choice("IT", str(tmp_path)) == "ita"
         (tmp_path / "eng.traineddata").write_text("placeholder", encoding="utf-8")
-
-        assert ocr_language_for_choice("BOTH", str(tmp_path)) == "eng"
+        assert ocr_language_for_choice("IT", str(tmp_path)) == "eng"
+        (tmp_path / "ita.traineddata").write_text("placeholder", encoding="utf-8")
+        assert ocr_language_for_choice("IT", str(tmp_path)) == "ita+eng"
 
     def test_find_tessdata_dir_reads_environment(self, tmp_path, monkeypatch):
         (tmp_path / "ita.traineddata").write_text("placeholder", encoding="utf-8")

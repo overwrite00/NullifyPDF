@@ -207,7 +207,7 @@ Name: nullify-pdf
 Version: {version}
 Release: {rpm_release(prerelease)}
 Summary: PDF Anonymization Tool
-License: MIT
+License: AGPL-3.0-or-later
 URL: https://github.com/overwrite00/NullifyPDF
 BuildArch: x86_64
 {requires}
@@ -398,11 +398,11 @@ from PyInstaller.utils.hooks import collect_all
 datas = {datas_literal}
 binaries = []
 hiddenimports = ['spacy', 'presidio_analyzer', 'lexicon_data_it', 'onnxruntime', 'tokenizers']
-for pkg in ['presidio_analyzer', 'spacy', 'tldextract', 'en_core_web_md', 'it_core_news_md', 'onnxruntime', 'tokenizers'] + (['keyring'] if sys.platform != 'win32' else []):
+for pkg in ['presidio_analyzer', 'spacy', 'tldextract', 'onnxruntime', 'tokenizers'] + (['keyring'] if sys.platform != 'win32' else []):
     t = collect_all(pkg)
     datas += t[0]; binaries += t[1]; hiddenimports += t[2]
 
-a = Analysis(['NullifyPDF.py'], datas=datas, hiddenimports=hiddenimports)
+a = Analysis(['NullifyPDF.py'], datas=datas, hiddenimports=hiddenimports, excludes=['it_core_news_md', 'pymupdf4llm', 'pymupdf_layout', 'pymupdf.layout'])
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='NullifyPDF', debug=False, console=False, icon={icon_str})
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=True, upx_exclude=[], name='NullifyPDF')
@@ -415,11 +415,11 @@ from PyInstaller.utils.hooks import collect_all
 datas = {datas_literal}
 binaries = []
 hiddenimports = ['spacy', 'presidio_analyzer', 'lexicon_data_it', 'onnxruntime', 'tokenizers']
-for pkg in ['presidio_analyzer', 'spacy', 'tldextract', 'en_core_web_md', 'it_core_news_md', 'onnxruntime', 'tokenizers'] + (['keyring'] if sys.platform != 'win32' else []):
+for pkg in ['presidio_analyzer', 'spacy', 'tldextract', 'onnxruntime', 'tokenizers'] + (['keyring'] if sys.platform != 'win32' else []):
     t = collect_all(pkg)
     datas += t[0]; binaries += t[1]; hiddenimports += t[2]
 
-a = Analysis(['NullifyPDF.py'], datas=datas, hiddenimports=hiddenimports)
+a = Analysis(['NullifyPDF.py'], datas=datas, hiddenimports=hiddenimports, excludes=['it_core_news_md', 'pymupdf4llm', 'pymupdf_layout', 'pymupdf.layout'])
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, a.binaries, a.datas, name='NullifyPDF', debug=False, console=False, icon={icon_str})
 """

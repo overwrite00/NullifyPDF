@@ -16,7 +16,7 @@ Before starting, verify you have:
 | **Python 3.13**         | 150 MB  | [Download](https://www.python.org/downloads/) |
 | **Git**                 | 50 MB   | [Download](https://git-scm.com/)              |
 | **Virtual Environment** | 2 GB    | `.venv/` auto-created by setup script         |
-| **Disk Space**          | 3 GB    | Dependencies + spaCy models                   |
+| **Disk Space**          | 3 GB    | Dependencies + Italian model                  |
 | **RAM**                 | 4 GB    | 8 GB recommended                              |
 
 ---
@@ -51,7 +51,7 @@ python setup_env.py
 This automatically:
 - ✅ Creates `.venv/` virtual environment
 - ✅ Installs dependencies
-- ✅ Downloads spaCy models (EN + IT)
+- ✅ Installs the Italian spaCy model (development only)
 
 ### 4️⃣ Activate Virtual Environment
 
@@ -151,14 +151,18 @@ NullifyPDF/
 | **python-docx**       | —       | Not required; DOCX import uses the standard-library OOXML reader |
 | **pytest**            | 9.2.0   | Testing framework            |
 
-### Language Models (Auto-Downloaded)
+### Language Models
 
-| Model             | Size  | Purpose     |
-| ----------------- | ----- | ----------- |
-| `en_core_web_md`  | 40 MB | English NER |
-| `it_core_news_md` | 45 MB | Italian NER |
+| Model             | Size  | Purpose     | Licence | In the installer |
+| ----------------- | ----- | ----------- | ------- | ---------------- |
+| `it_core_news_md` | 45 MB | Italian NER | CC BY-NC-SA 3.0 | **no**, downloaded by the app on demand (`spacy_models.py`) |
 
-These are downloaded automatically by `setup_env.py`.
+`setup_env.py` installs both in the development environment (the Italian tests
+need it). The PyInstaller specs exclude `it_core_news_md`, `pymupdf4llm` and
+`pymupdf.layout`. At run time the app asks for consent, downloads the Italian
+pipeline from the publisher's release, checks its size and SHA-256 and stores it
+under `~/.nullifypdf/spacy_models/`. If the user declines, a blank Italian
+pipeline is used and only rule-based detection is available.
 
 ---
 

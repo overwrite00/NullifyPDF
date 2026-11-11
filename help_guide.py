@@ -40,10 +40,7 @@ from PySide6.QtWidgets import (
 TOOLTIPS: Dict[str, str] = {
     # Sidebar
     "Apri PDF": "Apre un file PDF da elaborare. Puoi anche trascinarlo sulla finestra.",
-    "Modello lingua:": "Lingua dei modelli di riconoscimento dei dati personali.",
-    "EN": "Usa il modello inglese. Adatto a documenti in inglese.",
-    "IT": "Usa il modello italiano. Consigliato per documenti in italiano: il modello inglese aggiunge falsi positivi.",
-    "BOTH": "Usa entrambi i modelli (inglese e italiano). Più lento; utile per documenti misti.",
+    "Lingua dei documenti: italiano": "NullifyPDF analizza documenti in italiano. Il modello italiano viene scaricato, dopo il tuo consenso, al primo utilizzo.",
     "Oscura Immagini": "Oscura anche tutte le immagini della pagina (loghi, firme, foto) quando applichi Auto Redact.",
     "OCR PDF scansionati": "Legge con l'OCR le pagine scansionate e le immagini incorporate, così anche il testo nelle immagini viene analizzato.",
     "Mostra suggerimenti": "Contorna in arancione, nell'anteprima, i suggerimenti ancora da rivedere. Servono solo a video: non finiscono nel file esportato.",
@@ -256,7 +253,7 @@ GUIDE_TOPICS: List[Tuple[str, str]] = [
 """),
     ("Lingua e opzioni", """
 <h2>Lingua e opzioni</h2>
-<p><b>Modello lingua</b>: <b>IT</b> per documenti italiani (consigliato: il modello inglese su testo italiano aggiunge falsi positivi), <b>EN</b> per l'inglese, <b>BOTH</b> per documenti misti. All'avvio viene scelto IT se il sistema è in italiano.</p>
+<p><b>Lingua</b>: il programma analizza documenti in italiano. Il modello italiano non è incluso nell'installer (licenza non commerciale): al primo utilizzo il programma mostra la licenza e chiede il consenso per scaricarlo.</p>
 <ul>
 <li><b>Oscura Immagini</b>: censura anche tutte le immagini (loghi, foto, firme) quando applichi Auto Redact.</li>
 <li><b>OCR PDF scansionati</b>: legge con l'OCR le pagine scansionate e le immagini incorporate nelle pagine di testo. Richiede i dati di Tesseract (inclusi nei pacchetti).</li>
@@ -366,7 +363,7 @@ GUIDE_TOPICS: List[Tuple[str, str]] = [
 """),
     ("Info e aggiornamenti", """
 <h2>Info e aggiornamenti</h2>
-<p>La finestra <b>Info</b> mostra la versione e il collegamento al repository. <b>Controlla aggiornamenti</b> interroga le release pubblicate su GitHub; con <i>Controlla ad ogni avvio</i> (disattivato di default) il controllo è eseguito all'avvio e mostra qualcosa solo se esiste una versione più recente.</p>
+<p>La finestra <b>Info</b> mostra la versione e il collegamento al repository. Elenca anche la licenza del programma (AGPL-3.0-or-later) e quella di ogni componente e modello usato, con i collegamenti ai testi ufficiali. <b>Controlla aggiornamenti</b> interroga le release pubblicate su GitHub; con <i>Controlla ad ogni avvio</i> (disattivato di default) il controllo è eseguito all'avvio e mostra qualcosa solo se esiste una versione più recente.</p>
 """),
     ("Scorciatoie", """
 <h2>Scorciatoie</h2>

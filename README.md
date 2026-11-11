@@ -125,7 +125,7 @@ No installation needed on Windows/macOS - just run or unzip. Linux users can ins
    This script automatically:
    - Creates isolated virtual environment (`.venv`)
    - Installs all dependencies
-   - Downloads spaCy language models (EN/IT)
+   - Installs the Italian spaCy model for development (the installer downloads it on demand)
 
 4. **Activate environment & launch**
 
@@ -158,7 +158,7 @@ python setup_env.py
 - Detects OS (Windows/macOS/Linux)
 - Creates `.venv` with Python 3.13
 - Installs `requirements.txt` dependencies
-- Downloads spaCy models (English, Italian, both)
+- Installs the Italian spaCy model for development (the installer does not bundle it)
 
 **Automatic OS detection:**
 - Windows: Uses `py -3.13` launcher
@@ -253,11 +253,43 @@ See [SECURITY.md](./SECURITY.md) for responsible disclosure and privacy details.
 
 ## 📝 License
 
-**MIT License** — Free to use, modify, and distribute
+**GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)**
 
 Copyright (c) 2026 Graziano Mariella
 
-See [LICENSE](./LICENSE) for full text.
+NullifyPDF is free of charge and is not sold by its author. It is AGPL-licensed
+because it uses [PyMuPDF](https://pymupdf.readthedocs.io/), which is available
+under the AGPL-3.0 or a commercial licence from Artifex. Anyone who distributes
+the program, modified or not, must give the recipients the source code under the
+same licence. Releases up to v2.4.0-beta.4 were published under the MIT licence.
+
+The Italian name-recognition model (spaCy `it_core_news_md`, CC BY-NC-SA 3.0,
+non-commercial) is **not** part of the installer: the program offers to download
+it, shows its licence and asks for consent first. Licences of all third-party
+components are listed in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+
+**Notice.** NullifyPDF is free software, distributed under the AGPL-3.0-or-later. Every component and model it uses remains under its own licence, listed below with a link to the official text; using the program means respecting those conditions. The Italian spaCy model is for non-commercial use only and is downloaded only after your consent.
+
+| Component | Licence | Used for |
+|---|---|---|
+| [NullifyPDF](https://github.com/overwrite00/NullifyPDF/blob/main/LICENSE) | AGPL-3.0-or-later | this program |
+| [PyMuPDF / MuPDF](https://pymupdf.readthedocs.io/en/latest/about.html) | AGPL-3.0 or commercial (Artifex) | PDF reading and redaction |
+| [PySide6 / Qt](https://opensource.org/license/lgpl-3-0) | LGPL-3.0 | graphical interface |
+| [Presidio](https://github.com/microsoft/presidio/blob/main/LICENSE) | MIT | personal-data detection |
+| [spaCy](https://github.com/explosion/spaCy/blob/master/LICENSE) | MIT | language processing |
+| [spaCy it_core_news_md](https://creativecommons.org/licenses/by-nc-sa/3.0/) | CC BY-NC-SA 3.0 (non-commercial use only) | Italian model, downloaded after consent |
+| [onnxruntime](https://github.com/microsoft/onnxruntime/blob/main/LICENSE) | MIT | running local models |
+| [tokenizers](https://github.com/huggingface/tokenizers/blob/main/LICENSE) | Apache-2.0 | tokenizing for local models |
+| [cryptography](https://github.com/pyca/cryptography/blob/main/LICENSE) | Apache-2.0 or BSD-3-Clause | encryption |
+| [keyring](https://github.com/jaraco/keyring) | MIT | key storage (Linux/macOS) |
+| [tldextract](https://github.com/john-kurkowski/tldextract/blob/master/LICENSE) | BSD-3-Clause | URL recognition |
+| [NumPy](https://github.com/numpy/numpy/blob/main/LICENSE.txt) | BSD-3-Clause | numerical computing |
+| [Tesseract OCR](https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE) | Apache-2.0 | OCR of scanned documents |
+| [tessdata_fast (eng, ita)](https://github.com/tesseract-ocr/tessdata_fast/blob/main/LICENSE) | Apache-2.0 | OCR language data |
+| [ISTAT, elenco dei comuni](https://creativecommons.org/licenses/by/4.0/) | CC BY 4.0 | place names |
+| [Wikidata](https://creativecommons.org/publicdomain/zero/1.0/) | CC0 1.0 | given names and surnames |
+
+See [LICENSE](./LICENSE) for the full text.
 
 ---
 
