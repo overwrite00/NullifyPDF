@@ -158,7 +158,7 @@ python setup_env.py
 - Detects OS (Windows/macOS/Linux)
 - Creates `.venv` with Python 3.13
 - Installs `requirements.txt` dependencies
-- Downloads spaCy models (English, Italian, both)
+- Installs the Italian spaCy model for development (the installer does not bundle it)
 
 **Automatic OS detection:**
 - Windows: Uses `py -3.13` launcher
@@ -277,7 +277,6 @@ components are listed in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
 | [PySide6 / Qt](https://opensource.org/license/lgpl-3-0) | LGPL-3.0 | graphical interface |
 | [Presidio](https://github.com/microsoft/presidio/blob/main/LICENSE) | MIT | personal-data detection |
 | [spaCy](https://github.com/explosion/spaCy/blob/master/LICENSE) | MIT | language processing |
-| [spaCy en_core_web_md](https://github.com/explosion/spacy-models/releases/tag/en_core_web_md-3.8.0) | MIT | English model |
 | [spaCy it_core_news_md](https://creativecommons.org/licenses/by-nc-sa/3.0/) | CC BY-NC-SA 3.0 (non-commercial use only) | Italian model, downloaded after consent |
 | [onnxruntime](https://github.com/microsoft/onnxruntime/blob/main/LICENSE) | MIT | running local models |
 | [tokenizers](https://github.com/huggingface/tokenizers/blob/main/LICENSE) | Apache-2.0 | tokenizing for local models |

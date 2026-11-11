@@ -40,18 +40,12 @@ Only entries with a complete application manifest can be downloaded. The manifes
 
 ---
 
-## Step 2️⃣ — Configure AI Language
+## Step 2️⃣ — Language
 
-**Before scanning**, select your document's language from the left sidebar:
-
-| 🌐 Language | Use When                          |
-| ---------- | --------------------------------- |
-| **EN**     | Document is entirely in English   |
-| **IT**     | Document is entirely in Italian   |
-| **BOTH**   | Document contains mixed languages |
+NullifyPDF analyses **Italian** documents only; there is no language selector. The Italian name-recognition model is not part of the installer (its licence is non-commercial): the first time you run **Auto Redact** the program shows the licence, asks for your consent and downloads it. If you decline, the scan continues with rules and dictionaries only, which finds fewer names.
 
 > [!WARNING]
-> Wrong language = missed detections. Choose the exact language of your document.
+> Documents in other languages are not supported: names and places in them will be missed.
 
 ---
 

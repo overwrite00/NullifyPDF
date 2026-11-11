@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔄 Changed
 
+- **Italian only**: the English model and the EN/IT/BOTH selector are gone. The program analyses Italian documents; the sidebar shows "Lingua dei documenti: italiano". The English OCR data is still used, when installed, only to read English words inside Italian pages.
 - **Model download progress in the button**: in the local-models window the "Scarica modello" button now fills like a progress bar with the percentage, a second click cancels, the list and the Close button are locked while downloading, and the download no longer blocks the window. The empty grey button of the old progress window is gone.
 - **New licence: AGPL-3.0-or-later** (previously MIT), because the program uses PyMuPDF, which is AGPL-3.0 or commercial. The program stays free and is not sold. Full third-party licence list in `THIRD_PARTY_NOTICES.md`.
 - **Licence notice in the Info window and README**: the Info window now lists the licence of NullifyPDF and of every component and model it uses, with clickable links to the official texts.

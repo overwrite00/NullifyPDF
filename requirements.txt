@@ -22,7 +22,6 @@ keyring==25.7.0; sys_platform != "win32"
 # IMPORTANT: model minor version MUST match the spaCy core minor version
 # (spaCy 3.8.x <-> models 3.8.x). The models declare spacy>=3.8.0,<3.9.0.
 # These are cached by pip in GitHub Actions, significantly speeding up CI/CD
-en-core-web-md @ https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl
 # Development and CI only (tests of the Italian detectors). Licence CC BY-NC-SA 3.0:
 # NOT bundled in the installer (excluded in the PyInstaller spec); the app
 # downloads it on demand after the user accepts the licence (spacy_models.py).

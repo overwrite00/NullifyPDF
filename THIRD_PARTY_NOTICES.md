@@ -40,7 +40,6 @@ the pinned versions in `requirements.txt` and the publishers' pages.
 | PySide6 / Qt for Python | LGPL-3.0 (or GPL-3.0, commercial) | Used under the LGPL-3.0. Qt libraries are shipped unmodified; the full source and the build scripts of NullifyPDF are public, so anyone can rebuild the program against a different Qt. |
 | presidio-analyzer | MIT | |
 | spaCy, thinc | MIT | |
-| spaCy `en_core_web_md` 3.8.0 | MIT | Trained on OntoNotes 5, which the publisher (Explosion) declares as commercially licensed. |
 | spaCy `it_core_news_md` 3.8.0 | CC BY-NC-SA 3.0 | **Not bundled.** Downloaded by the user on request after showing the licence (non-commercial, attribution, share-alike). Sources: UD Italian ISDT (CC BY-NC-SA 3.0), WikiNER (CC BY 4.0), fastText vectors (CC0). Publisher: Explosion, https://github.com/explosion/spacy-models |
 | onnxruntime | MIT | |
 | tokenizers | Apache-2.0 | |

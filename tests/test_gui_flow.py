@@ -261,9 +261,9 @@ def test_wipe_local_data(window, monkeypatch):
     assert not (w.config_dir / "audit").exists()
 
 
-def test_default_language_follows_system_locale(window):
-    assert window.rb_it.isChecked() or window.rb_both.isChecked()
-    assert not window.rb_en.isChecked()
+def test_only_italian_is_offered(window):
+    assert not hasattr(window, "rb_en") and not hasattr(window, "rb_both")
+    assert "italiano" in window.lbl_lang.text()
 
 
 def test_worker_scan_end_to_end_with_real_italian_model(tmp_path, monkeypatch):

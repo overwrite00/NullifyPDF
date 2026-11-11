@@ -155,7 +155,6 @@ NullifyPDF/
 
 | Model             | Size  | Purpose     | Licence | In the installer |
 | ----------------- | ----- | ----------- | ------- | ---------------- |
-| `en_core_web_md`  | 40 MB | English NER | MIT     | yes              |
 | `it_core_news_md` | 45 MB | Italian NER | CC BY-NC-SA 3.0 | **no**, downloaded by the app on demand (`spacy_models.py`) |
 
 `setup_env.py` installs both in the development environment (the Italian tests

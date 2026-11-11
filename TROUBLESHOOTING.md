@@ -156,18 +156,9 @@ Names, emails, or other PII should be detected but aren't highlighted.
 
 ### Solution
 
-**Check 1 — Language Selection**
+**Check 1 — Language and model**
 
-Open sidebar. Is the correct language selected?
-
-| Language | Best For                         |
-| -------- | -------------------------------- |
-| **EN**   | English text only                |
-| **IT**   | Italian text only                |
-| **BOTH** | Mixed English + Italian (slower) |
-
-> [!WARNING]
-> Wrong language = **zero detection**. Test with a clear English name if unsure.
+NullifyPDF supports Italian documents only. Names are found by the Italian model, which is downloaded after your consent on the first Auto Redact. If you declined the download, only rules and dictionaries run and names may be missed: run Auto Redact again and accept the download.
 
 **Check 2 — Is It Searchable Text?**
 
@@ -219,7 +210,6 @@ The scan proposes plain words ("Certifico", "Prescrivo", section headings) or fr
 
 ### Solution
 
-- Use the **IT** language model (or **BOTH**) for Italian documents; the English model adds false hits on Italian text.
 - Uncertain hits appear in **Rivedi suggerimenti** instead of being applied: leave them unticked to discard them.
 - Add words you never want redacted to the allowlist (**Dizionari**); matching is by whole word.
 - If black boxes cover parts of the lines above or below the redacted word, update to a build that includes rectangle trimming and re-run the scan. With very tight line spacing (roughly half the font size or less) no safe band exists: a warning "interlinea molto stretta" is shown and neighbouring words can be damaged, never left unredacted.
@@ -486,5 +476,5 @@ The more details, the faster we can fix it! 🚀
 
 ---
 
-*Last updated: 2026-11-08*  
+*Last updated: 2026-11-11*  
 *← [User Guide](./USER_GUIDE.md) | [Development →](./DEVELOPMENT.md)*

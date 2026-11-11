@@ -25,7 +25,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QRadioButton,
     QCheckBox,
     QProgressBar,
     QProgressDialog,
@@ -36,7 +35,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QLineEdit,
-    QButtonGroup,
     QGraphicsRectItem,
     QMessageBox,
     QInputDialog,
@@ -55,7 +53,6 @@ from PySide6.QtGui import (
     QDropEvent,
 )
 from PySide6.QtCore import (
-    QLocale,
     Qt,
     QThread,
     QObject,
@@ -866,15 +863,19 @@ def find_tessdata_dir() -> Optional[str]:
 
 
 def ocr_language_for_choice(choice: str, tessdata_dir: Optional[str]) -> str:
-    """Map the UI language choice to installed Tesseract language codes."""
-    requested = ["eng", "ita"] if choice == "BOTH" else ["ita" if choice == "IT" else "eng"]
+    """Tesseract languages for the scan: Italian, plus English data if installed.
+
+    The program analyses Italian documents only; the English OCR data is kept
+    just so that English words and Latin-script terms inside them are read
+    well. `choice` is kept for API stability and must be "IT".
+    """
     if not tessdata_dir:
-        return "+".join(requested)
+        return "ita"
     available = [
-        lang for lang in requested
+        lang for lang in ("ita", "eng")
         if (pathlib.Path(tessdata_dir) / f"{lang}.traineddata").exists()
     ]
-    return "+".join(available or requested)
+    return "+".join(available or ["ita"])
 
 
 STYLESHEET = """
@@ -975,7 +976,7 @@ class AIWorker(QObject):
         Args:
             doc: PyMuPDF document (shared with UI thread, mutex-protected).
             doc_mutex: QMutex serializing access to `doc`.
-            choice: Language choice: 'EN', 'IT', or 'BOTH'.
+            choice: Language of the document; only 'IT' is supported.
             compiled_allowlist: Pre-compiled regex patterns to skip redaction.
             allowlist_set: Set of allowlist entries (lowercase) for O(1)
                 exact-match fast-path lookup before regex any() scan.
@@ -993,7 +994,7 @@ class AIWorker(QObject):
                 self.finished_sig.emit()
                 return
 
-            if choice not in ("EN", "IT", "BOTH"):
+            if choice != "IT":
                 self.log_sig.emit(f"ERRORE: Scelta lingua non valida: {choice}")
                 self.finished_sig.emit()
                 return
@@ -1006,7 +1007,7 @@ class AIWorker(QObject):
             if not isinstance(allowlist_set, set):
                 allowlist_set = set()
 
-            target_langs = ["en", "it"] if choice == "BOTH" else [choice.lower()]
+            target_langs = ["it"]
             ocr_language = ocr_language_for_choice(choice, tessdata_dir)
             if (
                 not self.analyzer
@@ -1018,13 +1019,7 @@ class AIWorker(QObject):
                 from presidio_analyzer.nlp_engine import NlpEngineProvider
                 from presidio_analyzer.predefined_recognizers import PhoneRecognizer
 
-                models = (
-                    [{"lang_code": "en", "model_name": "en_core_web_md"}]
-                    if "en" in target_langs
-                    else []
-                )
-                if "it" in target_langs:
-                    models.append({"lang_code": "it", "model_name": self.italian_model})
+                models = [{"lang_code": "it", "model_name": self.italian_model}]
                 provider = NlpEngineProvider(
                     nlp_configuration={"nlp_engine_name": "spacy", "models": models}
                 )
@@ -1540,22 +1535,9 @@ class NullifyPDF(QMainWindow):
         btn_open.clicked.connect(self.cmd_open)
         s_lay.addWidget(btn_open)
         s_lay.addSpacing(20)
-        s_lay.addWidget(QLabel("Modello lingua:"))
-        lang_lay = QHBoxLayout()
-        self.rb_en = QRadioButton("EN")
-        self.rb_it = QRadioButton("IT")
-        self.rb_both = QRadioButton("BOTH")
-        # Default to the interface language: running the English model on
-        # Italian text only adds false positives.
-        if QLocale.system().language() == QLocale.Language.Italian:
-            self.rb_it.setChecked(True)
-        else:
-            self.rb_both.setChecked(True)
-        self.lang_grp = QButtonGroup(self)
-        for rb in (self.rb_en, self.rb_it, self.rb_both):
-            self.lang_grp.addButton(rb)
-            lang_lay.addWidget(rb)
-        s_lay.addLayout(lang_lay)
+        self.lbl_lang = QLabel("Lingua dei documenti: italiano")
+        self.lbl_lang.setObjectName("language_label")
+        s_lay.addWidget(self.lbl_lang)
         s_lay.addSpacing(10)
         self.chk_img = QCheckBox("Oscura Immagini")
         s_lay.addWidget(self.chk_img)
@@ -2336,12 +2318,8 @@ class NullifyPDF(QMainWindow):
         c_allow = [
             (a, re.compile(r"\b" + re.escape(a) + r"\b")) for a in self.allowlist
         ]
-        lang = (
-            "EN"
-            if self.rb_en.isChecked()
-            else "IT" if self.rb_it.isChecked() else "BOTH"
-        )
-        if lang in ("IT", "BOTH") and not self._prepare_italian_model():
+        lang = "IT"
+        if not self._prepare_italian_model():
             self.btn_ai.setEnabled(True)
             return
         use_ocr = self.chk_ocr.isChecked()

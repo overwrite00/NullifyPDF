@@ -104,7 +104,7 @@ Export pipeline writes a cleaned PDF copy
 ### 🤖 AI Scan
 
 1. User clicks **Auto Redact** and, in a dialog, picks which data types to look for (names, locations, email, phone, IBAN, cards, crypto, fiscal code, VAT, licence, ID card, passport). The selection is remembered in `~/.nullifypdf/ai_entities.json`.
-2. User selects language (`EN`, `IT`, or `BOTH`) and optionally enables:
+2. The language is always Italian (`IT`); the user optionally enables:
    - `OCR PDF scansionati`
    - `Oscura Immagini`
 3. `cmd_auto_ai()` checks OCR configuration if OCR is enabled.
@@ -224,10 +224,7 @@ Runtime behavior:
    - bundled `ocr/tessdata` via `resource_path()`
    - PyMuPDF's `fitz.get_tessdata()`
    - common platform locations
-2. `ocr_language_for_choice()` maps UI language to Tesseract codes:
-   - `EN` -> `eng`
-   - `IT` -> `ita`
-   - `BOTH` -> `eng+ita`
+2. `ocr_language_for_choice()` returns the Tesseract codes: `ita`, plus `eng` when its data is installed (so English words inside Italian documents are read well).
 3. `AIWorker._page_needs_ocr()` runs OCR only when text extraction is missing or very poor.
 4. OCR text is used for Presidio detection.
 5. OCR search rectangles are used to place redactions on scanned pages.
