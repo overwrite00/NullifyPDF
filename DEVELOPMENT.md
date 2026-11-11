@@ -16,7 +16,7 @@ Before starting, verify you have:
 | **Python 3.13**         | 150 MB  | [Download](https://www.python.org/downloads/) |
 | **Git**                 | 50 MB   | [Download](https://git-scm.com/)              |
 | **Virtual Environment** | 2 GB    | `.venv/` auto-created by setup script         |
-| **Disk Space**          | 3 GB    | Dependencies + spaCy models                   |
+| **Disk Space**          | 3 GB    | Dependencies + Italian model                  |
 | **RAM**                 | 4 GB    | 8 GB recommended                              |
 
 ---
@@ -51,7 +51,7 @@ python setup_env.py
 This automatically:
 - ✅ Creates `.venv/` virtual environment
 - ✅ Installs dependencies
-- ✅ Downloads spaCy models (EN + IT)
+- ✅ Installs the Italian spaCy model (development only)
 
 ### 4️⃣ Activate Virtual Environment
 

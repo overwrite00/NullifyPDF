@@ -379,5 +379,9 @@ Every contribution — code, docs, bug reports, ideas — helps make NullifyPDF 
 
 ---
 
-*Last updated: 2026-11-08*  
+*Last updated: 2026-11-11*  
 *← [Back to README](./README.md) | [Architecture →](./ARCHITECTURE.md)*
+
+## Licence of contributions
+
+NullifyPDF is licensed under the AGPL-3.0-or-later (see [LICENSE](./LICENSE)). By submitting a contribution you agree that it is released under the same licence.

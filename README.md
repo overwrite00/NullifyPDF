@@ -125,7 +125,7 @@ No installation needed on Windows/macOS - just run or unzip. Linux users can ins
    This script automatically:
    - Creates isolated virtual environment (`.venv`)
    - Installs all dependencies
-   - Downloads spaCy language models (EN/IT)
+   - Installs the Italian spaCy model for development (the installer downloads it on demand)
 
 4. **Activate environment & launch**
 

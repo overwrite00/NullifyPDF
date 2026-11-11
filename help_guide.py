@@ -363,7 +363,7 @@ GUIDE_TOPICS: List[Tuple[str, str]] = [
 """),
     ("Info e aggiornamenti", """
 <h2>Info e aggiornamenti</h2>
-<p>La finestra <b>Info</b> mostra la versione e il collegamento al repository. <b>Controlla aggiornamenti</b> interroga le release pubblicate su GitHub; con <i>Controlla ad ogni avvio</i> (disattivato di default) il controllo è eseguito all'avvio e mostra qualcosa solo se esiste una versione più recente.</p>
+<p>La finestra <b>Info</b> mostra la versione e il collegamento al repository. Elenca anche la licenza del programma (AGPL-3.0-or-later) e quella di ogni componente e modello usato, con i collegamenti ai testi ufficiali. <b>Controlla aggiornamenti</b> interroga le release pubblicate su GitHub; con <i>Controlla ad ogni avvio</i> (disattivato di default) il controllo è eseguito all'avvio e mostra qualcosa solo se esiste una versione più recente.</p>
 """),
     ("Scorciatoie", """
 <h2>Scorciatoie</h2>
