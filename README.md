@@ -23,7 +23,7 @@ NullifyPDF goes beyond simple text covering. It uses **Natural Language Processi
 
 | 🎯 Feature            | ✨ Benefit                             |
 | -------------------- | ------------------------------------- |
-| 🧠 **Auto-detection** | Bilingual (EN/IT) automatic detection |
+| 🧠 **Auto-detection** | Automatic detection tuned for Italian documents |
 | 🔐 **Local-first**    | No cloud uploads during PDF processing |
 | ⚡ **Responsive UI**  | Background scanning with live preview |
 | 🛡️ **Privacy Export** | Irreversible redaction or reversible placeholders |
@@ -32,14 +32,15 @@ NullifyPDF goes beyond simple text covering. It uses **Natural Language Processi
 
 ## ✨ Key Features
 
-- 🧠 **Automatic Redaction** — Automatic bilingual (EN/IT) detection of PII: names, locations, emails, phones, IBANs, credit cards, crypto addresses, Italian fiscal codes and IDs. A dialog lets you choose which data types to scan for, and matching is whole-word so ordinary text is not caught
+- 🧠 **Automatic Redaction** — Automatic detection of PII in Italian documents: names, locations, emails, phones, IBANs, credit cards, crypto addresses, Italian fiscal codes and IDs. A dialog lets you choose which data types to scan for, and matching is whole-word so ordinary text is not caught
 - 🔄 **Update Check** — Optional, user-triggered check for new releases (stable builds see stable only, beta builds see both) showing the release notes and a one-click download into your Downloads folder; can be enabled at every start from the Info dialog (off by default)
 - 🗄️ **Fluid UI & Thread-Safe** — PySide6 modern dark-mode interface with zero UI freezing. Text extraction in worker thread with QMutex serialization
 - 📖 **Persistent Dictionaries** — Blocklist and Allowlist synchronized to disk (`~/.nullifypdf`) with O(1) fast-path matching
 - 🛡️ **Privacy Export Modes** — Choose irreversible removal or reversible pseudonymization with a separately encrypted restore map; the exported file is sanitised (annotations, attachments, scripts, metadata, hidden text) and verified
 - 📖 **Built-in guide and tooltips** — Press F1 for an Italian guide to every function; every control shows a description on hover
 - 🔍 **Review of uncertain hits** — Detections without enough evidence are suggested for review instead of being applied or lost silently
-- 🧠 **Optional local models** — Reviewed ONNX PII models can be downloaded by the user from pinned Hugging Face revisions; files are SHA-256 verified and models only add review suggestions
+- 🇮🇹 **Italian name recognition on demand** — the spaCy Italian model (CC BY-NC-SA 3.0, non-commercial) is not in the installer: the first Auto Redact shows its licence, asks for consent and downloads it (SHA-256 verified). Declining keeps rules and dictionaries only
+- 🧠 **Optional local models** — Three reviewed ONNX PII models (MiniLMv2 EN/IT, PiiScan, OpenMed Italian FastClinical) can be downloaded by the user from pinned Hugging Face revisions; files are SHA-256 verified, the download progress is shown inside the button, and models only add review suggestions
 - 📄 **Word import** — DOCX paragraphs and tables can be imported locally into the analysis workflow; legacy binary DOC files are not supported
 - 🔎 **OCR Support** — Bundled EN/IT Tesseract language data for scanned PDFs
 - 🖼️ **Blindfold Mode** — One-click image/logo censoring with professional placeholder: `[ IMAGE REMOVED ]`
@@ -71,7 +72,7 @@ To keep NullifyPDF lightweight, 100% offline, and secure, be aware of these tech
 
 ```
 ✅ Python 3.13 (required for PyMuPDF wheel compatibility)
-✅ 2 GB disk space (dependencies + spaCy models)
+✅ 2 GB disk space (dependencies + Italian model)
 ✅ 4 GB RAM minimum (8 GB recommended for large PDFs)
 ```
 
@@ -199,12 +200,13 @@ pytest tests/ -v
 ```
 
 **Test coverage:**
-- PDFListManager (blocklist/allowlist persistence)
-- Resource path resolution
-- OCR configuration helpers
-- Privacy placeholder and encrypted restore-map primitives
-- AI detection helpers (offset mapping, filtering, whole-word matching) and reconstruction with the original font
-- Build configuration
+- Detection pipeline: word index, rectangle geometry, scoring, partial-match policy, Italian lexicon
+- Redaction engine, export sanitiser and export verification (survivor and leak checks)
+- Privacy placeholders, encrypted restore maps (Argon2id envelope, recovery key) and reconstruction
+- Encrypted dictionaries with expiry and the secure key store
+- Offscreen GUI flows (review, export, reconstruction, guide and tooltips, model dialog, Info window)
+- Local model catalog, on-demand Italian model download, DOCX import, update check
+- Licence consistency and build configuration
 
 </details>
 
@@ -221,13 +223,16 @@ pytest tests/ -v
 | [OCR_SETUP.md](./OCR_SETUP.md)             | OCR data setup and build notes         |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | Common issues & solutions              |
 | [CHANGELOG.md](./CHANGELOG.md)             | Release history & updates              |
+| [SECURITY.md](./SECURITY.md)               | Security model & responsible disclosure |
+| [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) | Licences of data and components |
+| [LICENSE](./LICENSE)                       | AGPL-3.0-or-later licence text         |
 
 ---
 
 ## 🔒 Security & Privacy
 
 ✅ **100% Local Processing** — All analysis happens on your machine  
-✅ **No Cloud Uploads** — PDF processing stays local  
+✅ **No Cloud Uploads** — PDF content never leaves your computer; the only network access is the optional update check and the model downloads you approve  
 ✅ **Open Source** — Full code transparency  
 ✅ **No Telemetry** — Zero user tracking  
 
@@ -246,7 +251,8 @@ See [SECURITY.md](./SECURITY.md) for responsible disclosure and privacy details.
 | **PySide6 (Qt6)**      | Modern dark-mode GUI with multi-threading           |
 | **PyMuPDF (fitz)**     | High-performance PDF manipulation                   |
 | **Microsoft Presidio** | PII (Personally Identifiable Information) detection |
-| **spaCy**              | NLP for entity recognition (bilingual EN/IT)        |
+| **spaCy**              | NLP for entity recognition (Italian model, downloaded on demand) |
+| **ONNX Runtime**       | CPU inference for the optional local PII models     |
 | **cryptography**       | Encrypted pseudonymization restore maps             |
 
 ---
@@ -278,6 +284,12 @@ components are listed in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
 | [Presidio](https://github.com/microsoft/presidio/blob/main/LICENSE) | MIT | personal-data detection |
 | [spaCy](https://github.com/explosion/spaCy/blob/master/LICENSE) | MIT | language processing |
 | [spaCy it_core_news_md](https://creativecommons.org/licenses/by-nc-sa/3.0/) | CC BY-NC-SA 3.0 (non-commercial use only) | Italian model, downloaded after consent |
+| [MiniLMv2 EN/IT NER (optional download)](https://huggingface.co/jkomyno/minilmv2-l6-h384-ner-en-it-q8) | MIT | optional local model by Alberto Schiabel (jkomyno) |
+| [PiiScan (optional download)](https://huggingface.co/vectorsense/piiscan) | Apache-2.0 (training data: Ai4Privacy OpenPII, CC BY 4.0) | optional local model |
+| [OpenMed PII Italian FastClinical Small (optional download)](https://huggingface.co/OpenMed/OpenMed-PII-Italian-FastClinical-Small-82M-v1-onnx-android) | Apache-2.0 | optional local model |
+| [MiniLMv2 EN/IT NER (optional download)](https://huggingface.co/jkomyno/minilmv2-l6-h384-ner-en-it-q8) | MIT | optional local model by Alberto Schiabel (jkomyno) |
+| [PiiScan (optional download)](https://huggingface.co/vectorsense/piiscan) | Apache-2.0 (training data: Ai4Privacy OpenPII, CC BY 4.0) | optional local model |
+| [OpenMed PII Italian FastClinical Small (optional download)](https://huggingface.co/OpenMed/OpenMed-PII-Italian-FastClinical-Small-82M-v1-onnx-android) | Apache-2.0 | optional local model |
 | [onnxruntime](https://github.com/microsoft/onnxruntime/blob/main/LICENSE) | MIT | running local models |
 | [tokenizers](https://github.com/huggingface/tokenizers/blob/main/LICENSE) | Apache-2.0 | tokenizing for local models |
 | [cryptography](https://github.com/pyca/cryptography/blob/main/LICENSE) | Apache-2.0 or BSD-3-Clause | encryption |

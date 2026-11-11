@@ -41,6 +41,9 @@ the pinned versions in `requirements.txt` and the publishers' pages.
 | presidio-analyzer | MIT | |
 | spaCy, thinc | MIT | |
 | spaCy `it_core_news_md` 3.8.0 | CC BY-NC-SA 3.0 | **Not bundled.** Downloaded by the user on request after showing the licence (non-commercial, attribution, share-alike). Sources: UD Italian ISDT (CC BY-NC-SA 3.0), WikiNER (CC BY 4.0), fastText vectors (CC0). Publisher: Explosion, https://github.com/explosion/spacy-models |
+| MiniLMv2 EN/IT NER (optional download) | MIT | By Alberto Schiabel (jkomyno), https://huggingface.co/jkomyno/minilmv2-l6-h384-ner-en-it-q8. Base model `nreimers/MiniLMv2-L6-H384-distilled-from-RoBERTa-Large` (MIT); the card asks for attribution to the author. |
+| PiiScan (optional download) | Apache-2.0 | https://huggingface.co/vectorsense/piiscan. Trained on data derived from Ai4Privacy OpenPII (CC BY-4.0, Ai Suisse SA), which requires attribution. |
+| OpenMed PII Italian FastClinical Small (optional download) | Apache-2.0 | https://huggingface.co/OpenMed/OpenMed-PII-Italian-FastClinical-Small-82M-v1-onnx-android. The model card does not state its training data or their licences; the project has not verified them. |
 | onnxruntime | MIT | |
 | tokenizers | Apache-2.0 | |
 | cryptography | Apache-2.0 or BSD-3-Clause | |

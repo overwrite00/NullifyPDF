@@ -269,6 +269,7 @@ GUIDE_TOPICS: List[Tuple[str, str]] = [
 <li>Ogni modello deve avere una licenza, una revisione e un <b>SHA-256</b> verificati.</li>
 <li>Il programma non carica codice remoto, file pickle o modelli arbitrari.</li>
 <li>Il download richiede consenso esplicito e i pesi vengono conservati nella cartella dell'utente, non nell'installer.</li>
+<li>Dopo il consenso, il pulsante <b>Scarica modello</b> diventa una barra di avanzamento con la percentuale; un secondo clic annulla il download. Elenco e <b>Close</b> restano bloccati finché il download non termina.</li>
 <li>La qualità dei modelli va misurata sul tipo di documento concreto: nessun modello garantisce anonimizzazione o copertura completa.</li>
 </ul>
 """),
