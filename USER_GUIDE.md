@@ -12,7 +12,7 @@ Your step-by-step guide to redacting sensitive data from PDFs safely and securel
 | 🎯 Step            | ⏱️ Time  | What You'll Do                |
 | ----------------- | ------- | ----------------------------- |
 | **1️⃣ Load**        | 30 sec  | Open a PDF or Word DOCX file  |
-| **2️⃣ Configure**   | 30 sec  | Select document language      |
+| **2️⃣ Language**    | 30 sec  | Italian model (first use only) |
 | **3️⃣ Auto-Redact** | 1-2 min | Run AI to find sensitive data |
 | **4️⃣ Review**      | 1-2 min | Manually fix any mistakes     |
 | **5️⃣ Blindfold**   | 30 sec  | Hide images (optional)        |
@@ -34,7 +34,7 @@ Your step-by-step guide to redacting sensitive data from PDFs safely and securel
 
 ### Optional local models
 
-Open **Modelli locali** in the sidebar to view the reviewed shortlist. Models are optional and are not included in the installer. Before downloading, the dialog shows the Hugging Face source, license, pinned revision and total size. The progress bar reports the overall percentage across all model files.
+Open **Modelli locali** in the sidebar to view the reviewed shortlist (MiniLMv2 EN/IT, PiiScan, OpenMed Italian FastClinical, plus experimental entries that cannot be downloaded). Models are optional and are not included in the installer. Before downloading, the dialog shows the Hugging Face source, license, pinned revision and total size. After you confirm, the **Scarica modello** button itself turns into a progress bar with the overall percentage across all model files; click it again to cancel. The list and the Close button stay locked until the download ends. This is separate from the Italian name-recognition model of Step 2, which is downloaded on the first Auto Redact.
 
 Only entries with a complete application manifest can be downloaded. The manifest fixes the revision, allowed files, expected sizes and SHA-256 values. Experimental entries without those checks remain unavailable. Installed models run locally and add suggestions for review; they never apply a redaction automatically.
 
@@ -194,6 +194,10 @@ Your redaction preferences are saved automatically:
 ├── audit/            ← Export records (counts and hashes, no values)
 ├── logs/
 │   └── nullifypdf.log
+├── ai_entities.json  ← Data types chosen in the Auto Redact dialog
+├── spacy_models/     ← Italian name-recognition model (downloaded after your consent)
+├── models/           ← Optional local ONNX models you downloaded
+└── tmp/              ← Private temporary files for very large exports (emptied after use)
 ```
 
 ### Editing the dictionaries
@@ -216,7 +220,7 @@ same term to both.
 1. **Backup Original** — Always keep the original PDF before redacting
 2. **Test on Copy** — Redact a test copy first, verify results
 3. **Verify Export** — Open exported PDF to confirm redactions look correct
-4. **Choose Language Carefully** — Wrong language = missed detections
+4. **Italian documents only** — Other languages are not analysed, so names and places in them are missed
 5. **Use Allowlist Sparingly** — Only add words you're 100% sure aren't sensitive
 
 ---
@@ -270,7 +274,7 @@ python3.13 NullifyPDF.py
 
 - **Encoding:** UTF-8
 - **Location:** `~/.nullifypdf/logs/nullifypdf.log`
-- **Rotation:** not currently implemented; remove old logs manually if needed
+- **Rotation:** the file rotates at about 512 KB (3 older files kept) and logs older than 30 days are deleted at start-up
 
 ---
 
@@ -289,7 +293,7 @@ python3.13 NullifyPDF.py
 **A:** Irreversible anonymization cannot be undone from the exported PDF. Pseudonymization can be restored using **"Ricostruisci PDF"** together with the encrypted restore map and its password (see [Step 7](#step-7%EF%B8%8F%E2%83%A3--reconstruct-a-pseudonymized-pdf) below).
 
 ### Q: Does NullifyPDF send data to the cloud?
-**A:** **No.** PDF processing is local and no document data ever leaves your machine. The only network access is the optional update check (see below), and OCR data is downloaded at build time, not while processing your PDFs.
+**A:** **No.** PDF processing is local and no document data ever leaves your machine. The only network access is the optional update check (see below) and the downloads you approve: the Italian name-recognition model (from the publisher's GitHub release) and the optional local models (from Hugging Face), each verified with a pinned SHA-256. OCR data is downloaded at build time, not while processing your PDFs.
 
 ### Q: How do I check for new versions?
 **A:** Open **Info** and click **Controlla aggiornamenti**. NullifyPDF asks the public GitHub releases of this repository whether a newer version exists (no PDF content or personal data is sent). If one does, a window shows the version, the link to the release, the **release notes** (taken from the matching section of `CHANGELOG.md`) and a **Download** button that saves the installer for your operating system into your system **Downloads** folder (the location configured in your OS), after checking its size and the SHA-256 published by GitHub. Nothing is installed automatically. On Linux distributions other than Debian/Ubuntu and Fedora/RHEL-based ones the window only offers the release link, where you can pick the file yourself.

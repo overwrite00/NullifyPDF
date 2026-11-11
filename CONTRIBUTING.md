@@ -24,7 +24,7 @@ git remote add upstream https://github.com/overwrite00/NullifyPDF.git
 python setup_env.py
 ```
 
-This creates isolated venv, installs dependencies, and downloads NLP models.
+This creates an isolated venv, installs dependencies and installs the Italian spaCy model used by the tests (the released program downloads it on demand).
 
 Then enable the repo's git hooks (one-time per clone) so the `Last updated` footer in docs stays in sync automatically:
 
@@ -219,7 +219,7 @@ thread when scanning large PDFs concurrently."
 ### Before Opening PR
 
 1. ✅ Run tests: `pytest tests/ -v`
-2. ✅ Type check (blocking in CI): `mypy NullifyPDF.py pii_detection.py privacy_core.py update_check.py PDF_Checker.py`
+2. ✅ Type check (blocking in CI): `mypy NullifyPDF.py pii_detection.py privacy_core.py update_check.py PDF_Checker.py export_engine.py pdf_sanitize.py review_dialog.py lexicon_it.py secure_store.py word_lists.py dictionary_dialog.py help_guide.py spacy_models.py licences_info.py`
 3. ✅ Build locally: `python build_local.py`
 4. ✅ Update CHANGELOG.md with your changes
 5. ✅ Self-review your code (would you understand this in 6 months?)
