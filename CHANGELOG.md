@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-11-11
+
 ### 🔄 Changed
 
 - **Italian only**: the English model and the EN/IT/BOTH selector are gone. The program analyses Italian documents; the sidebar shows "Lingua dei documenti: italiano". The English OCR data is still used, when installed, only to read English words inside Italian pages.
