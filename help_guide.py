@@ -168,7 +168,7 @@ def _generic_tooltip(widget: QWidget, text: str) -> str:
             return "Versione del programma installata."
         if "censura e pseudonimizzazione" in low:
             return "Informazioni sul programma, sull'autore e sulla licenza."
-        if "github.com" in low or "repository" in low:
+        if re.search(r"https?://(www\.)?github\.com/", low) or "repository" in low:
             return "Pagina del progetto su GitHub."
         if low.startswith("nuova versione"):
             return "Versione più recente disponibile."
