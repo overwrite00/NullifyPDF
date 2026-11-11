@@ -43,7 +43,6 @@ Text extraction from large PDFs is CPU-intensive. This is **normal**, not a cras
 
 **Speed it up:**
 - Close other applications (frees RAM)
-- Use language selection (**EN** or **IT**, not **BOTH**)
 - Split document: Redact first 100 pages, then next 100
 
 ### Still Not Working?
@@ -52,6 +51,21 @@ If log isn't updating:
 1. Force quit NullifyPDF
 2. Check logs for errors
 3. Report on GitHub with log contents
+
+---
+
+## 🇮🇹 The Italian Model Does Not Download
+
+### Symptom
+On the first **Auto Redact** the download of the Italian model fails ("Download non riuscito"), or you are asked again every time.
+
+### Solution
+
+- A failed download usually means no connection, a proxy or a firewall blocking `github.com`. Check the message, then run Auto Redact again and choose **Accetta e scarica**.
+- If you choose **Continua senza modello** the scan runs with rules and dictionaries only and the question comes back on the next Auto Redact; accept the download once and it is never asked again.
+- The model is verified against a pinned size and SHA-256: a corrupted or altered file is discarded and nothing is installed.
+- Offline machines: install `it_core_news_md` 3.8.0 in the Python environment (development setups), or copy the unpacked pipeline folder `it_core_news_md-3.8.0` (it contains `meta.json` and `ner/`) into `~/.nullifypdf/spacy_models/`.
+- The model is for non-commercial use only (CC BY-NC-SA 3.0); the licence is shown before the download.
 
 ---
 
@@ -149,7 +163,7 @@ Then try export again. Upload `~/.nullifypdf/logs/nullifypdf.log` to GitHub issu
 Names, emails, or other PII should be detected but aren't highlighted.
 
 ### Root Cause
-- Wrong language selected
+- The Italian model was not downloaded (rules and dictionaries only), or the document is not in Italian
 - Text is in an image and OCR is disabled or not configured
 - Unusual formatting
 - Text is handwritten
@@ -436,7 +450,7 @@ When opening a GitHub issue, include:
 1. **Environment:**
    - OS (Windows 10, macOS 13, Ubuntu 22.04, etc.)
    - Python version: `python --version`
-   - NullifyPDF version (see title bar)
+   - NullifyPDF version (see the Info window)
 
 2. **What Happened:**
    - Exact error message or description
@@ -459,7 +473,7 @@ The more details, the faster we can fix it! 🚀
 | --------------------------- | --------------------------------- |
 | Keep original PDF as backup | Delete original after export      |
 | Test on copy first          | Redact production file first time |
-| Use correct language        | Use BOTH if EN or IT works        |
+| Use Italian documents       | Expect names in other languages   |
 | Check logs when stuck       | Restart without checking why      |
 | Enable debug mode for bugs  | Submit bugs without logs          |
 | Save to common folder       | Save to network drive (slow)      |

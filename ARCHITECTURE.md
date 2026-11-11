@@ -25,7 +25,7 @@ It supports two privacy export modes:
 
 | 📄 File | ✨ Responsibility |
 | ------ | ----------------- |
-| `NullifyPDF.py` | Main PySide6 UI, PDF rendering, AI scan orchestration, redaction, export, reconstruction, OCR integration |
+| `NullifyPDF.py` | Main PySide6 UI, PDF rendering, AI scan orchestration (including the Italian-model consent step), redaction, export, reconstruction, OCR integration, Info window |
 | `update_check.py` | Qt-free update logic: version comparison (SemVer, stable/beta channels), GitHub release lookup, per-OS asset selection, trusted-host download, startup-check preference (`~/.nullifypdf/update_check.json`). Only runs on user click or if the user enabled the startup check |
 | `pii_detection.py` | Qt-free AI detection helpers: word-box text index (neighbour-aware rectangle clamping, ligatures, letter-spaced and hyphenated words), offset-to-rect mapping and partial-match policy, per-type thresholds, pattern validation, evidence-based PERSON/LOCATION scoring, accepted/suggested states, allowlist by word identity, whole-word propagation, entity selection persistence |
 | `privacy_core.py` | Privacy mode enum, placeholder registry (random / sequential / generic / keyed styles), encrypted restore-map payloads (version 3, optional per-occurrence text style; scrypt, PBKDF2 maps still readable), password strength check, restore-map parsing |
@@ -34,7 +34,9 @@ It supports two privacy export modes:
 | `export_engine.py` | Qt-free export pipeline (`export_document`), neutral file names, private temp handling, audit record, local-data wipe |
 | `review_dialog.py` | Qt dialog to accept or reject suggested detections |
 | `model_manager.py` | Pinned Hugging Face model catalog, SHA-256 verification, local model store and hardware recommendation |
-| `model_dialog.py` | Italian model selection, consent and progress-aware downloads |
+| `model_dialog.py` | Local ONNX model dialog: catalog, details, consent and a threaded download whose progress fills the download button (second click cancels; list and Close are locked meanwhile) |
+| `spacy_models.py` | The spaCy Italian pipeline (CC BY-NC-SA 3.0) downloaded on demand: consent text, pinned size and SHA-256, safe unpacking into `~/.nullifypdf/spacy_models/`, blank-pipeline fallback |
+| `licences_info.py` | Licence of NullifyPDF and of every component and model with official links, used by the Info window and the README table |
 | `onnx_ner.py` | CPU ONNX token-classification adapter with character-offset mapping and label mapping |
 | `word_import.py` | Safe DOCX OOXML text/table extraction into an internal PyMuPDF document; no macro execution |
 | `help_guide.py` | In-app guide (Italian, F1) and the tooltip table applied to every widget |
@@ -45,7 +47,7 @@ It supports two privacy export modes:
 | `PDF_Checker.py` | Heuristic post-export inspection helper |
 | `build_local.py` | PyInstaller build script |
 | `scripts/download_ocr_data.py` | Downloads EN/IT Tesseract `tessdata_fast` files bundled into every build |
-| `tests/` | Unit and smoke tests for validation, privacy primitives, OCR config, and build configuration |
+| `tests/` | Unit, integration and offscreen GUI tests (see [Tests](#-tests)) |
 
 ---
 
@@ -107,8 +109,8 @@ Export pipeline writes a cleaned PDF copy
 2. The language is always Italian (`IT`); the user optionally enables:
    - `OCR PDF scansionati`
    - `Oscura Immagini`
-3. `cmd_auto_ai()` checks OCR configuration if OCR is enabled.
-4. `AIWorker.run_scan()` processes pages in a background thread.
+3. `cmd_auto_ai()` calls `_prepare_italian_model()`: if the spaCy Italian pipeline is neither installed as a package nor in `~/.nullifypdf/spacy_models/`, a dialog shows its licence and asks for consent (download, continue with rules only, or cancel); then it checks OCR configuration if OCR is enabled.
+4. `AIWorker.run_scan()` processes pages in a background thread; Presidio loads only the Italian pipeline (`AIWorker.italian_model`), and installed local ONNX models are loaded once per scan and add suggestions only.
 5. For each page:
    - the analysis text is built by `pii_detection.build_page_index()` from `page.get_text("words")`, recording each word's rectangle so character offsets map back to exact boxes. Each rectangle is trimmed against the words of neighbouring lines (a word box spans ascender to descender and would otherwise overlap them); ligatures are expanded, letter-spaced runs become one word and a word hyphenated across two lines is joined
    - if the page looks scanned, OCR is run with `page.get_textpage_ocr()` and the same index is built from the OCR words; on text pages with embedded images only the images are OCR'd and merged
@@ -229,7 +231,18 @@ Runtime behavior:
 4. OCR text is used for Presidio detection.
 5. OCR search rectangles are used to place redactions on scanned pages.
 
-Every release bundles EN/IT OCR data.
+Every release bundles EN/IT OCR data. The documents analysed are Italian, so `ita` is the OCR language; `eng` is added only to read English words inside Italian pages.
+
+---
+
+## 🧠 Models
+
+| Model | Where it comes from | Role |
+| ----- | ------------------- | ---- |
+| spaCy `it_core_news_md` 3.8.0 | Downloaded on first use after consent (`spacy_models.py`); never bundled, because its licence (CC BY-NC-SA 3.0) is non-commercial | Statistical recognition of names and places through Presidio |
+| ONNX models (MiniLMv2 EN/IT, PiiScan, OpenMed Italian FastClinical) | Optional, downloaded from pinned Hugging Face revisions (`model_manager.py`), every file checked against size and SHA-256 | Extra suggestions only; never applied automatically |
+
+The development environment installs the Italian spaCy package so the tests can run; the PyInstaller specs exclude it, together with `pymupdf4llm` and `pymupdf.layout`.
 
 ---
 
@@ -277,6 +290,8 @@ Beta releases (`v*-beta.N` tags) and stable releases (`vX.Y.Z` tags) are each co
 
 **Linux packages** are built by the reusable workflow `build-linux.yml`, shared by the stable, beta and test builds. The PyInstaller binary and the `.rpm` are built once inside a `rockylinux:9` container (glibc 2.34, rpm 4.16), the `.deb` is wrapped from the same binary on `ubuntu-24.04`, and each package is then installed and started under Xvfb in clean Ubuntu 24.04, Ubuntu 26.04, Debian 13, Rocky 9, Rocky 10 and Fedora containers. A release is published only if this smoke test passes. Runners are pinned, so the move of `ubuntu-latest` to a new Ubuntu release does not change the build. When a distribution approaches end of support, update the matrix in `build-linux.yml` (and the list in the README).
 
+Pull requests also run the unit tests against the latest PyMuPDF, a guard that only `develop` may be merged into `main`, project automation, and GitHub code scanning (CodeQL on pull requests to `main`).
+
 Expected artifact names include:
 
 ```text
@@ -292,14 +307,13 @@ NullifyPDF_vX.Y.Z_Fedora.rpm
 
 Current tests cover:
 
-- list persistence
-- resource path resolution
-- OCR configuration helpers
-- privacy placeholder registry
-- encrypted restore-map round trip
-- reconstruction of a pseudonymized PDF from its restore map
-- build configuration
-- OCR data inclusion behavior
+- detection pipeline, geometry (rectangle clamping, glyph-deletion rule), scoring and the Italian lexicon (`test_pii_detection.py`, `test_detection_pipeline.py`, `test_geometry.py`)
+- redaction engine, export sanitiser and export verification (`test_redaction_engine.py`, `test_export_sanitize.py`, `test_privacy_hardening.py`)
+- placeholders, encrypted restore maps and reconstruction (`test_privacy_core.py`, `test_reconstruct.py`)
+- encrypted dictionaries and the key store (`test_secure_store.py`)
+- offscreen GUI flows: review, export, reconstruction, guide and tooltips, Info window, model dialog (`test_gui_flow.py`, `test_gui_help.py`, `test_model_dialog.py`)
+- model catalog, on-demand Italian model download, DOCX import, update check (`test_model_manager.py`, `test_spacy_models.py`, `test_word_import.py`, `test_update_check.py`)
+- licence consistency (no non-commercial component in the installer) and build configuration (`test_licences.py`, `test_build_config.py`, `test_validation.py`)
 
 Run:
 
@@ -313,6 +327,7 @@ pytest tests/ -v
 
 - Detection is probabilistic. Presidio, spaCy, and OCR can miss data or create false positives. Heuristics that reject label-like single-word names trade a little recall (for example a lone first name that starts a line) for precision; such values can be marked manually.
 - OCR depends on Tesseract language data and scan quality.
+- Only Italian documents are supported. Without the Italian spaCy model (download declined) only rules and dictionaries run and names are found less often.
 - Handwriting is not reliably supported.
 - Complex PDFs may contain structures not covered by automated cleanup.
 - Pseudonymized PDFs are still personal-data processing when the restore map exists.

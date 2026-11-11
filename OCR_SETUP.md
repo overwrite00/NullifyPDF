@@ -21,6 +21,8 @@ Install or download the language data you need:
 - `eng.traineddata` for English OCR.
 - `ita.traineddata` for Italian OCR.
 
+NullifyPDF analyses Italian documents, so `ita` is the language that matters; `eng` is used in addition, when present, to read English words inside Italian pages.
+
 Release builds always bundle these two files automatically. Developers can
 prepare a local build with:
 
@@ -37,5 +39,5 @@ processing scanned pages without OCR.
 
 ---
 
-*Last updated: 2026-09-18*  
+*Last updated: 2026-11-11*  
 *[Back to README](./README.md) | [Architecture →](./ARCHITECTURE.md)*

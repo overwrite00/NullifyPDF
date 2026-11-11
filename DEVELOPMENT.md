@@ -105,32 +105,44 @@ If the GUI opens → **You're ready to develop!** 🎉
 ```
 NullifyPDF/
 |-- NullifyPDF.py              # Main PySide6 application
-|-- model_manager.py           # Pinned local model catalog and integrity checks
-|-- model_dialog.py             # Model consent and download UI
-|-- onnx_ner.py                 # ONNX token-classification adapter
-|-- word_import.py              # Safe DOCX text/table importer
-|-- privacy_core.py            # Privacy modes and encrypted restore maps
+|-- pii_detection.py           # Qt-free detection: word index, geometry, scoring, partial-match policy
+|-- lexicon_it.py              # Italian word lists; lexicon_data_it.py is generated (ISTAT, Wikidata)
+|-- privacy_core.py            # Privacy modes, placeholders and encrypted restore maps
+|-- export_engine.py           # Qt-free export pipeline, audit record, local-data wipe
+|-- pdf_sanitize.py            # Export sanitiser and output verification
+|-- review_dialog.py           # Review of suggested detections
+|-- secure_store.py            # Master key protection (DPAPI / keyring / key file), AES-GCM sealing
+|-- word_lists.py              # Encrypted blocklist/allowlist with expiry
+|-- dictionary_dialog.py       # Dictionary editor
+|-- help_guide.py              # In-app guide (Italian) and tooltips
+|-- licences_info.py           # Licences and links shown in the Info window and README
+|-- spacy_models.py            # Italian spaCy pipeline downloaded on demand after consent
+|-- model_manager.py           # Pinned local ONNX model catalog and integrity checks
+|-- model_dialog.py            # Local model dialog with in-button download progress
+|-- onnx_ner.py                # ONNX token-classification adapter
+|-- word_import.py             # Safe DOCX text/table importer
 |-- update_check.py            # Qt-free update check: versions, GitHub releases, asset choice, download
-|-- pii_detection.py           # Qt-free AI detection helpers (offsets, filters, whole-word matching)
 |-- PDF_Checker.py             # Heuristic verification utility
 |-- setup_env.py               # Environment setup script
 |-- build_local.py             # PyInstaller build script
 |-- requirements.txt           # Python dependencies
+|-- LICENSE, THIRD_PARTY_NOTICES.md
 |-- scripts/
-|   `-- download_ocr_data.py   # EN/IT OCR data downloader
-|-- tests/
-|   |-- test_validation.py
-|   |-- test_privacy_core.py
-|   |-- test_pii_detection.py
-|   |-- test_reconstruct.py
-|   `-- test_build_config.py
+|   |-- download_ocr_data.py   # EN/IT OCR data downloader
+|   |-- build_lexicon_data.py  # Generates lexicon_data_it.py (development only)
+|   |-- extract_release_notes.py
+|   `-- update_docs_dates.py
+|-- tests/                     # pytest suite (unit, integration and offscreen GUI tests)
 |-- images/
 |   `-- NullifyPDF.png
 `-- .github/
     `-- workflows/
-        |-- test_build.yml
-        |-- beta-release.yml
-        `-- release.yml
+        |-- test_build.yml     # unit tests and full build matrix
+        |-- beta-release.yml   # v*-beta.N tags
+        |-- release.yml        # vX.Y.Z tags
+        |-- build-linux.yml    # reusable: .deb/.rpm build and smoke tests
+        |-- guard-main-source.yml
+        `-- project-automation.yml
 ```
 
 ---
@@ -145,11 +157,14 @@ NullifyPDF/
 | **PyMuPDF**           | 2.1     | PDF manipulation and OCR bridge |
 | **presidio-analyzer** | 2.2.366 | PII detection                |
 | **spaCy**             | 3.8.18  | NLP for entity recognition   |
-| **cryptography**      | 50.0.2  | Encrypted restore maps       |
+| **cryptography**      | 50.0.2  | Encrypted restore maps and dictionaries |
+| **keyring**           | 25.7.0  | OS key store (macOS and Linux only) |
 | **onnxruntime**       | 1.31.1  | CPU inference for optional local PII models |
 | **tokenizers**        | 0.23.3  | Fast local tokenizer with character offsets |
 | **python-docx**       | —       | Not required; DOCX import uses the standard-library OOXML reader |
 | **pytest**            | 9.2.0   | Testing framework            |
+| **mypy**              | 1.20.2  | Type checking (blocking in CI) |
+| **PyInstaller**       | 6.22.3  | Builds the executables       |
 
 ### Language Models
 
@@ -157,12 +172,16 @@ NullifyPDF/
 | ----------------- | ----- | ----------- | ------- | ---------------- |
 | `it_core_news_md` | 45 MB | Italian NER | CC BY-NC-SA 3.0 | **no**, downloaded by the app on demand (`spacy_models.py`) |
 
-`setup_env.py` installs both in the development environment (the Italian tests
+`setup_env.py` installs it in the development environment (the Italian tests
 need it). The PyInstaller specs exclude `it_core_news_md`, `pymupdf4llm` and
 `pymupdf.layout`. At run time the app asks for consent, downloads the Italian
 pipeline from the publisher's release, checks its size and SHA-256 and stores it
 under `~/.nullifypdf/spacy_models/`. If the user declines, a blank Italian
 pipeline is used and only rule-based detection is available.
+
+The optional ONNX models (MiniLMv2 EN/IT, PiiScan, OpenMed Italian FastClinical)
+are described in `model_manager.py`; they are downloaded by the user from pinned
+Hugging Face revisions into `~/.nullifypdf/models/` and add suggestions only.
 
 ---
 
@@ -242,20 +261,23 @@ Opens `htmlcov/index.html` in browser.
 CI runs `mypy` as a blocking step. Run the same check locally before opening a PR:
 
 ```bash
-mypy NullifyPDF.py pii_detection.py privacy_core.py update_check.py PDF_Checker.py
+mypy NullifyPDF.py pii_detection.py privacy_core.py update_check.py PDF_Checker.py export_engine.py pdf_sanitize.py review_dialog.py lexicon_it.py secure_store.py word_lists.py dictionary_dialog.py help_guide.py spacy_models.py licences_info.py
 ```
 
 PyMuPDF is imported as `pymupdf` (aliased to `fitz`) so it is really type-checked; its dynamically defined constants are read once near the top of `NullifyPDF.py`.
 
 ### What's Tested
 
-- ✅ **PDFListManager** — File I/O, persistence
-- ✅ **OCR Config** — Tesseract language selection and tessdata discovery
-- ✅ **Privacy Core** — Placeholder mapping and encrypted restore maps (v1/v2/v3)
-- ✅ **AI Detection Helpers** — Offset-to-rectangle mapping, thresholds, label/heading filtering, whole-word matching
-- ✅ **Reconstruction** — Placeholder restoration, original font/size/colour on native PDFs
-- ✅ **Build Config** — OCR data bundling behavior
-- ✅ **Resource Paths** — PyInstaller compatibility
+- ✅ **Detection** — word index, rectangle clamping and the glyph-deletion rule, scoring, partial-match policy, Italian lexicon
+- ✅ **Redaction and export** — redaction engine, sanitiser, export verification (survivor and leak checks)
+- ✅ **Privacy Core** — placeholders and encrypted restore maps (v1 to v4 formats, Argon2id envelope, recovery key), reconstruction with the original font
+- ✅ **Local data** — encrypted dictionaries with expiry and the secure key store
+- ✅ **GUI flows** — offscreen tests of review, export, reconstruction, guide and tooltips, Info window, model dialog and Italian-model consent
+- ✅ **Models and import** — model catalog and integrity checks, on-demand Italian model download, DOCX import, update check
+- ✅ **Licences and build** — licence consistency, OCR data bundling, PyInstaller configuration, resource paths
+
+> [!TIP]
+> GUI tests run offscreen (`QT_QPA_PLATFORM=offscreen`) and never touch the OS keyring (`NULLIFYPDF_DISABLE_KEYRING=1`).
 
 ---
 
@@ -469,6 +491,10 @@ isort NullifyPDF.py
 | `pdf_sanitize.py`  | Export sanitiser and output verification |
 | `export_engine.py` | Qt-free export pipeline, audit record, local-data hygiene |
 | `review_dialog.py` | Review dialog for suggested detections |
+| `spacy_models.py`  | Italian spaCy pipeline downloaded on demand (consent, SHA-256, fallback) |
+| `licences_info.py` | Licences and official links shown in the Info window and README (a test keeps README in step) |
+| `model_manager.py` / `model_dialog.py` / `onnx_ner.py` | Optional ONNX models: catalog, verified download, adapter |
+| `word_import.py`   | DOCX import |
 | `secure_store.py`  | Master key protection (DPAPI / keyring / key file), AES-GCM sealing |
 | `word_lists.py`    | Encrypted blocklist/allowlist with expiry |
 | `dictionary_dialog.py` | Dictionary editor dialog |
@@ -594,6 +620,13 @@ Ready to contribute? See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
 - 🤝 **Contributing:** [CONTRIBUTING.md](./CONTRIBUTING.md)
 - 💬 **GitHub Discussions:** [Discussions](https://github.com/overwrite00/NullifyPDF/discussions)
 - 🐛 **GitHub Issues:** [Issues](https://github.com/overwrite00/NullifyPDF/issues)
+
+### Release procedure
+
+- **Beta**: work lands on `develop` through squash-merged pull requests; an annotated tag `vX.Y.Z-beta.N` on `develop` starts `beta-release.yml`. Set `__version_prerelease__` in `NullifyPDF.py` to the beta suffix.
+- **Stable**: set `__version_prerelease__` to `""`, move the `[Unreleased]` changelog entries under `## [X.Y.Z] - date` (leave `[Unreleased]` empty), merge `develop` into `main` with a merge commit through a pull request (one approving review is required), then tag `vX.Y.Z` on `main`. `release.yml` checks the changelog and the version before building.
+- Documentation-only changes do not need a release.
+- When dependencies change, update `THIRD_PARTY_NOTICES.md` and `licences_info.py`; `tests/test_licences.py` fails if a non-commercial component would be bundled.
 
 ### Release notes and the update check
 

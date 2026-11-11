@@ -16,7 +16,7 @@ NullifyPDF follows a **privacy-first architecture**:
 | Principle                   | Implementation                                    |
 | --------------------------- | ------------------------------------------------- |
 | **100% Local**              | All PDF processing happens on your machine        |
-| **No Cloud**                | No file uploads; the only network access is the optional update check (Info → Controlla aggiornamenti, or at every start if the user enables it; off by default), which sends no document data |
+| **No Cloud**                | No file uploads; the only network access is the optional update check (Info → Controlla aggiornamenti, or at every start if the user enables it; off by default) and the model downloads the user approves (Italian spaCy model from the publisher's GitHub release, optional ONNX models from Hugging Face). None of them sends document data |
 | **No Telemetry**            | Zero user tracking or analytics                   |
 | **Open Source**             | Full code transparency, auditable by anyone       |
 | **Privacy Export**          | Irreversible redaction or encrypted reversible pseudonymization |
@@ -40,7 +40,7 @@ When you export a PDF with redactions:
 1. ✅ **Redactions applied** — selected text/image areas are removed from the content stream, not just covered
 2. ✅ **Sanitiser** — annotations, embedded files, external links, bookmarks, JavaScript, tagged-PDF alternative text, thumbnails, document and XMP metadata, invisible text, text outside the visible page box and the trailer ID are removed; hidden layers are shown before the scan so their text is analysed
 3. ✅ **Verification** — every redacted word is checked glyph by glyph (the number of characters actually deleted must match the measured deletion rule, and characters a thin box cannot reach are reported), then the written file is re-opened and checked for any removed value in the text layer, every object and decompressed stream, annotations, attachments, bookmarks and metadata; findings list locations, never the values
-4. ✅ **Pseudonymization maps encrypted** — restore maps are stored separately and encrypted with a user password (scrypt key derivation, authenticated encryption)
+4. ✅ **Pseudonymization maps encrypted** — restore maps are stored separately and encrypted with AES-256-GCM under a data key wrapped by a password-derived key (Argon2id) and, optionally, a recovery key
 5. ⚙️ **Optional width masking** — the space left by removed text can be rounded so its width is not recoverable (off by default: it can shift the following text slightly)
 
 Limits you should know about:
@@ -48,6 +48,10 @@ Limits you should know about:
 - Detection is statistical. Review the result and the suggestions before sharing; unrecognised or indirect identifiers (dates, places, job titles, clinical details) remain.
 - Text drawn as part of an image is removed only where the image is redacted; OCR is used to find it.
 - Signatures, stamps and photos are not detected automatically; use "Oscura Immagini" or draw a redaction manually.
+
+### Downloaded models
+
+Models are untrusted data until verified. The Italian spaCy pipeline is downloaded over HTTPS only after the user has seen its licence and agreed; its size and SHA-256 are pinned in the program, the archive is unpacked only into `~/.nullifypdf/spacy_models/` (paths that escape that folder are rejected) and an incomplete or altered download is discarded. Optional ONNX models come from pinned Hugging Face revisions and every file is checked for size and SHA-256 before it is installed. Models only produce suggestions; the user decides what is redacted.
 
 ### Temporary Files
 
@@ -84,7 +88,7 @@ NullifyPDF runs locally; the person or organisation using it is the controller o
 
 ### File Type Verification
 
-- ✅ PDF files only (blocked: `.exe`, `.zip`, etc.)
+- ✅ PDF and Word DOCX files only (blocked: `.exe`, `.zip`, etc.); DOCX macros, external links and embedded objects are never executed
 - ✅ Password-protected PDFs are blocked before processing
 - ✅ Encryption detection (blocks password-protected PDFs)
 - ✅ Extension and existence checks before opening PDFs
@@ -92,7 +96,6 @@ NullifyPDF runs locally; the person or organisation using it is the controller o
 ### User Input Validation
 
 - ✅ Page number bounds checking
-- ✅ Language selection validation (EN/IT/BOTH only)
 - ✅ File path sanitization
 - ✅ Type hints on all functions
 
@@ -177,15 +180,11 @@ The codebase is open source and welcomes security audits:
 We use Python static analysis tools:
 
 ```bash
-# Type checking
-mypy NullifyPDF.py
-
-# Linting
-pylint NullifyPDF.py
-
-# Security scanning
-bandit NullifyPDF.py
+# Type checking (blocking in CI; full file list in DEVELOPMENT.md)
+mypy NullifyPDF.py pii_detection.py privacy_core.py
 ```
+
+GitHub code scanning (CodeQL) analyses every pull request to `main`, and Dependabot proposes dependency updates.
 
 ### Testing
 
@@ -238,6 +237,7 @@ NullifyPDF uses trusted, actively-maintained libraries:
 | **pymupdf**           | PDF manipulation | ✅ Actively maintained     |
 | **presidio-analyzer** | PII detection    | ✅ Maintained by Microsoft |
 | **spacy**             | NLP engine       | ✅ Actively maintained     |
+| **onnxruntime**       | Local model inference | ✅ Actively maintained |
 | **cryptography**      | Restore-map encryption | ✅ Actively maintained |
 
 ### Vulnerability Scanning
@@ -245,6 +245,7 @@ NullifyPDF uses trusted, actively-maintained libraries:
 We monitor dependencies for CVEs:
 
 - GitHub Dependabot alerts enabled
+- GitHub code scanning (CodeQL) on pull requests to `main`
 - Security updates applied promptly
 - Community reports welcomed
 
@@ -299,5 +300,5 @@ For **security vulnerabilities only**:
 
 ---
 
-*Last updated: 2026-11-10*  
+*Last updated: 2026-11-11*  
 *← [Contributing](./CONTRIBUTING.md) | [Back to README →](./README.md)*
