@@ -253,11 +253,22 @@ See [SECURITY.md](./SECURITY.md) for responsible disclosure and privacy details.
 
 ## 📝 License
 
-**MIT License** — Free to use, modify, and distribute
+**GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)**
 
 Copyright (c) 2026 Graziano Mariella
 
-See [LICENSE](./LICENSE) for full text.
+NullifyPDF is free of charge and is not sold by its author. It is AGPL-licensed
+because it uses [PyMuPDF](https://pymupdf.readthedocs.io/), which is available
+under the AGPL-3.0 or a commercial licence from Artifex. Anyone who distributes
+the program, modified or not, must give the recipients the source code under the
+same licence. Releases up to v2.4.0-beta.4 were published under the MIT licence.
+
+The Italian name-recognition model (spaCy `it_core_news_md`, CC BY-NC-SA 3.0,
+non-commercial) is **not** part of the installer: the program offers to download
+it, shows its licence and asks for consent first. Licences of all third-party
+components are listed in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+
+See [LICENSE](./LICENSE) for the full text.
 
 ---
 

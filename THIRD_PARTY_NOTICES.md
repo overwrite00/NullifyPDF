@@ -26,3 +26,33 @@ Wikidata (items that have an article on the Italian Wikipedia).
 - The lists are small (a few hundred given names and about one thousand
   surnames) and are only used to *confirm* a name; a name missing from them
   never causes a hit to be rejected.
+
+## Licence of NullifyPDF and of the bundled components
+
+NullifyPDF is distributed under the GNU Affero General Public License v3.0 or
+later (see `LICENSE`). Source code: https://github.com/overwrite00/NullifyPDF.
+The information below was checked on 2026-11-11 against the package metadata of
+the pinned versions in `requirements.txt` and the publishers' pages.
+
+| Component | Licence | Notes |
+|---|---|---|
+| PyMuPDF / MuPDF (Artifex) | AGPL-3.0 or Artifex commercial | NullifyPDF uses it under the AGPL-3.0, hence its own licence. |
+| PySide6 / Qt for Python | LGPL-3.0 (or GPL-3.0, commercial) | Used under the LGPL-3.0. Qt libraries are shipped unmodified; the full source and the build scripts of NullifyPDF are public, so anyone can rebuild the program against a different Qt. |
+| presidio-analyzer | MIT | |
+| spaCy, thinc | MIT | |
+| spaCy `en_core_web_md` 3.8.0 | MIT | Trained on OntoNotes 5, which the publisher (Explosion) declares as commercially licensed. |
+| spaCy `it_core_news_md` 3.8.0 | CC BY-NC-SA 3.0 | **Not bundled.** Downloaded by the user on request after showing the licence (non-commercial, attribution, share-alike). Sources: UD Italian ISDT (CC BY-NC-SA 3.0), WikiNER (CC BY 4.0), fastText vectors (CC0). Publisher: Explosion, https://github.com/explosion/spacy-models |
+| onnxruntime | MIT | |
+| tokenizers | Apache-2.0 | |
+| cryptography | Apache-2.0 or BSD-3-Clause | |
+| keyring (Linux/macOS) | MIT | |
+| tldextract, numpy | BSD-3-Clause | |
+| Tesseract OCR and `tessdata_fast` (`eng`, `ita`) | Apache-2.0 | As stated by the Tesseract project. |
+| PyInstaller (build tool, not distributed) | GPL-2.0 with the bootloader exception | The exception allows distributing the produced program under any licence. |
+| `pymupdf4llm`, `pymupdf-layout` | not declared | Pulled in by PyMuPDF 2.1 but not used and **excluded** from the installer. |
+
+Local PII models downloaded by the user from Hugging Face are accepted only if
+their licence is permissive (MIT, Apache-2.0 or BSD); the licence is part of the
+pinned manifest and is shown before the download.
+
+This table is not legal advice.

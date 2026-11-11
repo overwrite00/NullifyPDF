@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QCheckBox,
     QProgressBar,
+    QProgressDialog,
     QTextEdit,
     QGraphicsView,
     QGraphicsScene,
@@ -100,6 +101,7 @@ from pii_detection import (
     save_enabled_groups,
     whole_word_rects,
 )
+import spacy_models
 import update_check
 from export_engine import (
     build_audit_record,
@@ -165,6 +167,27 @@ class UpdateCheckWorker(QThread):
         except Exception as e:  # network errors, bad JSON, rate limit...
             logging.getLogger("nullifypdf").warning(f"Update check failed: {e}")
             self.error_sig.emit(f"{type(e).__name__}: {e}")
+
+
+class SpacyModelInstallWorker(QThread):
+    """Download the optional Italian spaCy pipeline off the UI thread."""
+
+    progress_sig = Signal(int, int)
+    done_sig = Signal()
+    error_sig = Signal(str)
+
+    def __init__(self, root: pathlib.Path) -> None:
+        super().__init__()
+        self._root = root
+
+    def run(self) -> None:
+        try:
+            spacy_models.install_italian(
+                self._root, progress=lambda d, t: self.progress_sig.emit(d, t)
+            )
+            self.done_sig.emit()
+        except Exception as e:
+            self.error_sig.emit(str(e))
 
 
 class UpdateDownloadWorker(QThread):
@@ -909,6 +932,10 @@ class AIWorker(QObject):
         super().__init__()
         self.analyzer: Optional[Any] = None
         self.loaded_langs: List[str] = []
+        # Set by the window before a scan: package name or folder of the
+        # Italian pipeline (it is downloaded on demand, see spacy_models).
+        self.italian_model: str = spacy_models.ITALIAN_PACKAGE
+        self._loaded_italian = ""
         self.model_detectors: List[Tuple[str, OnnxTokenDetector]] = []
         self._stop_requested = False
 
@@ -980,7 +1007,11 @@ class AIWorker(QObject):
 
             target_langs = ["en", "it"] if choice == "BOTH" else [choice.lower()]
             ocr_language = ocr_language_for_choice(choice, tessdata_dir)
-            if not self.analyzer or sorted(self.loaded_langs) != sorted(target_langs):
+            if (
+                not self.analyzer
+                or sorted(self.loaded_langs) != sorted(target_langs)
+                or self._loaded_italian != self.italian_model
+            ):
                 self.log_sig.emit(f"Inizializzazione motore di rilevamento ({choice})...")
                 from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
                 from presidio_analyzer.nlp_engine import NlpEngineProvider
@@ -992,7 +1023,7 @@ class AIWorker(QObject):
                     else []
                 )
                 if "it" in target_langs:
-                    models.append({"lang_code": "it", "model_name": "it_core_news_md"})
+                    models.append({"lang_code": "it", "model_name": self.italian_model})
                 provider = NlpEngineProvider(
                     nlp_configuration={"nlp_engine_name": "spacy", "models": models}
                 )
@@ -1025,6 +1056,7 @@ class AIWorker(QObject):
                     supported_languages=target_langs,
                 )
                 self.loaded_langs = target_langs
+                self._loaded_italian = self.italian_model
             self.log_sig.emit("Scansione privacy in corso...")
             self._load_local_detectors()
             targets = list(enabled_types)
@@ -2103,7 +2135,7 @@ class NullifyPDF(QMainWindow):
         lbl_ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(lbl_ver)
         desc = QLabel(
-            "\nCensura e pseudonimizzazione PDF offline.\n\nSviluppato da: Graziano Mariella\nLicenza MIT"
+            "\nCensura e pseudonimizzazione PDF offline.\n\nSviluppato da: Graziano Mariella\nLicenza AGPL-3.0"
         )
         desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(desc)
@@ -2298,6 +2330,9 @@ class NullifyPDF(QMainWindow):
             if self.rb_en.isChecked()
             else "IT" if self.rb_it.isChecked() else "BOTH"
         )
+        if lang in ("IT", "BOTH") and not self._prepare_italian_model():
+            self.btn_ai.setEnabled(True)
+            return
         use_ocr = self.chk_ocr.isChecked()
         tessdata_dir = find_tessdata_dir() if use_ocr else None
         if use_ocr and not tessdata_dir:
@@ -2323,6 +2358,76 @@ class NullifyPDF(QMainWindow):
             expand_group_ids(enabled_groups),
             health_mode,
         )
+
+    def _prepare_italian_model(self) -> bool:
+        """Make an Italian pipeline available; False if the user cancels.
+
+        The statistical pipeline is not bundled (non-commercial licence): ask
+        once, show the licence, download and verify it. If the user declines,
+        the scan continues with rules only and the log says so.
+        """
+        root = spacy_models.models_root(self.config_dir)
+        found = spacy_models.resolve_italian(root)
+        if found is not None:
+            self.ai_worker.italian_model = found.name
+            return True
+        box = QMessageBox(self)
+        box.setWindowTitle("Modello italiano")
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setText("Per riconoscere i nomi in italiano serve un modello aggiuntivo.")
+        box.setInformativeText(spacy_models.licence_text())
+        b_dl = box.addButton("Accetta e scarica", QMessageBox.ButtonRole.AcceptRole)
+        b_skip = box.addButton("Continua senza modello", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton("Annulla", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is b_skip:
+            self.ai_worker.italian_model = spacy_models.blank_italian(root).name
+            self.write_log(
+                "Avviso: modello italiano non installato, riconoscimento nomi "
+                "solo con regole e dizionari (meno completo)."
+            )
+            return True
+        if clicked is not b_dl:
+            return False
+        dlg = QProgressDialog("Download del modello italiano...", "Annulla", 0, 100, self)
+        dlg.setWindowTitle("Modello italiano")
+        dlg.setMinimumDuration(0)
+        dlg.setAutoClose(False)
+        dlg.setAutoReset(False)
+        dlg.setCancelButton(None)
+        worker = SpacyModelInstallWorker(root)
+        result: Dict[str, str] = {}
+
+        def on_progress(done: int, total: int) -> None:
+            dlg.setValue(int(done * 100 / max(1, total)))
+
+        def on_done() -> None:
+            result["ok"] = "1"
+            dlg.accept()
+
+        def on_error(msg: str) -> None:
+            result["error"] = msg
+            dlg.accept()
+
+        worker.progress_sig.connect(on_progress)
+        worker.done_sig.connect(on_done)
+        worker.error_sig.connect(on_error)
+        worker.start()
+        dlg.exec()
+        worker.wait()
+        if "ok" in result:
+            found = spacy_models.resolve_italian(root)
+            if found is not None:
+                self.ai_worker.italian_model = found.name
+                self.write_log("Modello italiano scaricato e verificato.")
+                return True
+        QMessageBox.warning(
+            self,
+            "Modello italiano",
+            "Download non riuscito: " + result.get("error", "errore sconosciuto"),
+        )
+        return False
 
     def _select_ai_entities(self) -> Optional[List[str]]:
         """Ask which data types the AI scan should look for.

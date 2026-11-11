@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔄 Changed
+
+- **New licence: AGPL-3.0-or-later** (previously MIT), because the program uses PyMuPDF, which is AGPL-3.0 or commercial. The program stays free and is not sold. Full third-party licence list in `THIRD_PARTY_NOTICES.md`.
+- **Italian name-recognition model downloaded on demand**: its licence (CC BY-NC-SA 3.0, non-commercial) cannot be bundled in an AGPL installer, so the first Italian scan shows the licence and asks for consent, then downloads and verifies the model (SHA-256). Detection quality is unchanged once installed; if you decline, the scan continues with rules and dictionaries only and the log says so.
+
 ### ✨ Added
 
 - **Local PII models**: optional, user-downloaded ONNX models from pinned Hugging Face revisions are stored under `~/.nullifypdf/models/`, verified file-by-file with SHA-256, and contribute suggestions only. The model dialog shows the source, license, revision and download progress; unverified experimental entries remain blocked.

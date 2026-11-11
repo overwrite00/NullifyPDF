@@ -919,3 +919,43 @@ def test_export_through_the_app_reports_no_survivor_for_clamped_bands(window, tm
     monkeypatch.setattr(app, "export_document", spy)
     w.cmd_export()
     assert seen["r"].surviving_glyphs == 0 and seen["r"].verification.ok
+
+
+def test_italian_model_prompt_offers_consent_and_fallback(window, monkeypatch):
+    """Without the pipeline the window asks; declining keeps a rules-only scan."""
+    import spacy_models
+
+    monkeypatch.setattr(spacy_models, "_is_package", lambda: False)
+    w = window
+    root = spacy_models.models_root(w.config_dir)
+
+    class FakeBox:
+        choice = "cancel"
+
+        def __init__(self, *a, **k):
+            self.buttons = {}
+
+        def __getattr__(self, name):
+            return lambda *a, **k: None
+
+        def addButton(self, text, role):
+            self.buttons[text] = object()
+            return self.buttons[text]
+
+        def exec(self):
+            return 0
+
+        def clickedButton(self):
+            return self.buttons.get(FakeBox.choice)
+
+    for attr in ("Icon", "ButtonRole"):
+        setattr(FakeBox, attr, getattr(QMessageBox, attr))
+    monkeypatch.setattr(app, "QMessageBox", FakeBox)
+
+    FakeBox.choice = "Annulla"
+    assert w._prepare_italian_model() is False
+
+    FakeBox.choice = "Continua senza modello"
+    assert w._prepare_italian_model() is True
+    assert w.ai_worker.italian_model.endswith("blank_it")
+    assert (root / "blank_it" / "meta.json").is_file()
