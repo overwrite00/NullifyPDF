@@ -16,7 +16,7 @@ NullifyPDF follows a **privacy-first architecture**:
 | Principle                   | Implementation                                    |
 | --------------------------- | ------------------------------------------------- |
 | **100% Local**              | All PDF processing happens on your machine        |
-| **No Cloud**                | No file uploads, no network transmission          |
+| **No Cloud**                | No file uploads; the only network access is the optional update check (Info → Controlla aggiornamenti, or at every start if the user enables it; off by default), which sends no document data |
 | **No Telemetry**            | Zero user tracking or analytics                   |
 | **Open Source**             | Full code transparency, auditable by anyone       |
 | **Privacy Export**          | Irreversible redaction or encrypted reversible pseudonymization |
@@ -37,26 +37,46 @@ NullifyPDF follows a **privacy-first architecture**:
 
 When you export a PDF with redactions:
 
-1. ✅ **Metadata Stripped** — Creation date, author, and document metadata removed
-2. ✅ **Links Removed When Redacted** — Links overlapping redaction areas are deleted
-3. ✅ **Redactions Applied** — Selected text/image areas are removed from the exported PDF
-4. ✅ **Pseudonymization Maps Encrypted** — Restore maps are stored separately and encrypted with a user password
+1. ✅ **Redactions applied** — selected text/image areas are removed from the content stream, not just covered
+2. ✅ **Sanitiser** — annotations, embedded files, external links, bookmarks, JavaScript, tagged-PDF alternative text, thumbnails, document and XMP metadata, invisible text, text outside the visible page box and the trailer ID are removed; hidden layers are shown before the scan so their text is analysed
+3. ✅ **Verification** — every redacted word is checked glyph by glyph (the number of characters actually deleted must match the measured deletion rule, and characters a thin box cannot reach are reported), then the written file is re-opened and checked for any removed value in the text layer, every object and decompressed stream, annotations, attachments, bookmarks and metadata; findings list locations, never the values
+4. ✅ **Pseudonymization maps encrypted** — restore maps are stored separately and encrypted with a user password (scrypt key derivation, authenticated encryption)
+5. ⚙️ **Optional width masking** — the space left by removed text can be rounded so its width is not recoverable (off by default: it can shift the following text slightly)
+
+Limits you should know about:
+
+- Detection is statistical. Review the result and the suggestions before sharing; unrecognised or indirect identifiers (dates, places, job titles, clinical details) remain.
+- Text drawn as part of an image is removed only where the image is redacted; OCR is used to find it.
+- Signatures, stamps and photos are not detected automatically; use "Oscura Immagini" or draw a redaction manually.
 
 ### Temporary Files
 
-During export, NullifyPDF uses **disk-backed temporary files**:
+- The working copy used during export is kept **in memory**. Only very large documents use a private per-user folder (`~/.nullifypdf/tmp`), emptied after the export and at the next start-up.
+- No unredacted copy is written next to the exported file.
+- Logs (`~/.nullifypdf/logs`) are rotated and purged after 30 days; they contain no detected values. "Elimina dati locali" removes logs, audit records and temporary files.
 
-- Temporary data written to system temp directory
-- Automatically cleaned up after export completes
-- On Windows: `%APPDATA%\Local\Temp\`
-- On macOS/Linux: `/tmp/`
-
-### No Sensitive Data in Memory
+### Data kept in memory and on disk
 
 - Original PDF kept in memory only while open
-- AI results (detected entities) stored only in-memory during session
-- Exported PDF overwrites original data locations
+- AI results (detected entities) stored only in memory during the session; suggestions are never written to disk
+- The restore map is written with owner-only permissions where the platform supports it; keep it away from the PDF and from synchronised folders
+- The blocklist and allowlist (`~/.nullifypdf/*.v2.enc`) may themselves contain personal data, so they are encrypted with AES-256-GCM under a master key protected by Windows DPAPI, the OS keyring (`keyring` package, installed on macOS and Linux; headless Linux without a Secret Service falls back to the key file) or, as a fallback, a local key file. Terms can expire and are then purged. DPAPI and the keyring bind the data to the user account and machine; the key file only protects against copying a single data file, not against someone who can read the user's profile. Overwriting migrated plaintext files is best effort (SSD wear levelling and backups may keep copies)
+- If the keystore cannot be read (profile copied to another account or PC) nothing is deleted or overwritten: the lists stay empty and the encrypted files untouched
+- The pseudonym key is stored sealed under the same master key; a password-protected copy can be exported for another computer
+- Restore maps (version 3 envelope): a random data key encrypts the map with AES-256-GCM; it is wrapped by a password-derived key (Argon2id, scrypt if unavailable) and optionally by a recovery key (256-bit, shown once, never stored). Key-derivation parameters read from a file are bounded before use
 - Graceful cleanup on app close
+
+---
+
+## ⚖️ GDPR Notes
+
+NullifyPDF runs locally; the person or organisation using it is the controller of the data it processes.
+
+- **Redaction is not a guarantee of anonymisation.** Under Recital 26 GDPR, data that can still be attributed to a person is personal data. A redacted document that keeps dates, places or context may remain personal data.
+- **Pseudonymised output is personal data** (Art. 4(5) GDPR; EDPB Guidelines 01/2025 on pseudonymisation). The restore map is the "additional information" that must be kept separately and protected; it is itself personal data. A random or keyed placeholder avoids leaking the order and number of values; the "sequential" style does leak them.
+- **Special categories (Art. 9)**: documents with health data need particular care. The health-document profile keeps uncertain hits as suggestions instead of dropping them; in Italy, health data may not be disseminated (art. 2-septies d.lgs. 196/2003).
+- **Accuracy and minimisation**: over-redaction removes meaning and under-redaction discloses data. Uncertain detections are shown for review rather than applied or discarded silently.
+- The export audit record (`~/.nullifypdf/audit`) supports accountability; it contains counts and hashes only.
 
 ---
 
@@ -279,5 +299,5 @@ For **security vulnerabilities only**:
 
 ---
 
-*Last updated: 2026-07-23*  
+*Last updated: 2026-11-10*  
 *← [Contributing](./CONTRIBUTING.md) | [Back to README →](./README.md)*

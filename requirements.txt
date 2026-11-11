@@ -1,22 +1,30 @@
 # Requirements for NullifyPDF - Python 3.13 REQUIRED
-# PyMuPDF 1.28.0+ ships abi3 wheels (cp310-abi3) that cover Python 3.13 as well
+# PyMuPDF ships abi3 wheels (cp310-abi3) that cover Python 3.13 as well
 # Update script handles version detection automatically
 
 # UI Framework (compatible with Python 3.13)
-PySide6==6.11.2
+PySide6==6.12.0
 
 # PDF Processing (abi3 wheel, compatible with Python 3.13)
-PyMuPDF==1.28.2
+PyMuPDF==2.1
 
 # NLP & Security Analysis
-presidio-analyzer==2.2.364
-spacy==3.8.16
-cryptography==50.0.1
+presidio-analyzer==2.2.366
+spacy==3.8.18
+# Local token-classification models; PyTorch is intentionally not required at runtime.
+onnxruntime==1.31.1
+tokenizers==0.23.3
+cryptography==50.0.2
+# OS keyring (macOS Keychain / Linux Secret Service) for the local master key;
+# Windows uses DPAPI instead, so it is not installed there.
+keyring==25.7.0; sys_platform != "win32"
 # spaCy language models (pinned to exact versions for reproducibility)
 # IMPORTANT: model minor version MUST match the spaCy core minor version
 # (spaCy 3.8.x <-> models 3.8.x). The models declare spacy>=3.8.0,<3.9.0.
 # These are cached by pip in GitHub Actions, significantly speeding up CI/CD
-en-core-web-md @ https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl
+# Development and CI only (tests of the Italian detectors). Licence CC BY-NC-SA 3.0:
+# NOT bundled in the installer (excluded in the PyInstaller spec); the app
+# downloads it on demand after the user accepts the licence (spacy_models.py).
 it-core-news-md @ https://github.com/explosion/spacy-models/releases/download/it_core_news_md-3.8.0/it_core_news_md-3.8.0-py3-none-any.whl
 
 # Build Tool (compatible with Python 3.13)
@@ -24,5 +32,5 @@ pyinstaller==6.22.3
 
 # Development Tools
 isort==5.13.2
-pytest==9.1.1
+pytest==9.2.0
 mypy==1.20.2

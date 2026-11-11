@@ -11,7 +11,7 @@ Your step-by-step guide to redacting sensitive data from PDFs safely and securel
 
 | 🎯 Step            | ⏱️ Time  | What You'll Do                |
 | ----------------- | ------- | ----------------------------- |
-| **1️⃣ Load**        | 30 sec  | Open a PDF file               |
+| **1️⃣ Load**        | 30 sec  | Open a PDF or Word DOCX file  |
 | **2️⃣ Configure**   | 30 sec  | Select document language      |
 | **3️⃣ Auto-Redact** | 1-2 min | Run AI to find sensitive data |
 | **4️⃣ Review**      | 1-2 min | Manually fix any mistakes     |
@@ -20,35 +20,38 @@ Your step-by-step guide to redacting sensitive data from PDFs safely and securel
 
 ---
 
-## Step 1️⃣ — Load Your PDF
+> [!TIP]
+> The program has its own guide in Italian: press **F1** or the **Guida** button in the sidebar. Resting the pointer on any button, option or field shows a short description.
+
+## Step 1️⃣ — Load Your PDF or Word Document
 
 1. Click the blue **"Apri PDF"** button in the top left
-2. Select a PDF file from your computer
+2. Select a PDF or modern Word **DOCX** file from your computer
 3. The document appears in the center. Scroll with mouse or use arrow buttons (top right)
 
 > [!NOTE]
-> Supported format: unencrypted PDF. Digital text is scanned directly; scanned pages require OCR. If NullifyPDF detects a page with no extractable text, a popup confirms it and reminds you to enable **OCR PDF scansionati** before AI scanning — manual selection (Step 4) works on scanned pages either way.
+> Supported formats: unencrypted PDF and DOCX. A DOCX is read locally and converted to an internal PDF representation; the original Word file is never modified and macros, external links and embedded objects are not executed. Legacy binary `.doc` files must be saved as DOCX first. Digital PDF text is scanned directly; scanned pages require OCR.
+
+### Optional local models
+
+Open **Modelli locali** in the sidebar to view the reviewed shortlist. Models are optional and are not included in the installer. Before downloading, the dialog shows the Hugging Face source, license, pinned revision and total size. The progress bar reports the overall percentage across all model files.
+
+Only entries with a complete application manifest can be downloaded. The manifest fixes the revision, allowed files, expected sizes and SHA-256 values. Experimental entries without those checks remain unavailable. Installed models run locally and add suggestions for review; they never apply a redaction automatically.
 
 ---
 
-## Step 2️⃣ — Configure AI Language
+## Step 2️⃣ — Language
 
-**Before scanning**, select your document's language from the left sidebar:
-
-| 🌐 Language | Use When                          |
-| ---------- | --------------------------------- |
-| **EN**     | Document is entirely in English   |
-| **IT**     | Document is entirely in Italian   |
-| **BOTH**   | Document contains mixed languages |
+NullifyPDF analyses **Italian** documents only; there is no language selector. The Italian name-recognition model is not part of the installer (its licence is non-commercial): the first time you run **Auto Redact** the program shows the licence, asks for your consent and downloads it. If you decline, the scan continues with rules and dictionaries only, which finds fewer names.
 
 > [!WARNING]
-> Wrong language = missed detections. Choose the exact language of your document.
+> Documents in other languages are not supported: names and places in them will be missed.
 
 ---
 
 ## Step 3️⃣ — Automatic Redaction (AI Scan)
 
-Click the **"Auto Redact (AI)"** button. A dialog first lets you tick which data types to look for (your choice is remembered). NullifyPDF will then automatically find and flag the selected types; other occurrences of a detected value are matched as whole words only ("Rossi" does not match "Rossini"):
+Click the **"Auto Redact"** button. A dialog first lets you tick which data types to look for (your choice is remembered). NullifyPDF will then automatically find and flag the selected types; other occurrences of a detected value are matched as whole words only ("Rossi" does not match "Rossini"):
 
 - 🧑 **Names & Surnames**
 - 🏙️ **Cities & Addresses**
@@ -66,6 +69,19 @@ Click the **"Auto Redact (AI)"** button. A dialog first lets you tick which data
 
 > [!TIP]
 > The AI isn't perfect. You'll review results in Step 4. If a type produces too many false positives (for example cities), untick it in the selection dialog next time. Field labels ("Telefono:"), headings and list items are ignored automatically.
+
+---
+
+### Review suggestions
+
+Pending suggestions are also outlined in orange on the page (untick *Mostra suggerimenti* to hide them). Click an outline to censor or discard that suggestion; the outlines exist only on screen and never reach the exported file.
+
+
+Detections that the text does not support strongly enough (for example a lone capitalized word with no context) are not applied: after the scan a **Revisione suggerimenti** dialog lists them with page, type, score and the reasons. Values are masked until you tick *Mostra i valori*. Tick the ones to censor and press *Applica selezionati* (the others are discarded), or *Rivedi più tardi* to keep them pending; the sidebar button *Rivedi suggerimenti (N)* reopens the list. Double-click a row to jump to its page.
+
+### Documents with health data
+
+Tick **Profilo documenti sanitari** before scanning. It also looks for dates of birth and health identifiers (health card number, prescription number) and never drops an uncertain hit silently: it becomes a suggestion.
 
 ---
 
@@ -102,7 +118,7 @@ Make small text larger:
 Remove logos, signatures, or scanned photos:
 
 1. **Enable** the toggle: **"Oscura Immagini"** (sidebar)
-2. Click **"Auto Redact (AI)"** again
+2. Click **"Auto Redact"** again
 3. All images replaced with gray placeholder: `[ IMAGE REMOVED ]`
 
 > [!NOTE]
@@ -115,14 +131,19 @@ Remove logos, signatures, or scanned photos:
 When satisfied with redactions:
 
 1. Click **"Esporta PDF"**
-2. Choose the export mode:
-   - **Anonimizzazione irreversibile** removes selected personal data permanently
-   - **Pseudonimizzazione reversibile** replaces selected personal data with placeholders and creates a separate encrypted restore map
-3. Choose filename and location
-4. Review the exported PDF before sharing it
+2. If suggestions are still unreviewed you are asked whether to review them first
+3. Choose the export mode:
+   - **Rimozione irreversibile** removes selected personal data permanently
+   - **Pseudonimizzazione reversibile** replaces selected personal data with placeholders and creates a separate encrypted restore map. You choose the placeholder style: *Casuale* (recommended; reveals neither order nor count), *Progressivo* (`PERSON_001`...; reveals how many values exist and their order), *Generico* (also hides the type) or *Coerente (chiave)* (the same value gets the same placeholder in every document made with the same key, which links the documents)
+4. Choose filename and location. The suggested name does not contain the source file name
+5. For pseudonymization, choose where to save the map (not the PDF's folder, not a synchronised folder) and enter the password twice
+6. NullifyPDF re-opens the exported file and verifies it. If a removed value is still readable you are told where and can delete the file
+7. Review the exported PDF before sharing it
+
+Annotations, attachments, external links, bookmarks, scripts, metadata, invisible text and text outside the page are removed on export. "Maschera larghezza testo rimosso" (sidebar) additionally rounds the space left by removed text.
 
 > [!CAUTION]
-> **Irreversible anonymization cannot be undone from the exported PDF.** Keep a backup of the original PDF. For pseudonymization, store the encrypted restore map separately from the PDF.
+> **Removal cannot be undone from the exported PDF, and it is not a guarantee of anonymisation**: dates, places or context left in the document can still identify a person. Keep a backup of the original PDF. A pseudonymized PDF and its restore map remain personal data: store the map separately from the PDF and protect its password.
 
 ---
 
@@ -143,6 +164,12 @@ NullifyPDF checks the SHA-256 hash recorded in the restore map against the selec
 
 ---
 
+## 🧹 Local data
+
+NullifyPDF keeps a rotating log, an export audit record (counts and hashes, no values) and, for very large files, a temporary folder under `~/.nullifypdf`. **Elimina dati locali** removes them (and, if you confirm, the dictionaries).
+
+---
+
 ## 🔧 Dictionary Management
 
 Your redaction preferences are saved automatically:
@@ -159,36 +186,28 @@ Your redaction preferences are saved automatically:
 
 ```
 .nullifypdf/
-├── blocklist.txt     ← Words to ALWAYS redact
-├── allowlist.txt     ← Words to NEVER redact
+├── blocklist.v2.enc  ← Words to ALWAYS redact (encrypted)
+├── allowlist.v2.enc  ← Words to NEVER redact (encrypted)
+├── keystore.json     ← How the encryption key is protected
+├── pseudonym.v2.enc  ← Key of the "Coerente" placeholder style (encrypted)
+├── update_check.json ← "Check at every start" preference (Info dialog)
+├── audit/            ← Export records (counts and hashes, no values)
 ├── logs/
 │   └── nullifypdf.log
 ```
 
-### How to Edit Manually
+### Editing the dictionaries
 
-<details>
-<summary><strong>📝 Edit Blocklist/Allowlist Directly</strong></summary>
+Open **Dizionari**. Each list is a table with the term, the date it was added and an optional expiry date (`AAAA-MM-GG`, or *Mai*). Use *Aggiungi* / *Rimuovi*, *Importa da testo...* (one term per line) and *Esporta in chiaro...* (the exported file contains personal data in clear). *Scadenza predefinita* sets the expiry of new terms, including the ones added by clicking or drawing on the page. Expired terms are removed automatically. The label at the top shows how the lists are protected.
 
-1. Open file manager, navigate to `~/.nullifypdf/`
-2. Edit `blocklist.txt` or `allowlist.txt` with any text editor
-3. One word per line, UTF-8 encoding
-4. Restart NullifyPDF to load changes
-
-**Example blocklist.txt:**
-```
-john smith
-acme corporation
-admin@example.com
-```
-
-</details>
+> [!NOTE]
+> The lists are encrypted for the current user account. If you copy `~/.nullifypdf` to another account or PC they cannot be read there (they stay untouched and are shown empty). Older plaintext `blocklist.txt` / `allowlist.txt` files are migrated automatically.
 
 ### Blocklist and Allowlist
 
 The manual redaction workflow keeps clicked/drawn terms mutually exclusive.
-When editing dictionary files or the dictionary dialog directly, review both
-lists and avoid adding the same term to both.
+When editing the dictionary dialog, review both lists and avoid adding the
+same term to both.
 
 ---
 
@@ -270,7 +289,13 @@ python3.13 NullifyPDF.py
 **A:** Irreversible anonymization cannot be undone from the exported PDF. Pseudonymization can be restored using **"Ricostruisci PDF"** together with the encrypted restore map and its password (see [Step 7](#step-7%EF%B8%8F%E2%83%A3--reconstruct-a-pseudonymized-pdf) below).
 
 ### Q: Does NullifyPDF send data to the cloud?
-**A:** **No.** PDF processing is local. OCR data may be downloaded during build time, not while processing your PDFs.
+**A:** **No.** PDF processing is local and no document data ever leaves your machine. The only network access is the optional update check (see below), and OCR data is downloaded at build time, not while processing your PDFs.
+
+### Q: How do I check for new versions?
+**A:** Open **Info** and click **Controlla aggiornamenti**. NullifyPDF asks the public GitHub releases of this repository whether a newer version exists (no PDF content or personal data is sent). If one does, a window shows the version, the link to the release, the **release notes** (taken from the matching section of `CHANGELOG.md`) and a **Download** button that saves the installer for your operating system into your system **Downloads** folder (the location configured in your OS), after checking its size and the SHA-256 published by GitHub. Nothing is installed automatically. On Linux distributions other than Debian/Ubuntu and Fedora/RHEL-based ones the window only offers the release link, where you can pick the file yourself.
+
+- **Stable** builds are only offered newer *stable* releases; **beta** builds are offered both stable and beta releases.
+- Tick **Controlla ad ogni avvio** in the Info dialog to run the same check silently each time the app starts. It is **off by default**; when enabled, a window appears only if a newer version exists, and a failed check (for example offline) is silently logged. Untick it to go back to fully manual checks.
 
 ---
 
@@ -283,5 +308,5 @@ python3.13 NullifyPDF.py
 
 ---
 
-*Last updated: 2026-09-19*  
+*Last updated: 2026-11-11*  
 *← [Back to README](./README.md) | [Troubleshooting →](./TROUBLESHOOTING.md)*

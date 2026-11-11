@@ -156,18 +156,9 @@ Names, emails, or other PII should be detected but aren't highlighted.
 
 ### Solution
 
-**Check 1 — Language Selection**
+**Check 1 — Language and model**
 
-Open sidebar. Is the correct language selected?
-
-| Language | Best For                         |
-| -------- | -------------------------------- |
-| **EN**   | English text only                |
-| **IT**   | Italian text only                |
-| **BOTH** | Mixed English + Italian (slower) |
-
-> [!WARNING]
-> Wrong language = **zero detection**. Test with a clear English name if unsure.
+NullifyPDF supports Italian documents only. Names are found by the Italian model, which is downloaded after your consent on the first Auto Redact. If you declined the download, only rules and dictionaries run and names may be missed: run Auto Redact again and accept the download.
 
 **Check 2 — Is It Searchable Text?**
 
@@ -184,7 +175,7 @@ If you can't copy → it's an image → enable **OCR PDF scansionati**
 For scanned PDFs:
 1. Enable **"OCR PDF scansionati"** in the sidebar
 2. Make sure OCR data is present (bundled by default) or you have local Tesseract `tessdata`
-3. Run **"Auto Redact (AI)"** again
+3. Run **"Auto Redact"** again
 
 Use image redaction only when you intentionally want to remove whole images or
 scanned photo blocks.
@@ -199,9 +190,30 @@ If AI still misses something:
 ### Allowlist Issue?
 
 If an entity should be detected but isn't:
-1. Check `~/.nullifypdf/allowlist.txt`
+1. Open **Dizionari** and look at the *Allowlist* tab
 2. If the word is there, it's intentionally ignored
-3. Remove it from allowlist to re-enable detection
+3. Remove it from the allowlist to re-enable detection
+
+---
+
+## 🔐 Dictionaries Are Empty on a New Computer
+
+The blocklist and allowlist are encrypted for the user account that created them. After copying `~/.nullifypdf` to another account or PC the Dizionari dialog shows a warning and empty lists; the encrypted files are not modified. Restore the original profile, or export the lists to text (*Esporta in chiaro...*) on the old computer and import them on the new one. The pseudonym key can be exported and imported with *Gestisci chiave...* in the placeholder style dialog.
+
+---
+
+## 🔍 Ordinary Words Proposed for Redaction
+
+### Symptom
+
+The scan proposes plain words ("Certifico", "Prescrivo", section headings) or fragments of letters of neighbouring lines.
+
+### Solution
+
+- Uncertain hits appear in **Rivedi suggerimenti** instead of being applied: leave them unticked to discard them.
+- Add words you never want redacted to the allowlist (**Dizionari**); matching is by whole word.
+- If black boxes cover parts of the lines above or below the redacted word, update to a build that includes rectangle trimming and re-run the scan. With very tight line spacing (roughly half the font size or less) no safe band exists: a warning "interlinea molto stretta" is shown and neighbouring words can be damaged, never left unredacted.
+- For medical documents tick **Profilo documenti sanitari**, which keeps uncertain hits as suggestions instead of dropping them.
 
 ---
 
@@ -214,7 +226,7 @@ AI redacted text that shouldn't be redacted (false positive).
 
 **Option 0 — Scan only what you need**
 
-Clicking **Auto Redact (AI)** opens a dialog where you tick the data types to look for (for example untick *Luoghi e indirizzi* if cities keep being flagged). Your choice is remembered. Labels and headings such as "Telefono:" or list items are filtered automatically, and other occurrences of a value are matched as whole words only.
+Clicking **Auto Redact** opens a dialog where you tick the data types to look for (for example untick *Luoghi e indirizzi* if cities keep being flagged). Your choice is remembered. Labels and headings such as "Telefono:" or list items are filtered automatically, and other occurrences of a value are matched as whole words only.
 
 **Option 1 — Remove and Allowlist**
 
@@ -232,10 +244,9 @@ Clicking **Auto Redact (AI)** opens a dialog where you tick the data types to lo
 
 For repeated false positives:
 
-1. Open `~/.nullifypdf/allowlist.txt`
-2. Add the word (one per line, lowercase)
-3. Restart NullifyPDF
-4. Run AI scan again
+1. Open **Dizionari** and add the word in the *Allowlist* tab
+2. Save
+3. Run the scan again
 
 Example:
 ```
@@ -465,5 +476,5 @@ The more details, the faster we can fix it! 🚀
 
 ---
 
-*Last updated: 2026-09-19*  
+*Last updated: 2026-11-11*  
 *← [User Guide](./USER_GUIDE.md) | [Development →](./DEVELOPMENT.md)*

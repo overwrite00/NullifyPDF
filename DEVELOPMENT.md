@@ -16,7 +16,7 @@ Before starting, verify you have:
 | **Python 3.13**         | 150 MB  | [Download](https://www.python.org/downloads/) |
 | **Git**                 | 50 MB   | [Download](https://git-scm.com/)              |
 | **Virtual Environment** | 2 GB    | `.venv/` auto-created by setup script         |
-| **Disk Space**          | 3 GB    | Dependencies + spaCy models                   |
+| **Disk Space**          | 3 GB    | Dependencies + Italian model                  |
 | **RAM**                 | 4 GB    | 8 GB recommended                              |
 
 ---
@@ -51,7 +51,7 @@ python setup_env.py
 This automatically:
 - ✅ Creates `.venv/` virtual environment
 - ✅ Installs dependencies
-- ✅ Downloads spaCy models (EN + IT)
+- ✅ Installs the Italian spaCy model (development only)
 
 ### 4️⃣ Activate Virtual Environment
 
@@ -105,7 +105,12 @@ If the GUI opens → **You're ready to develop!** 🎉
 ```
 NullifyPDF/
 |-- NullifyPDF.py              # Main PySide6 application
+|-- model_manager.py           # Pinned local model catalog and integrity checks
+|-- model_dialog.py             # Model consent and download UI
+|-- onnx_ner.py                 # ONNX token-classification adapter
+|-- word_import.py              # Safe DOCX text/table importer
 |-- privacy_core.py            # Privacy modes and encrypted restore maps
+|-- update_check.py            # Qt-free update check: versions, GitHub releases, asset choice, download
 |-- pii_detection.py           # Qt-free AI detection helpers (offsets, filters, whole-word matching)
 |-- PDF_Checker.py             # Heuristic verification utility
 |-- setup_env.py               # Environment setup script
@@ -136,21 +141,28 @@ NullifyPDF/
 
 | Package               | Version | Purpose                      |
 | --------------------- | ------- | ---------------------------- |
-| **PySide6**           | 6.11.2  | GUI framework (Qt6 bindings) |
-| **PyMuPDF**           | 1.28.2  | PDF manipulation and OCR bridge |
-| **presidio-analyzer** | 2.2.364 | PII detection                |
-| **spaCy**             | 3.8.16  | NLP for entity recognition   |
-| **cryptography**      | 50.0.1  | Encrypted restore maps       |
-| **pytest**            | 9.1.1   | Testing framework            |
+| **PySide6**           | 6.12.0  | GUI framework (Qt6 bindings) |
+| **PyMuPDF**           | 2.1     | PDF manipulation and OCR bridge |
+| **presidio-analyzer** | 2.2.366 | PII detection                |
+| **spaCy**             | 3.8.18  | NLP for entity recognition   |
+| **cryptography**      | 50.0.2  | Encrypted restore maps       |
+| **onnxruntime**       | 1.31.1  | CPU inference for optional local PII models |
+| **tokenizers**        | 0.23.3  | Fast local tokenizer with character offsets |
+| **python-docx**       | —       | Not required; DOCX import uses the standard-library OOXML reader |
+| **pytest**            | 9.2.0   | Testing framework            |
 
-### Language Models (Auto-Downloaded)
+### Language Models
 
-| Model             | Size  | Purpose     |
-| ----------------- | ----- | ----------- |
-| `en_core_web_md`  | 40 MB | English NER |
-| `it_core_news_md` | 45 MB | Italian NER |
+| Model             | Size  | Purpose     | Licence | In the installer |
+| ----------------- | ----- | ----------- | ------- | ---------------- |
+| `it_core_news_md` | 45 MB | Italian NER | CC BY-NC-SA 3.0 | **no**, downloaded by the app on demand (`spacy_models.py`) |
 
-These are downloaded automatically by `setup_env.py`.
+`setup_env.py` installs both in the development environment (the Italian tests
+need it). The PyInstaller specs exclude `it_core_news_md`, `pymupdf4llm` and
+`pymupdf.layout`. At run time the app asks for consent, downloads the Italian
+pipeline from the publisher's release, checks its size and SHA-256 and stores it
+under `~/.nullifypdf/spacy_models/`. If the user declines, a blank Italian
+pipeline is used and only rule-based detection is available.
 
 ---
 
@@ -162,7 +174,7 @@ These are downloaded automatically by `setup_env.py`.
 
 ```python
 NullifyPDF(QMainWindow)
-|-- PDFListManager          # Manages blocklist/allowlist
+|-- PDFListManager          # (word_lists.py) encrypted blocklist/allowlist
 |-- AIWorker(QObject)       # NLP/OCR scanning in thread
 |-- PDFView(QGraphicsView)  # PDF rendering and rectangle drawing
 |-- privacy_core.py         # Privacy modes and encrypted restore maps
@@ -230,7 +242,7 @@ Opens `htmlcov/index.html` in browser.
 CI runs `mypy` as a blocking step. Run the same check locally before opening a PR:
 
 ```bash
-mypy NullifyPDF.py pii_detection.py privacy_core.py PDF_Checker.py
+mypy NullifyPDF.py pii_detection.py privacy_core.py update_check.py PDF_Checker.py
 ```
 
 PyMuPDF is imported as `pymupdf` (aliased to `fitz`) so it is really type-checked; its dynamically defined constants are read once near the top of `NullifyPDF.py`.
@@ -272,7 +284,7 @@ python build_local.py
 | ----------- | --------------------------------- |
 | **Windows** | `.exe` executable                 |
 | **macOS**   | `.app` bundle ZIP                 |
-| **Linux**   | Portable binary + `.deb` + `.rpm` packages |
+| **Linux**   | Portable binary + `.deb` + `.rpm` packages (CI builds them in a RHEL 9 container, see `build-linux.yml`; `python build_local.py --deb-only` re-packages an existing binary as `.deb`) |
 
 ### Troubleshooting Build Issues
 
@@ -452,7 +464,16 @@ isort NullifyPDF.py
 | ------------------ | ----------------------- |
 | `NullifyPDF.py`    | Main app, GUI, OCR, export logic |
 | `privacy_core.py`  | Placeholder and restore-map logic |
-| `pii_detection.py` | AI detection precision: word-box index, thresholds, filters, entity selection |
+| `pii_detection.py` | AI detection precision: word-box index, rectangle clamping, thresholds, pattern validation, evidence scoring, entity selection |
+| `lexicon_it.py`    | Italian word lists used to reject ordinary words / confirm names and places |
+| `pdf_sanitize.py`  | Export sanitiser and output verification |
+| `export_engine.py` | Qt-free export pipeline, audit record, local-data hygiene |
+| `review_dialog.py` | Review dialog for suggested detections |
+| `secure_store.py`  | Master key protection (DPAPI / keyring / key file), AES-GCM sealing |
+| `word_lists.py`    | Encrypted blocklist/allowlist with expiry |
+| `dictionary_dialog.py` | Dictionary editor dialog |
+| `help_guide.py` | In-app guide and tooltip table (keep the guide in sync with the UI: `tests/test_gui_help.py` checks it) |
+| `scripts/build_lexicon_data.py` | Generates `lexicon_data_it.py` from ISTAT open data and (with `--wikidata`) Wikidata names; development only |
 | `setup_env.py`     | Environment setup |
 | `build_local.py`   | PyInstaller build |
 | `PDF_Checker.py`   | Post-processing utility |
@@ -468,7 +489,7 @@ isort NullifyPDF.py
 | AI Processing       | `NullifyPDF.py` | `AIWorker.run_scan()` |
 | Export              | `NullifyPDF.py` | `cmd_export()`        |
 | Reconstruct         | `NullifyPDF.py` | `cmd_reconstruct()`   |
-| Blocklist/Allowlist | `NullifyPDF.py` | `PDFListManager`      |
+| Blocklist/Allowlist | `word_lists.py` | `PDFListManager`      |
 
 ---
 
@@ -574,7 +595,11 @@ Ready to contribute? See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
 - 💬 **GitHub Discussions:** [Discussions](https://github.com/overwrite00/NullifyPDF/discussions)
 - 🐛 **GitHub Issues:** [Issues](https://github.com/overwrite00/NullifyPDF/issues)
 
+### Release notes and the update check
+
+The release workflows fill each GitHub release body with `scripts/extract_release_notes.py`: the `## [X.Y.Z]` section for stable tags, `## [Unreleased]` for beta tags. The in-app update check displays that body, so keep the changelog sections accurate before tagging.
+
 ---
 
-*Last updated: 2026-09-19*  
+*Last updated: 2026-11-11*  
 *← [Troubleshooting](./TROUBLESHOOTING.md) | [Back to README →](./README.md)*
