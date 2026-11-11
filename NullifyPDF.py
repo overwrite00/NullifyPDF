@@ -101,6 +101,7 @@ from pii_detection import (
     save_enabled_groups,
     whole_word_rects,
 )
+import licences_info
 import spacy_models
 import update_check
 from export_engine import (
@@ -2112,7 +2113,7 @@ class NullifyPDF(QMainWindow):
         """Show about dialog."""
         d = QDialog(self)
         d.setWindowTitle("Info")
-        d.setFixedSize(340, 560)
+        d.setFixedSize(520, 820)
         lay = QVBoxLayout(d)
         lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ip = resource_path(os.path.join("images", "NullifyPDF_icon.png"))
@@ -2146,7 +2147,17 @@ class NullifyPDF(QMainWindow):
         lbl_repo.setOpenExternalLinks(True)
         lbl_repo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(lbl_repo)
-        lay.addSpacing(10)
+        lay.addSpacing(6)
+        lic_view = QTextBrowser()
+        lic_view.setObjectName("about_licences")
+        lic_view.setOpenExternalLinks(True)
+        lic_view.setHtml(licences_info.about_html())
+        lic_view.setMinimumHeight(200)
+        lic_view.setToolTip(
+            "Licenza del programma e dei componenti usati, con i collegamenti ai testi ufficiali."
+        )
+        lay.addWidget(lic_view, 1)
+        lay.addSpacing(6)
         btn_upd = QPushButton("Controlla aggiornamenti")
         lay.addWidget(btn_upd)
         chk_auto = QCheckBox("Controlla ad ogni avvio")

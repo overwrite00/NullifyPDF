@@ -959,3 +959,22 @@ def test_italian_model_prompt_offers_consent_and_fallback(window, monkeypatch):
     assert w._prepare_italian_model() is True
     assert w.ai_worker.italian_model.endswith("blank_it")
     assert (root / "blank_it" / "meta.json").is_file()
+
+
+def test_about_dialog_shows_licence_notice_with_links(window, monkeypatch):
+    from PySide6.QtWidgets import QTextBrowser
+
+    import licences_info
+
+    seen = {}
+
+    def fake_exec(self):
+        view = self.findChild(QTextBrowser, "about_licences")
+        seen["html"] = view.toHtml()
+        seen["links"] = view.toPlainText()
+        return 0
+
+    monkeypatch.setattr(app.QDialog, "exec", fake_exec)
+    window.cmd_about()
+    assert "AGPL-3.0-or-later" in seen["links"] and "PyMuPDF" in seen["links"]
+    assert all(c.url in seen["html"] for c in licences_info.COMPONENTS)

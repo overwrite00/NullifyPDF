@@ -268,6 +268,28 @@ non-commercial) is **not** part of the installer: the program offers to download
 it, shows its licence and asks for consent first. Licences of all third-party
 components are listed in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
 
+**Notice.** NullifyPDF is free software, distributed under the AGPL-3.0-or-later. Every component and model it uses remains under its own licence, listed below with a link to the official text; using the program means respecting those conditions. The Italian spaCy model is for non-commercial use only and is downloaded only after your consent.
+
+| Component | Licence | Used for |
+|---|---|---|
+| [NullifyPDF](https://github.com/overwrite00/NullifyPDF/blob/main/LICENSE) | AGPL-3.0-or-later | this program |
+| [PyMuPDF / MuPDF](https://pymupdf.readthedocs.io/en/latest/about.html) | AGPL-3.0 or commercial (Artifex) | PDF reading and redaction |
+| [PySide6 / Qt](https://opensource.org/license/lgpl-3-0) | LGPL-3.0 | graphical interface |
+| [Presidio](https://github.com/microsoft/presidio/blob/main/LICENSE) | MIT | personal-data detection |
+| [spaCy](https://github.com/explosion/spaCy/blob/master/LICENSE) | MIT | language processing |
+| [spaCy en_core_web_md](https://github.com/explosion/spacy-models/releases/tag/en_core_web_md-3.8.0) | MIT | English model |
+| [spaCy it_core_news_md](https://creativecommons.org/licenses/by-nc-sa/3.0/) | CC BY-NC-SA 3.0 (non-commercial use only) | Italian model, downloaded after consent |
+| [onnxruntime](https://github.com/microsoft/onnxruntime/blob/main/LICENSE) | MIT | running local models |
+| [tokenizers](https://github.com/huggingface/tokenizers/blob/main/LICENSE) | Apache-2.0 | tokenizing for local models |
+| [cryptography](https://github.com/pyca/cryptography/blob/main/LICENSE) | Apache-2.0 or BSD-3-Clause | encryption |
+| [keyring](https://github.com/jaraco/keyring) | MIT | key storage (Linux/macOS) |
+| [tldextract](https://github.com/john-kurkowski/tldextract/blob/master/LICENSE) | BSD-3-Clause | URL recognition |
+| [NumPy](https://github.com/numpy/numpy/blob/main/LICENSE.txt) | BSD-3-Clause | numerical computing |
+| [Tesseract OCR](https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE) | Apache-2.0 | OCR of scanned documents |
+| [tessdata_fast (eng, ita)](https://github.com/tesseract-ocr/tessdata_fast/blob/main/LICENSE) | Apache-2.0 | OCR language data |
+| [ISTAT, elenco dei comuni](https://creativecommons.org/licenses/by/4.0/) | CC BY 4.0 | place names |
+| [Wikidata](https://creativecommons.org/publicdomain/zero/1.0/) | CC0 1.0 | given names and surnames |
+
 See [LICENSE](./LICENSE) for the full text.
 
 ---

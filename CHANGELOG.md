@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🔄 Changed
 
 - **New licence: AGPL-3.0-or-later** (previously MIT), because the program uses PyMuPDF, which is AGPL-3.0 or commercial. The program stays free and is not sold. Full third-party licence list in `THIRD_PARTY_NOTICES.md`.
+- **Licence notice in the Info window and README**: the Info window now lists the licence of NullifyPDF and of every component and model it uses, with clickable links to the official texts.
 - **Italian name-recognition model downloaded on demand**: its licence (CC BY-NC-SA 3.0, non-commercial) cannot be bundled in an AGPL installer, so the first Italian scan shows the licence and asks for consent, then downloads and verifies the model (SHA-256). Detection quality is unchanged once installed; if you decline, the scan continues with rules and dictionaries only and the log says so.
 
 ### ✨ Added

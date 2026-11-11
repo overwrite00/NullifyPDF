@@ -46,3 +46,19 @@ def test_no_declared_non_commercial_dependency_is_bundled():
         if re.search(r"\bNC\b|non-?commercial", lic, re.I) and name not in kept_out:
             offenders.append((name, lic))
     assert not offenders, offenders
+
+
+def test_component_list_is_https_complete_and_in_readme():
+    import licences_info as li
+
+    readme = _read("README.md")
+    names = {c.name for c in li.COMPONENTS}
+    assert {"PyMuPDF / MuPDF", "PySide6 / Qt", "spaCy it_core_news_md", "Tesseract OCR"} <= names
+    for c in li.COMPONENTS:
+        assert c.url.startswith("https://"), c
+        assert c.url in readme, c.name
+        assert c.role_en, c.name
+    assert li.readme_markdown() in readme
+    html_text = li.about_html()
+    assert all(c.url in html_text for c in li.COMPONENTS)
+    assert "non commerciale" in li.NOTICE
