@@ -7,6 +7,10 @@ PySide6==6.12.0
 
 # PDF Processing (abi3 wheel, compatible with Python 3.13)
 PyMuPDF==2.1
+# Optional on Windows: used to render DOCX with the installed Microsoft Word
+# application, preserving layout and formatting. The OOXML fallback remains
+# available when Word/pywin32 is not present.
+pywin32==311; sys_platform == "win32"
 
 # NLP & Security Analysis
 presidio-analyzer==2.2.366

@@ -137,7 +137,7 @@ from onnx_ner import OnnxTokenDetector
 PDF_ANNOT_REDACT: int = fitz.PDF_ANNOT_REDACT  # type: ignore[attr-defined]
 PDF_REDACT_IMAGE_PIXELS: int = fitz.PDF_REDACT_IMAGE_PIXELS  # type: ignore[attr-defined]
 
-__version__ = "2.4.0"
+__version__ = "2.4.1"
 __version_prerelease__ = ""
 APP_VERSION = (
     f"{__version__}-{__version_prerelease__}"
@@ -1530,7 +1530,7 @@ class NullifyPDF(QMainWindow):
         lbl_title.setStyleSheet("font-size: 24px; font-weight: bold; color: #0ea5e9;")
         s_lay.addWidget(lbl_title)
         s_lay.addWidget(QLabel("Privacy Edition\n"))
-        btn_open = QPushButton("Apri PDF")
+        btn_open = QPushButton("Apri documento")
         btn_open.setObjectName("Primary")
         btn_open.clicked.connect(self.cmd_open)
         s_lay.addWidget(btn_open)
@@ -1541,7 +1541,7 @@ class NullifyPDF(QMainWindow):
         s_lay.addSpacing(10)
         self.chk_img = QCheckBox("Oscura Immagini")
         s_lay.addWidget(self.chk_img)
-        self.chk_ocr = QCheckBox("OCR PDF scansionati")
+        self.chk_ocr = QCheckBox("OCR documenti scansionati")
         self.chk_ocr.setChecked(True)
         s_lay.addWidget(self.chk_ocr)
         self.chk_sugg = QCheckBox("Mostra suggerimenti")
@@ -1581,11 +1581,11 @@ class NullifyPDF(QMainWindow):
         btn_clear.clicked.connect(self.cmd_clear)
         s_lay.addWidget(btn_clear)
         s_lay.addSpacing(20)
-        btn_export = QPushButton("Esporta PDF")
+        btn_export = QPushButton("Esporta documento")
         btn_export.setStyleSheet("border-color: #0ea5e9; color: #0ea5e9;")
         btn_export.clicked.connect(self.cmd_export)
         s_lay.addWidget(btn_export)
-        btn_reconstruct = QPushButton("Ricostruisci PDF")
+        btn_reconstruct = QPushButton("Ricostruisci documento")
         btn_reconstruct.clicked.connect(self.cmd_reconstruct)
         s_lay.addWidget(btn_reconstruct)
         btn_wipe = QPushButton("Elimina dati locali")
@@ -1930,7 +1930,10 @@ class NullifyPDF(QMainWindow):
             p = self.doc[self.page_num]
             txt = text_under_rect(p, fitz.Rect(r))
             if not txt:
-                self._add_kind_redaction(p, r, "IMAGE")
+                # Manual selection is an explicit privacy decision even when
+                # OCR produced no text layer: cover it with black, without an
+                # image placeholder label.
+                self._add_privacy_redaction(p, r, entity_type="DATA")
             else:
                 self._add_privacy_redaction(
                     p,

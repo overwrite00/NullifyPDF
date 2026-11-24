@@ -59,21 +59,17 @@ jobs:
           python3 -m pip install uv==0.8.0
           uv python install 3.13
           uv venv --python 3.13 /opt/venv
-          echo "/opt/venv/bin" >> "$GITHUB_PATH"
+          echo "/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> "$GITHUB_PATH"
+          echo "PATH=/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> "$GITHUB_ENV"
           echo "VIRTUAL_ENV=/opt/venv" >> "$GITHUB_ENV"
-
-      - name: Show toolchain
-        run: |
-          python --version
-          ldd --version | head -1
-          rpmbuild --version
 
       - name: Install Python dependencies (includes spaCy models)
         run: |
           # The spaCy models come from github.com release assets, which
           # occasionally answer 504: retry instead of failing the release.
+          UV_BIN="/usr/local/bin/uv"
           for attempt in 1 2 3 4 5; do
-            uv pip install -r requirements.txt && exit 0
+            "$UV_BIN" pip install -r requirements.txt && exit 0
             echo "Attempt $attempt failed, retrying in 30s..."; sleep 30
           done
           exit 1

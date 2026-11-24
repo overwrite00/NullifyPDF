@@ -39,10 +39,10 @@ from PySide6.QtWidgets import (
 # Exact visible text (or object name) -> tooltip.
 TOOLTIPS: Dict[str, str] = {
     # Sidebar
-    "Apri PDF": "Apre un file PDF da elaborare. Puoi anche trascinarlo sulla finestra.",
+    "Apri documento": "Apre un PDF o un documento Word DOCX da elaborare. Puoi anche trascinarlo sulla finestra.",
     "Lingua dei documenti: italiano": "NullifyPDF analizza documenti in italiano. Il modello italiano viene scaricato, dopo il tuo consenso, al primo utilizzo.",
     "Oscura Immagini": "Oscura anche tutte le immagini della pagina (loghi, firme, foto) quando applichi Auto Redact.",
-    "OCR PDF scansionati": "Legge con l'OCR le pagine scansionate e le immagini incorporate, così anche il testo nelle immagini viene analizzato.",
+    "OCR documenti scansionati": "Legge con l'OCR le pagine scansionate e le immagini incorporate, così anche il testo nelle immagini viene analizzato.",
     "Mostra suggerimenti": "Contorna in arancione, nell'anteprima, i suggerimenti ancora da rivedere. Servono solo a video: non finiscono nel file esportato.",
     "Profilo documenti sanitari": "Cerca anche date di nascita, numero tessera sanitaria, ricetta e codici di esenzione, e propone firme e timbri. I casi incerti diventano suggerimenti invece di essere scartati.",
     "Maschera larghezza testo rimosso": "Arrotonda lo spazio lasciato dal testo rimosso, che altrimenti ne rivela la larghezza. Può spostare di poco il testo seguente.",
@@ -55,8 +55,8 @@ TOOLTIPS: Dict[str, str] = {
     "Auto Redact": "Analizza il documento e segna i dati personali da censurare. Nulla viene cancellato finché non esporti.",
     "Rivedi suggerimenti": "Apre l'elenco dei rilevamenti incerti per decidere uno per uno se censurarli.",
     "Pulisci Pagina": "Rimuove tutte le censure segnate sulla pagina corrente.",
-    "Esporta PDF": "Crea il PDF finale: rimozione irreversibile oppure pseudonimizzazione reversibile. Il file viene pulito e verificato.",
-    "Ricostruisci PDF": "Rimette i valori originali in un PDF pseudonimizzato usando la sua mappa di ripristino e la password (o la chiave di recupero).",
+    "Esporta documento": "Crea il documento finale in PDF: rimozione irreversibile oppure pseudonimizzazione reversibile. Il file viene pulito e verificato.",
+    "Ricostruisci documento": "Rimette i valori originali nel PDF pseudonimizzato usando la sua mappa di ripristino e la password (o la chiave di recupero).",
     "Elimina dati locali": "Cancella log, registri di esportazione e file temporanei salvati nella cartella dell'utente. Chiede conferma per dizionari e chiavi.",
     "Guida": "Apre la guida all'uso del programma (scorciatoia: F1).",
     "Info": "Versione del programma, controllo degli aggiornamenti e collegamento al repository.",
@@ -231,24 +231,24 @@ def widgets_without_tooltip(root: QWidget) -> List[str]:
 GUIDE_TOPICS: List[Tuple[str, str]] = [
     ("Introduzione", """
 <h2>Introduzione</h2>
-<p>NullifyPDF individua i dati personali in un PDF e li <b>censura</b> in modo irreversibile oppure li sostituisce con <b>segnaposto</b> reversibili (pseudonimizzazione). Tutta l'elaborazione avviene <b>sul tuo computer</b>: nessun documento viene inviato in rete.</p>
+<p>NullifyPDF individua i dati personali in PDF e Word DOCX e li <b>censura</b> in modo irreversibile oppure li sostituisce con <b>segnaposto</b> reversibili (pseudonimizzazione). Tutta l'elaborazione avviene <b>sul tuo computer</b>: nessun documento viene inviato in rete.</p>
 <p><b>Flusso consigliato</b></p>
 <ol>
-<li><b>Apri PDF</b> (o trascina il file sulla finestra).</li>
+<li><b>Apri documento</b> (o trascina il file sulla finestra): puoi scegliere un PDF o un Word DOCX.</li>
 <li>Scegli la <b>lingua</b> del documento.</li>
 <li>Premi <b>Auto Redact</b> e scegli i tipi di dati da cercare.</li>
 <li>Rivedi i <b>suggerimenti</b> incerti e correggi a mano ciò che serve.</li>
-<li>Premi <b>Esporta PDF</b>, scegli la modalità e controlla il risultato.</li>
+<li>Premi <b>Esporta documento</b>, scegli la modalità e controlla il risultato.</li>
 </ol>
 <p>Finché non esporti, le censure sono solo segni sull'anteprima: il documento originale non viene modificato.</p>
 """),
-    ("Aprire un PDF e muoversi", """
-<h2>Aprire un PDF e muoversi</h2>
+    ("Aprire PDF e Word DOCX e muoversi", """
+<h2>Aprire PDF e Word DOCX e muoversi</h2>
 <ul>
-<li><b>Apri PDF</b> carica un file; si può anche trascinarlo sulla finestra. I PDF protetti da password non sono supportati.</li>
+<li><b>Apri documento</b> carica un PDF o un Word DOCX; si può anche trascinarlo sulla finestra. I PDF protetti da password non sono supportati.</li>
 <li><b>&lt;</b> e <b>&gt;</b> cambiano pagina; nel campo numerico puoi scrivere una pagina e premere Invio.</li>
 <li><b>+</b> e <b>-</b> cambiano lo zoom; anche <b>Ctrl + rotella</b> del mouse.</li>
-<li>Se il PDF sembra una scansione (senza testo selezionabile) il programma lo segnala: attiva <b>OCR PDF scansionati</b> prima di analizzarlo.</li>
+<li>Se il documento sembra una scansione (senza testo selezionabile) il programma lo segnala: attiva <b>OCR documenti scansionati</b> prima di analizzarlo.</li>
 </ul>
 """),
     ("Lingua e opzioni", """
@@ -256,7 +256,7 @@ GUIDE_TOPICS: List[Tuple[str, str]] = [
 <p><b>Lingua</b>: il programma analizza documenti in italiano. Il modello italiano non è incluso nell'installer (licenza non commerciale): al primo utilizzo il programma mostra la licenza e chiede il consenso per scaricarlo.</p>
 <ul>
 <li><b>Oscura Immagini</b>: censura anche tutte le immagini (loghi, foto, firme) quando applichi Auto Redact.</li>
-<li><b>OCR PDF scansionati</b>: legge con l'OCR le pagine scansionate e le immagini incorporate nelle pagine di testo. Richiede i dati di Tesseract (inclusi nei pacchetti).</li>
+<li><b>OCR documenti scansionati</b>: legge con l'OCR le pagine scansionate e le immagini incorporate nelle pagine di testo. Richiede i dati di Tesseract (inclusi nei pacchetti).</li>
 <li><b>Mostra suggerimenti</b>: contorna in arancione i suggerimenti da rivedere.</li>
 <li><b>Profilo documenti sanitari</b>: vedi l'argomento dedicato.</li>
 <li><b>Maschera larghezza testo rimosso</b>: arrotonda lo spazio lasciato dal testo cancellato, che altrimenti ne rivela la larghezza. Può spostare di poco il testo seguente; è disattivata di default.</li>
@@ -317,7 +317,7 @@ GUIDE_TOPICS: List[Tuple[str, str]] = [
 """),
     ("Esportare", """
 <h2>Esportare</h2>
-<p><b>Esporta PDF</b> crea il file finale. Si sceglie tra:</p>
+<p><b>Esporta documento</b> crea il file finale PDF. Si sceglie tra:</p>
 <ul>
 <li><b>Rimozione irreversibile</b>: i valori selezionati vengono eliminati dal file. Non si può tornare indietro dal file esportato.</li>
 <li><b>Pseudonimizzazione reversibile</b>: i valori sono sostituiti da segnaposto e viene creata una <b>mappa di ripristino cifrata</b>, separata dal PDF.</li>
@@ -332,13 +332,13 @@ GUIDE_TOPICS: List[Tuple[str, str]] = [
 <li>Scrive un registro (solo conteggi e hash, nessun dato personale).</li>
 </ul>
 <p>Il nome file suggerito non contiene il nome del documento originale. Se scegli un nome che contiene un valore da rimuovere vieni avvisato.</p>
-<p><b>Attenzione</b>: la censura non garantisce l'anonimato. Date, luoghi o altri dettagli rimasti possono ancora identificare una persona. Controlla sempre il risultato. Un PDF pseudonimizzato e la sua mappa restano dati personali.</p>
+<p><b>Attenzione</b>: la censura non garantisce l'anonimato. Date, luoghi o altri dettagli rimasti possono ancora identificare una persona. Controlla sempre il risultato. Un PDF esportato da PDF o Word DOCX e la sua mappa restano dati personali.</p>
 """),
-    ("Ricostruire un PDF", """
-<h2>Ricostruire un PDF</h2>
-<p><b>Ricostruisci PDF</b> rimette i valori originali in un PDF pseudonimizzato.</p>
+    ("Ricostruire un documento", """
+<h2>Ricostruire un documento</h2>
+<p><b>Ricostruisci documento</b> rimette i valori originali in un PDF pseudonimizzato, anche se l'origine era un Word DOCX.</p>
 <ol>
-<li>Scegli il PDF pseudonimizzato e la sua mappa (<i>.nullifypdf-map</i>).</li>
+<li>Scegli il PDF pseudonimizzato esportato da un PDF o da un Word DOCX e la sua mappa (<i>.nullifypdf-map</i>).</li>
 <li>Inserisci la <b>password</b>, oppure spunta <i>Usa la chiave di recupero</i> e digita la chiave (NPDF-...).</li>
 <li>Scegli dove salvare il file ricostruito.</li>
 </ol>
@@ -374,7 +374,7 @@ GUIDE_TOPICS: List[Tuple[str, str]] = [
 <tr><td><b>Trascina</b> sull'anteprima</td><td>Segna un'area da censurare</td></tr>
 <tr><td><b>Clic</b> su una censura</td><td>La rimuove</td></tr>
 <tr><td><b>Clic</b> su un contorno arancione</td><td>Decide un suggerimento</td></tr>
-<tr><td><b>Trascina un PDF</b> sulla finestra</td><td>Lo apre</td></tr>
+<tr><td><b>Trascina un PDF o un Word DOCX</b> sulla finestra</td><td>Lo apre</td></tr>
 </table>
 <p>Passando il mouse su un elemento dell'interfaccia per qualche secondo compare una breve descrizione.</p>
 """),

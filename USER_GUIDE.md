@@ -1,9 +1,9 @@
 # 📖 User Guide — NullifyPDF
 
-Your step-by-step guide to redacting sensitive data from PDFs safely and securely.
+Your step-by-step guide to redacting sensitive data from PDF e Word DOCX safely and securely.
 
 > [!TIP]
-> This takes about **5 minutes**. New to PDF redaction? Start with **Step 1** below.
+> This takes about **5 minutes**. New to redacting PDF e Word DOCX? Start with **Step 1** below.
 
 ---
 
@@ -25,7 +25,7 @@ Your step-by-step guide to redacting sensitive data from PDFs safely and securel
 
 ## Step 1️⃣ — Load Your PDF or Word Document
 
-1. Click the blue **"Apri PDF"** button in the top left
+1. Click the blue **"Apri documento"** button in the top left
 2. Select a PDF or modern Word **DOCX** file from your computer
 3. The document appears in the center. Scroll with mouse or use arrow buttons (top right)
 
@@ -122,7 +122,7 @@ Remove logos, signatures, or scanned photos:
 3. All images replaced with gray placeholder: `[ IMAGE REMOVED ]`
 
 > [!NOTE]
-> For scanned documents, enable **OCR PDF scansionati** before running the AI scan. Every build includes EN/IT OCR data.
+> For scanned documents, enable **OCR documenti scansionati** before running the AI scan. Every build includes EN/IT OCR data.
 
 ---
 
@@ -130,7 +130,7 @@ Remove logos, signatures, or scanned photos:
 
 When satisfied with redactions:
 
-1. Click **"Esporta PDF"**
+1. Click **"Esporta documento"**
 2. If suggestions are still unreviewed you are asked whether to review them first
 3. Choose the export mode:
    - **Rimozione irreversibile** removes selected personal data permanently
@@ -151,7 +151,7 @@ Annotations, attachments, external links, bookmarks, scripts, metadata, invisibl
 
 If you exported a PDF with **Pseudonimizzazione reversibile**, you can later restore the original values back into it:
 
-1. Click **"Ricostruisci PDF"**
+1. Click **"Ricostruisci documento"**
 2. Select the pseudonymized PDF (the one containing placeholders like `PERSON_001`)
 3. Select its matching `.nullifypdf-map` restore map file
 4. Enter the map's password
@@ -281,16 +281,16 @@ python3.13 NullifyPDF.py
 ## ❓ Common Questions
 
 ### Q: Why doesn't AI detect text in my scanned PDF?
-**A:** Enable **OCR PDF scansionati** before running the AI scan. Every build includes EN/IT OCR data.
+**A:** Enable **OCR documenti scansionati** before running the AI scan. Every build includes EN/IT OCR data.
 
 ### Q: Can I password-protect the exported PDF?
 **A:** Not built-in. Use a PDF editor after export for password protection.
 
 ### Q: How do I know redactions are applied?
-**A:** Export applies PDF redactions and removes selected metadata. Review the exported file before sharing, especially for high-risk documents.
+**A:** Export applies the redactions to the internal PDF representation (also for Word DOCX input) and removes selected metadata. Review the exported PDF before sharing, especially for high-risk documents.
 
 ### Q: Can I undo changes after export?
-**A:** Irreversible anonymization cannot be undone from the exported PDF. Pseudonymization can be restored using **"Ricostruisci PDF"** together with the encrypted restore map and its password (see [Step 7](#step-7%EF%B8%8F%E2%83%A3--reconstruct-a-pseudonymized-pdf) below).
+**A:** Irreversible anonymization cannot be undone from the exported PDF. Pseudonymization can be restored using **"Ricostruisci documento"** together with the encrypted restore map and its password (see [Step 7](#step-7%EF%B8%8F%E2%83%A3--reconstruct-a-pseudonymized-pdf) below).
 
 ### Q: Does NullifyPDF send data to the cloud?
 **A:** **No.** PDF processing is local and no document data ever leaves your machine. The only network access is the optional update check (see below) and the downloads you approve: the Italian name-recognition model (from the publisher's GitHub release) and the optional local models (from Hugging Face), each verified with a pinned SHA-256. OCR data is downloaded at build time, not while processing your PDFs.
@@ -312,5 +312,5 @@ python3.13 NullifyPDF.py
 
 ---
 
-*Last updated: 2026-11-11*  
+*Last updated: 2026-11-24*  
 *← [Back to README](./README.md) | [Troubleshooting →](./TROUBLESHOOTING.md)*

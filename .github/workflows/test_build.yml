@@ -5,6 +5,15 @@ on:
     branches:
       - main
       - develop
+    # A pull request that changes only documentation or repository metadata
+    # does not run the tests and builds; one that also changes code runs them.
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/pull_request_template.md'
+      - '.github/dependabot.yml'
+      - '.github/labeler.yml'
   schedule:
     - cron: "17 5 * * 1"
   workflow_dispatch:
