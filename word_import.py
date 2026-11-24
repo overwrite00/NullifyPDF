@@ -49,9 +49,10 @@ def _run_style(run: ET.Element) -> Tuple[str, float]:
     size = 10.5
     if rpr is not None:
         sz = rpr.find(_W + "sz")
-        if sz is not None and sz.get(_W + "val"):
+        raw_size = sz.get(_W + "val") if sz is not None else None
+        if raw_size:
             try:
-                size = max(4.0, float(sz.get(_W + "val")) / 2.0)
+                size = max(4.0, float(raw_size) / 2.0)
             except ValueError:
                 pass
     return _font_name(rpr), size
@@ -117,10 +118,12 @@ def docx_to_pdf(path: str) -> fitz.Document:
     width = page.rect.width - 2 * margin
     y = margin
     body = root.find(_W + "body")
-    paragraphs = list(body) if body is not None else []
-    for block in paragraphs or [None]:
-        runs = _paragraph_runs(block) if block is not None and block.tag == _W + "p" else []
-        if block is not None and block.tag == _W + "tbl":
+    paragraphs: List[ET.Element] = list(body) if body is not None else []
+    if not paragraphs:
+        paragraphs = [ET.Element(_W + "p")]
+    for block in paragraphs:
+        runs = _paragraph_runs(block) if block.tag == _W + "p" else []
+        if block.tag == _W + "tbl":
             runs = [(" | ".join(extract_docx_text(source)), "helv", 10.5)]
         if not runs:
             runs = [("", "helv", 10.5)]
@@ -152,7 +155,7 @@ def _docx_to_pdf_with_word(source: pathlib.Path) -> fitz.Document | None:
     if sys.platform != "win32":
         return None
     try:
-        import win32com.client  # type: ignore[import-not-found]
+        import win32com.client  # type: ignore[import-untyped]
     except ImportError:
         return None
 
