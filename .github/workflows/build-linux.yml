@@ -66,8 +66,9 @@ jobs:
         run: |
           # The spaCy models come from github.com release assets, which
           # occasionally answer 504: retry instead of failing the release.
+          UV_BIN="$(python3 -c 'import sysconfig; print(sysconfig.get_path("scripts") + "/uv")')"
           for attempt in 1 2 3 4 5; do
-            python3 -m uv pip install -r requirements.txt && exit 0
+            "$UV_BIN" pip install -r requirements.txt && exit 0
             echo "Attempt $attempt failed, retrying in 30s..."; sleep 30
           done
           exit 1
