@@ -120,7 +120,7 @@ NullifyPDF/
 |-- model_manager.py           # Pinned local ONNX model catalog and integrity checks
 |-- model_dialog.py            # Local model dialog with in-button download progress
 |-- onnx_ner.py                # ONNX token-classification adapter
-|-- word_import.py             # Safe DOCX text/table importer
+|-- word_import.py             # Native Word DOCX conversion with safe OOXML fallback
 |-- update_check.py            # Qt-free update check: versions, GitHub releases, asset choice, download
 |-- PDF_Checker.py             # Heuristic verification utility
 |-- setup_env.py               # Environment setup script
@@ -161,7 +161,7 @@ NullifyPDF/
 | **keyring**           | 25.7.0  | OS key store (macOS and Linux only) |
 | **onnxruntime**       | 1.31.1  | CPU inference for optional local PII models |
 | **tokenizers**        | 0.23.3  | Fast local tokenizer with character offsets |
-| **python-docx**       | —       | Not required; DOCX import uses the standard-library OOXML reader |
+| **pywin32**            | 311     | Windows-only bridge to Microsoft Word for native DOCX rendering |
 | **pytest**            | 9.2.0   | Testing framework            |
 | **mypy**              | 1.20.2  | Type checking (blocking in CI) |
 | **PyInstaller**       | 6.22.3  | Builds the executables       |
@@ -209,7 +209,7 @@ NullifyPDF(QMainWindow)
 ```python
 class NullifyPDF:
     def __init__(self)                  # Initialize GUI
-    def load_path(self, path: str)      # Load PDF file
+    def load_path(self, path: str)      # Load PDF or Word DOCX file
     def cmd_auto_ai(self)               # Start AI/OCR scan
     def apply_ai_to_page(self, i, data) # Receive AI results
     def cmd_export(self)                # Export privacy PDF
@@ -494,7 +494,7 @@ isort NullifyPDF.py
 | `spacy_models.py`  | Italian spaCy pipeline downloaded on demand (consent, SHA-256, fallback) |
 | `licences_info.py` | Licences and official links shown in the Info window and README (a test keeps README in step) |
 | `model_manager.py` / `model_dialog.py` / `onnx_ner.py` | Optional ONNX models: catalog, verified download, adapter |
-| `word_import.py`   | DOCX import |
+| `word_import.py`   | Native Word DOCX conversion and safe OOXML fallback |
 | `secure_store.py`  | Master key protection (DPAPI / keyring / key file), AES-GCM sealing |
 | `word_lists.py`    | Encrypted blocklist/allowlist with expiry |
 | `dictionary_dialog.py` | Dictionary editor dialog |
@@ -634,5 +634,5 @@ The release workflows fill each GitHub release body with `scripts/extract_releas
 
 ---
 
-*Last updated: 2026-11-11*  
+*Last updated: 2026-11-24*  
 *← [Troubleshooting](./TROUBLESHOOTING.md) | [Back to README →](./README.md)*

@@ -10,7 +10,7 @@
   <img src="images/NullifyPDF.png" alt="NullifyPDF Logo" width="500">
 </p>
 
-> **NullifyPDF** is a local-first PDF privacy tool. It helps detect personal data, redact it irreversibly, or replace it with reversible placeholders before a PDF is shared with third parties or uploaded to AI systems.
+> **NullifyPDF** is a local-first privacy tool for PDF and Word DOCX documents. It detects personal data, redacts it irreversibly, or replaces it with reversible placeholders before the exported PDF is shared with third parties or uploaded to AI systems.
 
 > [!TIP]
 > First time using NullifyPDF? Start with our [**User Guide**](./USER_GUIDE.md) — takes 5 minutes.
@@ -32,7 +32,7 @@ NullifyPDF goes beyond simple text covering. It uses **Natural Language Processi
 
 ## ✨ Key Features
 
-- 🧠 **Automatic Redaction** — Automatic detection of PII in Italian documents: names, locations, emails, phones, IBANs, credit cards, crypto addresses, Italian fiscal codes and IDs. A dialog lets you choose which data types to scan for, and matching is whole-word so ordinary text is not caught
+- 🧠 **Automatic Redaction** — Automatic detection of PII in Italian PDF and Word DOCX documents: names, locations, emails, phones, IBANs, credit cards, crypto addresses, Italian fiscal codes and IDs. A dialog lets you choose which data types to scan for, and matching is whole-word so ordinary text is not caught
 - 🔄 **Update Check** — Optional, user-triggered check for new releases (stable builds see stable only, beta builds see both) showing the release notes and a one-click download into your Downloads folder; can be enabled at every start from the Info dialog (off by default)
 - 🗄️ **Fluid UI & Thread-Safe** — PySide6 modern dark-mode interface with zero UI freezing. Text extraction in worker thread with QMutex serialization
 - 📖 **Persistent Dictionaries** — Blocklist and Allowlist synchronized to disk (`~/.nullifypdf`) with O(1) fast-path matching
@@ -41,8 +41,8 @@ NullifyPDF goes beyond simple text covering. It uses **Natural Language Processi
 - 🔍 **Review of uncertain hits** — Detections without enough evidence are suggested for review instead of being applied or lost silently
 - 🇮🇹 **Italian name recognition on demand** — the spaCy Italian model (CC BY-NC-SA 3.0, non-commercial) is not in the installer: the first Auto Redact shows its licence, asks for consent and downloads it (SHA-256 verified). Declining keeps rules and dictionaries only
 - 🧠 **Optional local models** — Three reviewed ONNX PII models (MiniLMv2 EN/IT, PiiScan, OpenMed Italian FastClinical) can be downloaded by the user from pinned Hugging Face revisions; files are SHA-256 verified, the download progress is shown inside the button, and models only add review suggestions
-- 📄 **Word import** — DOCX paragraphs and tables can be imported locally into the analysis workflow; legacy binary DOC files are not supported
-- 🔎 **OCR Support** — Bundled EN/IT Tesseract language data for scanned PDFs
+- 📄 **Word import** — DOCX files are rendered with Microsoft Word when available, preserving layout and formatting; a safe local OOXML fallback handles paragraphs and tables. Legacy binary DOC files are not supported
+- 🔎 **OCR Support** — Bundled EN/IT Tesseract language data for scanned PDF and Word DOCX documents
 - 🖼️ **Blindfold Mode** — One-click image/logo censoring with professional placeholder: `[ IMAGE REMOVED ]`
 - 📦 **Native Cross-Platform** — Automated build scripts generate Windows `.exe`, macOS ZIP bundles, and Linux `.deb`/`.rpm` packages
 - 🎯 **Drag & Drop Support** — Native file drag-and-drop on main window
@@ -232,12 +232,12 @@ pytest tests/ -v
 ## 🔒 Security & Privacy
 
 ✅ **100% Local Processing** — All analysis happens on your machine  
-✅ **No Cloud Uploads** — PDF content never leaves your computer; the only network access is the optional update check and the model downloads you approve  
+✅ **No Cloud Uploads** — PDF and Word DOCX content never leaves your computer; the only network access is the optional update check and the model downloads you approve
 ✅ **Open Source** — Full code transparency  
 ✅ **No Telemetry** — Zero user tracking  
 
 > [!IMPORTANT]
-> Irreversible removal cannot be undone from the exported PDF, and it does not by itself guarantee anonymisation: indirect identifiers can remain. A pseudonymized PDF and its restore map are personal data. Always keep backups of original documents. Pseudonymization requires the encrypted restore map and its password.
+> Irreversible removal cannot be undone from the exported PDF, including output generated from a Word DOCX, and it does not by itself guarantee anonymisation: indirect identifiers can remain. A pseudonymized PDF and its restore map are personal data. Always keep backups of original PDF and Word DOCX documents. Pseudonymization requires the encrypted restore map and its password.
 
 See [SECURITY.md](./SECURITY.md) for responsible disclosure and privacy details.
 
@@ -311,5 +311,5 @@ Want to help improve NullifyPDF? See [CONTRIBUTING.md](./CONTRIBUTING.md) for gu
 
 ---
 
-*Last updated: 2026-11-11*  
+*Last updated: 2026-11-24*  
 *[User Guide →](./USER_GUIDE.md)*
