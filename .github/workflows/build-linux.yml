@@ -64,7 +64,7 @@ jobs:
 
       - name: Show toolchain
         run: |
-          python --version
+          /opt/venv/bin/python --version
           ldd --version | head -1
           rpmbuild --version
 
