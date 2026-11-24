@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-11-24
+
 ### ✨ Added
 
 - **Native Word rendering on Windows**: when Microsoft Word desktop and `pywin32` are installed, Word DOCX files are opened read-only and converted with Word's native PDF renderer, preserving layout, styles, tables and embedded images more faithfully. The internal OOXML renderer remains the fallback when Word is unavailable.
