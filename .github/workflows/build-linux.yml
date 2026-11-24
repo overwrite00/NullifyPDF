@@ -62,12 +62,6 @@ jobs:
           echo "/opt/venv/bin" >> "$GITHUB_PATH"
           echo "VIRTUAL_ENV=/opt/venv" >> "$GITHUB_ENV"
 
-      - name: Show toolchain
-        run: |
-          python3 --version || true
-          ldd --version | head -1 || true
-          rpmbuild --version || true
-
       - name: Install Python dependencies (includes spaCy models)
         run: |
           # The spaCy models come from github.com release assets, which
